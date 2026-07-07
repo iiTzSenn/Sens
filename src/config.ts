@@ -44,8 +44,14 @@ export async function entryPointFiles(
   return new Set(matched.map((m) => m.split(path.sep).join("/")));
 }
 
+/** Directory names that hold tests, fixtures, mocks or snapshots — code that
+ * lives in the repo to support tests, not to ship, so its unused symbols are
+ * not dead-code candidates. */
+const TEST_DIR = /(^|\/)(__tests__|__mocks__|__fixtures__|__snapshots__|tests?|specs?|fixtures|mocks|e2e)\//;
+
+/** True for test files (`*.test.ts`, `*.spec.ts`) and anything under a test,
+ * fixture, mock or snapshot directory. Paths are matched in POSIX form. */
 export function isTestFile(file: string): boolean {
-  return (
-    /\.(test|spec)\.[cm]?[jt]sx?$/.test(file) || /(^|\/)__tests__\//.test(file)
-  );
+  const f = file.replace(/\\/g, "/");
+  return /\.(test|spec)\.[cm]?[jt]sx?$/.test(f) || TEST_DIR.test(f);
 }
