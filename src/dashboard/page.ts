@@ -52,8 +52,15 @@ export function renderDashboardPage(): string {
   .d.blue { background: #4f7cff; } .d.gray { background: #aab2bf; } .d.dead { background: #e0533d; }
   .zoomctl { position: absolute; right: 14px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
   .zoomctl button { width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 17px; line-height: 1; border-radius: 8px; }
-  .hint { position: absolute; left: 14px; top: 12px; font-size: 11.5px; color: #8a92a0; background: rgba(255,255,255,.85); padding: 5px 9px; border-radius: 7px; border: 1px solid #e6e8ec; pointer-events: none; opacity: 0; transition: opacity .4s; }
+  .hint { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; font-size: 11.5px; color: #8a92a0; background: rgba(255,255,255,.85); padding: 5px 9px; border-radius: 7px; border: 1px solid #e6e8ec; pointer-events: none; opacity: 0; transition: opacity .4s; white-space: nowrap; }
   .hint.show { opacity: 1; }
+  .crumbs { position: absolute; left: 14px; top: 12px; display: flex; align-items: center; gap: 1px; flex-wrap: wrap; max-width: 62%; font-size: 12px; background: rgba(255,255,255,.85); padding: 4px 6px; border-radius: 8px; border: 1px solid #e6e8ec; }
+  .crumbs .cr { color: #5b6472; cursor: pointer; padding: 2px 7px; border-radius: 6px; transition: background .12s ease, color .12s ease; }
+  .crumbs .cr:hover { background: #eef1f6; color: #1a1c22; }
+  .crumbs .cr.cur { color: #1a1c22; font-weight: 600; cursor: default; }
+  .crumbs .cr.cur:hover { background: transparent; }
+  .crumbs .sep { color: #c2c8d0; }
+  .d.sq { border-radius: 3px; }
   .side { width: 340px; border-left: 1px solid #e6e8ec; background: #fff; overflow: auto; padding: 16px; }
   .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .card { background: #f6f7f9; border-radius: 10px; padding: 12px; }
@@ -85,6 +92,9 @@ export function renderDashboardPage(): string {
     .graphwrap { background: #0f1116; }
     .legend { background: rgba(23,26,33,.85); color: #9aa3b0; border-color: #262b34; }
     .hint { background: rgba(23,26,33,.85); color: #9aa3b0; border-color: #262b34; }
+    .crumbs { background: rgba(23,26,33,.85); border-color: #262b34; }
+    .crumbs .cr { color: #9aa3b0; } .crumbs .cr:hover { background: #232833; color: #e6e8ec; }
+    .crumbs .cr.cur { color: #e6e8ec; } .crumbs .sep { color: #3a4250; }
   }
 </style>
 </head>
@@ -114,11 +124,13 @@ export function renderDashboardPage(): string {
   <div class="body">
     <div class="graphwrap">
       <canvas id="graph"></canvas>
-      <div id="hint" class="hint">Scroll to zoom · drag background to pan · click a node to focus · click empty space (or Esc) to reset · drag a node to pin it</div>
+      <div id="crumbs" class="crumbs"></div>
+      <div id="hint" class="hint">Double-click a folder to open it · breadcrumb to go back · scroll to zoom · click a node for details</div>
       <div class="legend">
+        <span><i class="d sq gray"></i>folder</span>
+        <span><i class="d gray"></i>file</span>
         <span><i class="d blue"></i>exports</span>
-        <span><i class="d gray"></i>internal</span>
-        <span><i class="d dead"></i>has dead code</span>
+        <span><i class="d dead"></i>dead code</span>
       </div>
       <div class="zoomctl">
         <button id="zin" title="Zoom in">+</button>
@@ -154,6 +166,7 @@ export function renderDashboardPage(): string {
   var ctx = canvas.getContext('2d');
   var dpr = window.devicePixelRatio || 1;
   var data = null, nodes = [], links = [], byId = {}, neigh = {};
+  var rawNodes = [], rawLinks = [], curPath = '';  // hierarchical folder navigation state
   var selected = null, hoverNode = null, dragging = null, raf = 0;
   var alpha = 0;
   var view = { w: 0, h: 0 };
@@ -168,6 +181,88 @@ export function renderDashboardPage(): string {
   function clamp(v, lo, hi){ return v < lo ? lo : (v > hi ? hi : v); }
   function toWorld(t, sx, sy){ return { x:(sx - t.x)/t.k, y:(sy - t.y)/t.k }; }
 
+  // ---- hierarchical aggregation (folder map with file drill-down) ----
+  // The API returns a flat file graph; we aggregate it on the client so a large project
+  // opens as a readable folder map (~dozens of nodes) instead of a 700-node hairball.
+  function levelGroups(prefix){
+    var groups = {}, order = [], plen = prefix.length;
+    for(var i=0;i<rawNodes.length;i++){
+      var f = rawNodes[i];
+      if(prefix && f.id.indexOf(prefix) !== 0) continue;
+      var rest = f.id.slice(plen), slash = rest.indexOf('/'), id, g;
+      if(slash === -1){
+        id = f.id; g = groups[id];
+        if(!g){ g = groups[id] = { id:id, label:f.label, folder:false, symbols:0, exported:0, dead:0, files:0 }; order.push(g); }
+      } else {
+        var seg = rest.slice(0, slash); id = prefix + seg + '/'; g = groups[id];
+        if(!g){ g = groups[id] = { id:id, label:seg, folder:true, prefix:id, symbols:0, exported:0, dead:0, files:0 }; order.push(g); }
+      }
+      g.symbols += f.symbols; g.exported += f.exported; g.dead += f.dead; g.files += 1;
+    }
+    return order;
+  }
+  function groupIdOf(path, prefix){
+    if(prefix && path.indexOf(prefix) !== 0) return null;
+    var rest = path.slice(prefix.length), slash = rest.indexOf('/');
+    return slash === -1 ? path : prefix + rest.slice(0, slash) + '/';
+  }
+  function buildLevel(){
+    var order = levelGroups(curPath), have = {};
+    order.forEach(function(g){ have[g.id] = true; });
+    var lmap = {}, agg = [];
+    for(var j=0;j<rawLinks.length;j++){
+      var s = groupIdOf(rawLinks[j].source, curPath), t = groupIdOf(rawLinks[j].target, curPath);
+      if(!s || !t || s === t || !have[s] || !have[t]) continue;
+      var key = s + '\\u0000' + t, L = lmap[key];
+      if(L){ L.weight++; continue; }
+      L = { source:s, target:t, weight:1 }; lmap[key] = L; agg.push(L);
+    }
+    return { order:order, links:agg };
+  }
+  // deepest directory prefix shared by every file — so we skip past a lone top "src/" wrapper.
+  function commonDir(){
+    if(!rawNodes.length) return '';
+    var parts = rawNodes[0].id.split('/'); parts.pop();
+    for(var i=1;i<rawNodes.length;i++){
+      var p = rawNodes[i].id.split('/'); p.pop();
+      var m = 0; while(m < parts.length && m < p.length && parts[m] === p[m]) m++;
+      parts.length = m; if(!parts.length) break;
+    }
+    return parts.length ? parts.join('/') + '/' : '';
+  }
+  function setRaw(){
+    rawNodes = (data.graph && data.graph.nodes) || [];
+    rawLinks = (data.graph && data.graph.links) || [];
+    curPath = commonDir();
+  }
+  function childrenOf(prefix){ return levelGroups(prefix); }
+  function drillTo(prefix){
+    if(curPath === prefix) return;
+    curPath = prefix; selected = null; hoverNode = null;
+    initGraph(); renderPanel(); ensureRunning();
+  }
+  function revealFile(fileId){
+    var cut = fileId.lastIndexOf('/'), dir = cut >= 0 ? fileId.slice(0, cut + 1) : '';
+    if(curPath !== dir){ curPath = dir; hoverNode = null; initGraph(); }
+    var n = byId[fileId]; if(n){ select(n); focusNode(n); }
+  }
+  function renderCrumbs(){
+    var host = document.getElementById('crumbs'); host.innerHTML = '';
+    var segs = curPath ? curPath.replace(/\\/$/, '').split('/') : [];
+    var root = el('span', 'cr' + (segs.length ? '' : ' cur'), (data && data.project) || 'root');
+    root.addEventListener('click', function(){ drillTo(''); });
+    host.appendChild(root);
+    var acc = '';
+    segs.forEach(function(seg, i){
+      acc += seg + '/';
+      host.appendChild(el('span', 'sep', '/'));
+      var last = i === segs.length - 1;
+      var c = el('span', 'cr' + (last ? ' cur' : ''), seg);
+      if(!last){ (function(p){ c.addEventListener('click', function(){ drillTo(p); }); })(acc); }
+      host.appendChild(c);
+    });
+  }
+
   function resize(){
     var wrap = canvas.parentNode;
     dpr = window.devicePixelRatio || 1;
@@ -178,29 +273,33 @@ export function renderDashboardPage(): string {
   }
 
   function initGraph(){
-    var g = data.graph;
-    nodes = g.nodes.map(function(n, i){
-      var a = (i / Math.max(1, g.nodes.length)) * Math.PI * 2;
-      var R = 40 + g.nodes.length * 6;
-      return { id:n.id, label:n.label, symbols:n.symbols, exported:n.exported, dead:n.dead,
-               x: Math.cos(a) * R, y: Math.sin(a) * R, vx:0, vy:0, fixed:false };
+    var lvl = buildLevel();
+    nodes = lvl.order.map(function(g, i){
+      var a = (i / Math.max(1, lvl.order.length)) * Math.PI * 2;
+      var R = 40 + lvl.order.length * 6;
+      return { id:g.id, label:g.label, folder:g.folder, prefix:g.prefix,
+               symbols:g.symbols, exported:g.exported, dead:g.dead, files:g.files,
+               x: Math.cos(a) * R, y: Math.sin(a) * R, vx:0, vy:0, fixed:false, deg:0 };
     });
     byId = {}; nodes.forEach(function(n){ byId[n.id] = n; });
-    links = g.links;
+    links = lvl.links;
     neigh = {};
     nodes.forEach(function(n){ neigh[n.id] = {}; });
     links.forEach(function(l){
       if(neigh[l.source]) neigh[l.source][l.target] = true;
       if(neigh[l.target]) neigh[l.target][l.source] = true;
     });
-    // Pre-settle the layout so it appears framed and calm, then frame it.
+    nodes.forEach(function(n){ var d = 0, m = neigh[n.id]; for(var kk in m) d++; n.deg = d; });
+    renderCrumbs();
+    // Pre-settle with a cooling schedule so the layout converges to a compact, stable
+    // frame even for large graphs — a constant high alpha diverges/oscillates at scale.
     alpha = 1;
-    for(var s = 0; s < 240; s++) physics();
+    for(var s = 0; s < 300; s++){ physics(); alpha *= 0.985; }
     alpha = 0.06;
     fitView(false);
   }
 
-  function radius(n){ return 5 + Math.min(15, n.symbols * 0.8); }
+  function radius(n){ return n.folder ? 7 + Math.min(20, Math.sqrt(n.files) * 3.2) : 5 + Math.min(15, n.symbols * 0.8); }
   function color(n){ return n.dead > 0 ? PAL.dead : (n.exported > 0 ? PAL.blue : PAL.gray); }
 
   function physics(){
@@ -222,7 +321,13 @@ export function renderDashboardPage(): string {
       var n=N[i];
       n.vx+=(0-n.x)*GRAV; n.vy+=(0-n.y)*GRAV;
       n.vx*=DAMP; n.vy*=DAMP;
-      if(n!==dragging && !n.fixed){ n.x+=n.vx*alpha; n.y+=n.vy*alpha; }
+      if(n!==dragging && !n.fixed){
+        // Cap the per-step displacement so a close-range repulsion spike can't blow
+        // the layout up at scale — constant-alpha Euler is otherwise unstable for large N.
+        var sx=n.vx*alpha, sy=n.vy*alpha, sm=sx*sx+sy*sy;
+        if(sm > 900){ var sc=30/Math.sqrt(sm); sx*=sc; sy*=sc; }
+        n.x+=sx; n.y+=sy;
+      }
     }
   }
 
@@ -249,6 +354,17 @@ export function renderDashboardPage(): string {
 
   var PI2 = Math.PI * 2;
 
+  function nodeShape(n, r){
+    if(n.folder){
+      var s = r * 1.02, cr = Math.min(s * 0.34, r);
+      ctx.beginPath();
+      if(ctx.roundRect){ ctx.roundRect(n.x - s, n.y - s, s * 2, s * 2, cr); }
+      else { ctx.rect(n.x - s, n.y - s, s * 2, s * 2); }
+    } else {
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, PI2);
+    }
+  }
+
   function draw(){
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,view.w,view.h);
@@ -264,24 +380,25 @@ export function renderDashboardPage(): string {
       var touch = focus && (links[i].source===focus.id || links[i].target===focus.id);
       ctx.globalAlpha = focus ? (touch ? 1 : 0.35) : 1;
       ctx.strokeStyle = touch ? PAL.linkHot : PAL.link;
-      ctx.lineWidth = (touch ? 1.6 : 1) * lw;
+      ctx.lineWidth = (touch ? 1.6 : Math.min(0.8 + Math.log((links[i].weight||1) + 1) * 0.5, 3)) * lw;
       ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
     }
     ctx.globalAlpha = 1;
 
-    // nodes — flat fills with a clean cutout ring so overlaps read clearly
+    // nodes — circles for files, rounded squares for folders; flat fills + cutout ring
     ctx.textAlign='center'; ctx.textBaseline='alphabetic';
     ctx.font = (11/tf.k) + 'px ui-sans-serif, system-ui, sans-serif';
     for(var k=0;k<nodes.length;k++){
       var n=nodes[k], r=radius(n);
       var active = !focus || n===focus || (nb && nb[n.id]);
       ctx.globalAlpha = active ? 1 : PAL.dim;
-      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, PI2);
+      nodeShape(n, r);
       ctx.fillStyle = color(n); ctx.fill();
       ctx.lineWidth = 1.5*lw; ctx.strokeStyle = PAL.bg; ctx.stroke();
       if(selected===n){ ctx.lineWidth = 2*lw; ctx.strokeStyle = PAL.ring; ctx.stroke(); }
       else if(n===focus){ ctx.lineWidth = 1.6*lw; ctx.strokeStyle = PAL.ring; ctx.stroke(); }
-      if(active && (tf.k >= 0.85 || n===focus || n.symbols >= 10)){
+      // smart labels: folders are always named; files only when zoomed in, focused, or a hub
+      if(active && (n.folder || n===focus || tf.k >= 0.9 || n.deg >= 8)){
         ctx.fillStyle = PAL.label; ctx.fillText(n.label, n.x, n.y - r - 6*lw);
       }
     }
@@ -292,7 +409,8 @@ export function renderDashboardPage(): string {
     var w = toWorld(tf, sx, sy);
     for(var i=nodes.length-1;i>=0;i--){
       var n=nodes[i], r=radius(n)+4/tf.k, dx=w.x-n.x, dy=w.y-n.y;
-      if(dx*dx+dy*dy<=r*r) return n;
+      if(n.folder){ if(Math.abs(dx)<=r && Math.abs(dy)<=r) return n; }
+      else if(dx*dx+dy*dy<=r*r) return n;
     }
     return null;
   }
@@ -332,21 +450,23 @@ export function renderDashboardPage(): string {
   canvas.addEventListener('mouseleave', function(){ if(hoverNode){ hoverNode=null; ensureRunning(); } });
   canvas.addEventListener('dblclick', function(e){
     var p=pos(e), n=nodeAt(p.x,p.y);
-    if(n){ n.fixed=false; reheat(0.6); } else { fitView(true); }
+    if(n && n.folder){ drillTo(n.prefix); }
+    else if(n){ n.fixed=false; reheat(0.6); }
+    else { fitView(true); }
   });
   canvas.addEventListener('wheel', function(e){
     e.preventDefault();
     var p=pos(e);
     var w=toWorld(target, p.x, p.y);
     var factor=Math.pow(1.0016, -e.deltaY);
-    var nk=clamp(target.k*factor, 0.2, 4.5);
+    var nk=clamp(target.k*factor, 0.04, 4.5);
     target.k=nk; target.x=p.x - w.x*nk; target.y=p.y - w.y*nk;
     ensureRunning();
   }, { passive:false });
 
   function zoomBy(f){
     var cx=view.w/2, cy=view.h/2, w=toWorld(target, cx, cy);
-    var nk=clamp(target.k*f, 0.2, 4.5);
+    var nk=clamp(target.k*f, 0.04, 4.5);
     target.k=nk; target.x=cx - w.x*nk; target.y=cy - w.y*nk; ensureRunning();
   }
   document.getElementById('zin').addEventListener('click', function(){ zoomBy(1.3); });
@@ -359,7 +479,7 @@ export function renderDashboardPage(): string {
     nodes.forEach(function(n){ var r=radius(n)+18;
       if(n.x-r<minx)minx=n.x-r; if(n.y-r<miny)miny=n.y-r; if(n.x+r>maxx)maxx=n.x+r; if(n.y+r>maxy)maxy=n.y+r; });
     var bw=Math.max(1,maxx-minx), bh=Math.max(1,maxy-miny), pad=48;
-    var k=clamp(Math.min((view.w-pad)/bw, (view.h-pad)/bh), 0.2, 2.2);
+    var k=clamp(Math.min((view.w-pad)/bw, (view.h-pad)/bh), 0.04, 2.2);
     var cx=(minx+maxx)/2, cy=(miny+maxy)/2;
     target.k=k; target.x=view.w/2 - cx*k; target.y=view.h/2 - cy*k;
     if(!animate){ tf.k=target.k; tf.x=target.x; tf.y=target.y; }
@@ -388,15 +508,30 @@ export function renderDashboardPage(): string {
       var row=el('div','row');
       row.appendChild(el('span','mono', d.name));
       row.appendChild(el('span','loc', base(d.file)+':'+d.line));
-      row.addEventListener('click', function(){ var n=byId[d.file]; if(n){ select(n); focusNode(n); } });
+      row.addEventListener('click', function(){ revealFile(d.file); });
       host.appendChild(row);
     });
   }
 
   function renderPanel(){
     var host=document.getElementById('panel'); host.innerHTML='';
-    if(!selected){ host.appendChild(el('div','muted','Click a node to see its symbols.')); return; }
+    if(!selected){ host.appendChild(el('div','muted','Click a node to see its contents.')); return; }
     host.appendChild(el('div','ptitle mono', selected.id));
+    if(selected.folder){
+      host.appendChild(el('div','muted', selected.files + ' files · ' + selected.symbols + ' symbols'));
+      var pfx = selected.prefix;
+      childrenOf(pfx).forEach(function(kd){
+        var row=el('div','row');
+        row.appendChild(el('span','mono', kd.folder ? kd.label + '/' : kd.label));
+        row.appendChild(el('span','loc', kd.folder ? kd.files + ' files' : kd.symbols + ' sym'));
+        row.addEventListener('click', function(){
+          if(kd.folder){ drillTo(kd.id); }
+          else { drillTo(pfx); var n=byId[kd.id]; if(n){ select(n); focusNode(n); } }
+        });
+        host.appendChild(row);
+      });
+      return;
+    }
     data.symbols.filter(function(s){ return s.file===selected.id; })
       .sort(function(a,b){ return a.line-b.line; })
       .forEach(function(s){
@@ -418,7 +553,7 @@ export function renderDashboardPage(): string {
       var row=el('div','row');
       row.appendChild(el('span','mono', s.name));
       row.appendChild(el('span','loc', base(s.file)+':'+s.line));
-      row.addEventListener('click', function(){ var n=byId[s.file]; if(n){ select(n); focusNode(n); } });
+      row.addEventListener('click', function(){ revealFile(s.file); });
       host.appendChild(row);
     });
   });
@@ -426,7 +561,7 @@ export function renderDashboardPage(): string {
   document.getElementById('btnReindex').addEventListener('click', function(){
     var b=document.getElementById('btnReindex'), lbl=document.getElementById('reindexLabel');
     b.classList.add('loading'); lbl.textContent='Reindexing…';
-    api('/api/reindex','POST').then(function(d){ data=d; selected=null; hoverNode=null; initGraph(); renderSidebar(); reheat(0.8); b.classList.remove('loading'); lbl.textContent='Rebuild index'; });
+    api('/api/reindex','POST').then(function(d){ data=d; setRaw(); selected=null; hoverNode=null; initGraph(); renderSidebar(); reheat(0.8); b.classList.remove('loading'); lbl.textContent='Rebuild index'; });
   });
   function showToast(msg){
     var t=document.getElementById('toast');
@@ -446,7 +581,7 @@ export function renderDashboardPage(): string {
   window.addEventListener('resize', resize);
   resize();
   canvas.style.cursor='grab';
-  api('/api/data').then(function(d){ data=d; initGraph(); renderSidebar(); ensureRunning(); });
+  api('/api/data').then(function(d){ data=d; setRaw(); initGraph(); renderSidebar(); ensureRunning(); });
 })();
 </script>
 </body>
