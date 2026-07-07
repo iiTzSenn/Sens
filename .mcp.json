@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "sens": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "sens-mcp",
+        "mcp"
+      ]
+    }
+  }
+}

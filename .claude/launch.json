@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sens-dashboard",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["dist/cli.js", "dashboard", "--port", "4322", "--no-open"],
+      "port": 4322
+    }
+  ]
+}
