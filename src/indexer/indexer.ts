@@ -9,6 +9,7 @@ import {
 } from "ts-morph";
 import { globby } from "globby";
 import { rel } from "../paths.js";
+import { INDEX_SCHEMA_VERSION } from "../types.js";
 import type {
   ProjectIndex,
   SymbolInfo,
@@ -201,6 +202,16 @@ export async function buildIndex(
     for (const id of sf.getDescendantsOfKind(SyntaxKind.Identifier)) {
       if (nameNodes.has(id)) continue;
       let sym = id.getSymbol();
+      // Object shorthand `{ foo }`: the identifier resolves to the property,
+      // not the referenced variable. Use the value symbol so the use counts.
+      const parent = id.getParent();
+      if (
+        parent &&
+        Node.isShorthandPropertyAssignment(parent) &&
+        parent.getNameNode() === id
+      ) {
+        sym = parent.getValueSymbol() ?? sym;
+      }
       if (!sym) continue;
       const aliased = sym.getAliasedSymbol();
       if (aliased) sym = aliased;
@@ -215,6 +226,7 @@ export async function buildIndex(
   }
 
   return {
+    schemaVersion: INDEX_SCHEMA_VERSION,
     root,
     createdAt: Date.now(),
     files: files.sort((a, b) => a.path.localeCompare(b.path)),

@@ -1,5 +1,8 @@
 // Core data model for the Sens project index.
 
+/** Bump when the index shape or indexing logic changes, to invalidate caches. */
+export const INDEX_SCHEMA_VERSION = 2;
+
 export type SymbolKind =
   | "function"
   | "class"
@@ -47,6 +50,8 @@ export interface FileInfo {
 }
 
 export interface ProjectIndex {
+  /** Index schema version (see INDEX_SCHEMA_VERSION). */
+  schemaVersion: number;
   /** Absolute project root at build time. */
   root: string;
   createdAt: number;

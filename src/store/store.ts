@@ -7,13 +7,16 @@ import {
 } from "node:fs";
 import { indexPath, sensDir, rel } from "../paths.js";
 import { resolveFiles } from "../indexer/indexer.js";
-import type { ProjectIndex } from "../types.js";
+import { INDEX_SCHEMA_VERSION, type ProjectIndex } from "../types.js";
 
 export function loadIndex(root: string): ProjectIndex | null {
   const p = indexPath(root);
   if (!existsSync(p)) return null;
   try {
-    return JSON.parse(readFileSync(p, "utf8")) as ProjectIndex;
+    const index = JSON.parse(readFileSync(p, "utf8")) as ProjectIndex;
+    // Discard caches written by an older/newer Sens (different index logic).
+    if (index.schemaVersion !== INDEX_SCHEMA_VERSION) return null;
+    return index;
   } catch {
     return null;
   }
