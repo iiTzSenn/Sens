@@ -86,6 +86,80 @@ export async function startMcpServer(root: string): Promise<void> {
       text(formatDeadCode((await getEngine()).deadCode(subdir))),
   );
 
+  // Prompts show up as typeable slash commands in Claude Code (tools do not).
+  // Each one just asks Claude to run the matching Sens tool.
+  server.registerPrompt(
+    "map",
+    { title: "Sens: project map", description: "Get a compact map of the project via Sens." },
+    () => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: "Use the sens `project_map` tool to show a compact map of this project, then summarize it briefly.",
+          },
+        },
+      ],
+    }),
+  );
+
+  server.registerPrompt(
+    "dead-code",
+    { title: "Sens: dead code", description: "List unused-code candidates via Sens." },
+    () => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: "Use the sens `dead_code` tool to list unused-code candidates. Note they are candidates to verify before deleting.",
+          },
+        },
+      ],
+    }),
+  );
+
+  server.registerPrompt(
+    "find",
+    {
+      title: "Sens: find symbol",
+      description: "Find where a symbol is defined.",
+      argsSchema: { name: z.string() },
+    },
+    ({ name }) => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `Use the sens \`find_symbol\` tool to locate \`${name}\` and show its definition and signature.`,
+          },
+        },
+      ],
+    }),
+  );
+
+  server.registerPrompt(
+    "exists",
+    {
+      title: "Sens: already exists?",
+      description: "Check if functionality already exists before writing it.",
+      argsSchema: { query: z.string() },
+    },
+    ({ query }) => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `Before writing new code, use the sens \`already_exists\` tool to check whether something matching "${query}" already exists, so we reuse instead of duplicating.`,
+          },
+        },
+      ],
+    }),
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
