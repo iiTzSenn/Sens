@@ -1,11 +1,21 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import pc from "picocolors";
+import path from "node:path";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { VERSION } from "./index.js";
+import { createEngine } from "./core.js";
+import { startMcpServer } from "./mcp/server.js";
+import { renderReport } from "./report/html.js";
+import { sensDir } from "./paths.js";
+import {
+  formatMap,
+  formatSymbols,
+  formatWhoUses,
+  formatDeadCode,
+} from "./format.js";
 
-const todo = (name: string, milestone: string) => () =>
-  console.log(pc.dim(`${name}: not implemented yet (${milestone})`));
-
+const root = process.cwd();
 const program = new Command();
 
 program
@@ -18,26 +28,90 @@ program
 program
   .command("index")
   .description("Build or update the project index")
-  .action(todo("index", "Milestone 1"));
+  .option("-f, --force", "rebuild even if the cache looks fresh")
+  .action(async (opts: { force?: boolean }) => {
+    const start = Date.now();
+    const { index, fromCache } = await createEngine(root, { force: opts.force });
+    const ms = Date.now() - start;
+    console.log(
+      `${pc.green("✓")} ${fromCache ? "cache is fresh" : "index rebuilt"} — ` +
+        `${index.files.length} files, ${index.symbols.length} symbols ${pc.dim(`(${ms}ms)`)}`,
+    );
+  });
 
 program
   .command("map")
+  .argument("[subdir]", "limit to a subdirectory")
   .description("Print a compact map of the project")
-  .action(todo("map", "Milestone 2"));
+  .action(async (subdir?: string) => {
+    const { engine } = await createEngine(root);
+    console.log(formatMap(engine.map(subdir)));
+  });
+
+program
+  .command("find")
+  .argument("<name>", "symbol name")
+  .description("Find where a symbol is defined")
+  .action(async (name: string) => {
+    const { engine } = await createEngine(root);
+    console.log(formatSymbols(engine.findSymbol(name)));
+  });
+
+program
+  .command("who")
+  .argument("<name>", "symbol name")
+  .description("List where a symbol is used")
+  .action(async (name: string) => {
+    const { engine } = await createEngine(root);
+    console.log(formatWhoUses(engine.whoUses(name)));
+  });
+
+program
+  .command("outline")
+  .argument("<file>", "file path")
+  .description("Print a file's signatures, without its bodies")
+  .action(async (file: string) => {
+    const { engine } = await createEngine(root);
+    console.log(formatSymbols(engine.fileOutline(file)));
+  });
+
+program
+  .command("exists")
+  .argument("<keywords...>", "keywords describing the functionality")
+  .description("Check whether something matching these keywords already exists")
+  .action(async (keywords: string[]) => {
+    const { engine } = await createEngine(root);
+    console.log(formatSymbols(engine.alreadyExists(keywords.join(" "))));
+  });
 
 program
   .command("dead-code")
+  .argument("[subdir]", "limit to a subdirectory")
   .description("List unused symbols/exports (candidates)")
-  .action(todo("dead-code", "Milestone 2"));
+  .action(async (subdir?: string) => {
+    const { engine } = await createEngine(root);
+    const dead = engine.deadCode(subdir);
+    const out = formatDeadCode(dead);
+    console.log(dead.length ? pc.yellow(out) : pc.green(out));
+  });
 
 program
   .command("report")
   .description("Generate a static, self-contained HTML report")
-  .action(todo("report", "Milestone 4"));
+  .option("-o, --out <path>", "output file path")
+  .action(async (opts: { out?: string }) => {
+    const { engine, index } = await createEngine(root);
+    const out = opts.out ?? path.join(sensDir(root), "report.html");
+    mkdirSync(path.dirname(out), { recursive: true });
+    writeFileSync(out, renderReport(index, engine), "utf8");
+    console.log(`${pc.green("✓")} report written to ${pc.cyan(out)}`);
+  });
 
 program
   .command("mcp")
   .description("Start the MCP server (stdio) for Claude Code")
-  .action(todo("mcp", "Milestone 3"));
+  .action(async () => {
+    await startMcpServer(root);
+  });
 
 program.parseAsync();
