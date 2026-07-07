@@ -34,11 +34,20 @@ export function renderDashboardPage(): string {
   .btn.loading { pointer-events: none; opacity: .75; }
   .btn.loading svg { animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  .btn-icon { width: 34px; height: 34px; padding: 0; gap: 0; justify-content: center; }
+  .btn-icon svg { width: 17px; height: 17px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
   .status { width: 11px; height: 11px; border-radius: 50%; background: #c2c8d0; position: relative; margin-right: 4px; }
   .status.ok { background: #22c55e; box-shadow: 0 0 7px rgba(34,197,94,.7); }
   .status.ok::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: #22c55e; animation: statuspulse 2.2s ease-out infinite; }
+  .status.stale { background: #ef4444; box-shadow: 0 0 7px rgba(239,68,68,.65); }
+  .status.stale::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: #ef4444; animation: statuspulse 2.2s ease-out infinite; }
   @keyframes statuspulse { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(2.8); opacity: 0; } }
+
+  .conn { position: relative; display: inline-flex; }
+  .conn > .btn { -webkit-mask-image: radial-gradient(circle 9px at calc(100% - 3px) 3px, transparent 98%, #000 100%); mask-image: radial-gradient(circle 9px at calc(100% - 3px) 3px, transparent 98%, #000 100%); }
+  .conn .status { position: absolute; top: -3px; right: -3px; margin: 0; z-index: 2; }
 
   .toast { position: fixed; top: 14px; right: 18px; z-index: 50; display: flex; align-items: center; gap: 9px; padding: 10px 15px 10px 11px; border-radius: 12px; background: #fff; color: #157042; font-size: 13px; font-weight: 600; box-shadow: 0 10px 34px rgba(20,30,60,.20), 0 0 0 1px rgba(34,163,92,.22); opacity: 0; transform: translateY(-14px) scale(.96); pointer-events: none; transition: opacity .26s ease, transform .3s cubic-bezier(.2,.9,.3,1.4); }
   .toast.show { opacity: 1; transform: translateY(0) scale(1); }
@@ -61,24 +70,31 @@ export function renderDashboardPage(): string {
   .crumbs .cr.cur:hover { background: transparent; }
   .crumbs .sep { color: #c2c8d0; }
   .d.sq { border-radius: 3px; }
-  .side { width: 340px; border-left: 1px solid #e6e8ec; background: #fff; overflow: auto; padding: 16px; }
+  .side { width: 400px; flex: none; border-left: 1px solid #e6e8ec; background: #fff; overflow-y: auto; overflow-x: hidden; padding: 16px; scrollbar-width: thin; scrollbar-color: #d3d7de transparent; }
+  .side::-webkit-scrollbar { width: 9px; }
+  .side::-webkit-scrollbar-track { background: transparent; }
+  .side::-webkit-scrollbar-thumb { background-color: #d3d7de; border-radius: 8px; border: 2.5px solid #fff; }
+  .side::-webkit-scrollbar-thumb:hover { background-color: #b9bfc9; }
   .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .card { background: #f6f7f9; border-radius: 10px; padding: 12px; }
   .card .n { font-size: 22px; font-weight: 600; }
   .card .l { font-size: 12px; color: #8a92a0; }
-  input { width: 100%; margin: 16px 0 6px; padding: 9px 11px; border: 1px solid #d3d7de; border-radius: 8px; font: inherit; }
+  input { width: 100%; margin: 16px 0 6px; padding: 9px 11px; border: 1px solid #d3d7de; border-radius: 8px; font: inherit; box-sizing: border-box; }
   h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #8a92a0; margin: 20px 0 8px; }
-  .row { display: flex; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 7px; cursor: pointer; }
+  .row { display: flex; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 7px; cursor: pointer; min-width: 0; }
   .row:hover { background: #f1f3f6; }
-  .loc { color: #8a92a0; font-size: 12px; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+  .row .mono { min-width: 0; overflow-wrap: anywhere; }
+  .loc { color: #8a92a0; font-size: 12px; flex: none; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; overflow-wrap: anywhere; }
   .ptitle { color: #4f7cff; margin-bottom: 8px; word-break: break-all; }
-  .sig { padding: 4px 0; border-bottom: 1px solid #f0f2f5; }
+  .sig { padding: 4px 0; border-bottom: 1px solid #f0f2f5; overflow-wrap: anywhere; }
   .tag { background: #eef1f6; color: #5b6472; border-radius: 5px; padding: 1px 6px; font-size: 11px; margin-left: 6px; }
   @media (prefers-color-scheme: dark) {
     body { color: #e6e8ec; background: #0f1116; }
     .topbar { background: rgba(23,26,33,.82); border-color: #262b34; }
-    .side { background: #171a21; border-color: #262b34; }
+    .side { background: #171a21; border-color: #262b34; scrollbar-color: #2c3340 transparent; }
+    .side::-webkit-scrollbar-thumb { background-color: #2c3340; border-color: #171a21; }
+    .side::-webkit-scrollbar-thumb:hover { background-color: #3a4250; }
     button { background: #1c2029; color: #e6e8ec; border-color: #2c3340; } button:hover { background: #232833; }
     .btn-ghost { background: #1c2029; color: #cdd3dc; border-color: #2c3340; box-shadow: none; }
     .btn-ghost:hover { background: #232833; border-color: #3a4250; }
@@ -86,6 +102,8 @@ export function renderDashboardPage(): string {
     .status { background: #3a4250; }
     .status.ok { background: #34d47f; box-shadow: 0 0 8px rgba(52,212,127,.7); }
     .status.ok::after { background: #34d47f; }
+    .status.stale { background: #f87171; box-shadow: 0 0 8px rgba(248,113,113,.7); }
+    .status.stale::after { background: #f87171; }
     .toast { background: #1c2029; color: #4bd48a; box-shadow: 0 10px 34px rgba(0,0,0,.5), 0 0 0 1px rgba(75,212,138,.28); }
     .toast .ic { background: #2ea866; }
     .row:hover { background: #232833; } .sig { border-color: #21252e; } .tag { background: #232833; }
@@ -106,15 +124,18 @@ export function renderDashboardPage(): string {
       <span>Sens<span class="dot">.</span> <span id="proj" class="muted"></span></span>
     </div>
     <div class="actions">
-      <span id="status" class="status off" title="Not connected"></span>
-      <button id="btnConnect" class="btn btn-primary">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-        <span>Connect to Claude Code</span>
-      </button>
-      <button id="btnReindex" class="btn btn-ghost">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
-        <span id="reindexLabel">Rebuild index</span>
-      </button>
+      <div class="conn">
+        <button id="btnConnect" class="btn btn-primary btn-icon" title="Connect to Claude Code" aria-label="Connect to Claude Code">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg>
+        </button>
+        <span id="status" class="status off" title="Not connected"></span>
+      </div>
+      <div class="conn">
+        <button id="btnReindex" class="btn btn-ghost btn-icon" title="Rebuild index" aria-label="Rebuild index">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+        </button>
+        <span id="freshBadge" class="status" title="Checking index freshness\u2026"></span>
+      </div>
     </div>
   </header>
   <div id="toast" class="toast">
@@ -558,10 +579,21 @@ export function renderDashboardPage(): string {
     });
   });
 
+  function setFreshBadge(fresh){
+    var badge = document.getElementById('freshBadge');
+    badge.className = 'status ' + (fresh ? 'ok' : 'stale');
+    badge.title = fresh ? 'Index up to date' : 'Index out of date — click rebuild';
+  }
+  function checkFreshness(){
+    api('/api/freshness').then(function(d){ setFreshBadge(d.fresh); });
+  }
+
   document.getElementById('btnReindex').addEventListener('click', function(){
-    var b=document.getElementById('btnReindex'), lbl=document.getElementById('reindexLabel');
-    b.classList.add('loading'); lbl.textContent='Reindexing…';
-    api('/api/reindex','POST').then(function(d){ data=d; setRaw(); selected=null; hoverNode=null; initGraph(); renderSidebar(); reheat(0.8); b.classList.remove('loading'); lbl.textContent='Rebuild index'; });
+    var b=document.getElementById('btnReindex');
+    b.classList.add('loading'); b.title='Reindexing…'; b.setAttribute('aria-label','Reindexing…');
+    api('/api/reindex','POST').then(function(d){ data=d; setRaw(); selected=null; hoverNode=null; initGraph(); renderSidebar(); reheat(0.8); b.classList.remove('loading'); b.title='Rebuild index'; b.setAttribute('aria-label','Rebuild index');
+      setFreshBadge(true);
+    });
   });
   function showToast(msg){
     var t=document.getElementById('toast');
@@ -581,7 +613,9 @@ export function renderDashboardPage(): string {
   window.addEventListener('resize', resize);
   resize();
   canvas.style.cursor='grab';
-  api('/api/data').then(function(d){ data=d; setRaw(); initGraph(); renderSidebar(); ensureRunning(); });
+  api('/api/data').then(function(d){ data=d; setRaw(); initGraph(); renderSidebar(); ensureRunning(); checkFreshness(); });
+  setInterval(checkFreshness, 5000);
+  window.addEventListener('focus', checkFreshness);
 })();
 </script>
 </body>

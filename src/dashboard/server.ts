@@ -3,6 +3,8 @@ import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { createEngine } from "../core.js";
+import { loadConfig } from "../config.js";
+import { loadIndex, isFresh } from "../store/store.js";
 import type { ProjectIndex } from "../types.js";
 import type { QueryEngine } from "../query/engine.js";
 import { renderDashboardPage } from "./page.js";
@@ -119,6 +121,11 @@ export async function startDashboard(
       } else if (req.method === "GET" && url === "/api/data") {
         const { engine, index } = await createEngine(root);
         json(res, buildData(root, index, engine));
+      } else if (req.method === "GET" && url === "/api/freshness") {
+        const config = loadConfig(root);
+        const cached = loadIndex(root);
+        const fresh = cached ? await isFresh(root, cached, config.ignore) : false;
+        json(res, { fresh });
       } else if (req.method === "POST" && url === "/api/reindex") {
         const { engine, index } = await createEngine(root, { force: true });
         json(res, buildData(root, index, engine));
