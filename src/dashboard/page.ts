@@ -11,17 +11,129 @@ export function renderDashboardPage(): string {
 <title>Sens dashboard</title>
 <style>
   * { box-sizing: border-box; }
-  :root { color-scheme: light dark; --accent: #4f7cff; --accent-hover: #3d6bf0; }
-  body { margin: 0; font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #1a1c22; background: #f6f7f9; }
+  /* All theme colors live in CSS variables so light and dark stay in sync from one
+     source of truth. Defaults below are the light theme; the dark values are applied
+     either automatically (prefers-color-scheme) or explicitly via [data-theme]. */
+  :root {
+    color-scheme: light dark;
+    --accent: #4f7cff; --accent-hover: #3d6bf0;
+    --bg: #f6f7f9;
+    --fg: #1a1c22;
+    --muted: #8a92a0;
+    --border: #e6e8ec;
+    --border-strong: #d3d7de;
+    --topbar-bg: rgba(255,255,255,.88);
+    --surface: #ffffff;
+    --card: #f6f7f9;
+    --btn-bg: #ffffff;
+    --btn-fg: #1a1c22;
+    --btn-hover: #f1f3f6;
+    --ghost-fg: #3a4250;
+    --graph-bg: #ffffff;
+    --overlay-bg: rgba(255,255,255,.85);
+    --overlay-fg: #6b7280;
+    --row-hover: #f1f3f6;
+    --crumb-fg: #5b6472;
+    --crumb-cur: #1a1c22;
+    --sep: #c2c8d0;
+    --tag-bg: #eef1f6;
+    --tag-fg: #5b6472;
+    --sig-border: #f0f2f5;
+    --scroll-thumb: #d3d7de;
+    --scroll-thumb-hover: #b9bfc9;
+    --toast-bg: #ffffff;
+    --toast-fg: #157042;
+    --toast-shadow: rgba(20,30,60,.20);
+    --toast-ring: rgba(34,163,92,.22);
+    --toast-ic: #22a35c;
+    --status-off: #c2c8d0;
+    --ok: #22c55e; --ok-glow: rgba(34,197,94,.7);
+    --stale: #ef4444; --stale-glow: rgba(239,68,68,.65);
+  }
+  /* Shared dark palette — applied when the OS asks for dark (unless the user forced
+     light) and when the user explicitly picks dark via the toggle. */
+  :root[data-theme="dark"], :root:not([data-theme]) {}
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1116;
+      --fg: #e6e8ec;
+      --muted: #8a92a0;
+      --border: #262b34;
+      --border-strong: #2c3340;
+      --topbar-bg: rgba(23,26,33,.82);
+      --surface: #171a21;
+      --card: #1c2029;
+      --btn-bg: #1c2029;
+      --btn-fg: #e6e8ec;
+      --btn-hover: #232833;
+      --ghost-fg: #cdd3dc;
+      --graph-bg: #0f1116;
+      --overlay-bg: rgba(23,26,33,.85);
+      --overlay-fg: #9aa3b0;
+      --row-hover: #232833;
+      --crumb-fg: #9aa3b0;
+      --crumb-cur: #e6e8ec;
+      --sep: #3a4250;
+      --tag-bg: #232833;
+      --tag-fg: #9aa3b0;
+      --sig-border: #21252e;
+      --scroll-thumb: #2c3340;
+      --scroll-thumb-hover: #3a4250;
+      --toast-bg: #1c2029;
+      --toast-fg: #4bd48a;
+      --toast-shadow: rgba(0,0,0,.5);
+      --toast-ring: rgba(75,212,138,.28);
+      --toast-ic: #2ea866;
+      --status-off: #3a4250;
+      --ok: #34d47f; --ok-glow: rgba(52,212,127,.7);
+      --stale: #f87171; --stale-glow: rgba(248,113,113,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1116;
+    --fg: #e6e8ec;
+    --muted: #8a92a0;
+    --border: #262b34;
+    --border-strong: #2c3340;
+    --topbar-bg: rgba(23,26,33,.82);
+    --surface: #171a21;
+    --card: #1c2029;
+    --btn-bg: #1c2029;
+    --btn-fg: #e6e8ec;
+    --btn-hover: #232833;
+    --ghost-fg: #cdd3dc;
+    --graph-bg: #0f1116;
+    --overlay-bg: rgba(23,26,33,.85);
+    --overlay-fg: #9aa3b0;
+    --row-hover: #232833;
+    --crumb-fg: #9aa3b0;
+    --crumb-cur: #e6e8ec;
+    --sep: #3a4250;
+    --tag-bg: #232833;
+    --tag-fg: #9aa3b0;
+    --sig-border: #21252e;
+    --scroll-thumb: #2c3340;
+    --scroll-thumb-hover: #3a4250;
+    --toast-bg: #1c2029;
+    --toast-fg: #4bd48a;
+    --toast-shadow: rgba(0,0,0,.5);
+    --toast-ring: rgba(75,212,138,.28);
+    --toast-ic: #2ea866;
+    --status-off: #3a4250;
+    --ok: #34d47f; --ok-glow: rgba(52,212,127,.7);
+    --stale: #f87171; --stale-glow: rgba(248,113,113,.7);
+  }
+
+  body { margin: 0; font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: var(--fg); background: var(--bg); }
   .app { display: flex; flex-direction: column; height: 100vh; }
-  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 11px 18px; border-bottom: 1px solid #e9ebef; background: rgba(255,255,255,.88); backdrop-filter: saturate(1.4) blur(10px); }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 11px 18px; border-bottom: 1px solid var(--border); background: var(--topbar-bg); backdrop-filter: saturate(1.4) blur(10px); }
   .brand { display: flex; align-items: center; gap: 11px; font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
   .brand .mark { width: 33px; height: 33px; border-radius: 9px; display: grid; place-items: center; color: #fff; font-size: 17px; font-weight: 700; background: linear-gradient(140deg, #6f9bff, #4f7cff); box-shadow: 0 3px 8px rgba(79,124,255,.38), inset 0 1px 0 rgba(255,255,255,.35); }
   .brand .dot { color: var(--accent); }
-  .muted { color: #8a92a0; font-weight: 400; }
+  .muted { color: var(--muted); font-weight: 400; }
   .actions { display: flex; align-items: center; gap: 8px; }
-  button { font: inherit; border: 1px solid #d3d7de; background: #fff; color: #1a1c22; padding: 7px 13px; border-radius: 8px; cursor: pointer; }
-  button:hover { background: #f1f3f6; }
+  button { font: inherit; border: 1px solid var(--border-strong); background: var(--btn-bg); color: var(--btn-fg); padding: 7px 13px; border-radius: 8px; cursor: pointer; }
+  button:hover { background: var(--btn-hover); }
 
   .btn { font: inherit; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 9px; border: 1px solid transparent; cursor: pointer; white-space: nowrap; transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .08s ease; }
   .btn svg { width: 15px; height: 15px; flex: none; }
@@ -29,8 +141,8 @@ export function renderDashboardPage(): string {
   .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 1px 2px rgba(20,30,60,.20), inset 0 1px 0 rgba(255,255,255,.20); }
   .btn-primary:hover { background: var(--accent-hover); }
-  .btn-ghost { background: #fff; color: #3a4250; border-color: #e2e5ea; box-shadow: 0 1px 1.5px rgba(20,30,60,.05); }
-  .btn-ghost:hover { background: #f4f6f9; border-color: #d3d7de; }
+  .btn-ghost { background: var(--btn-bg); color: var(--ghost-fg); border-color: var(--border); box-shadow: 0 1px 1.5px rgba(20,30,60,.05); }
+  .btn-ghost:hover { background: var(--btn-hover); border-color: var(--border-strong); }
   .btn.loading { pointer-events: none; opacity: .75; }
   .btn.loading svg { animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -38,82 +150,58 @@ export function renderDashboardPage(): string {
   .btn-icon svg { width: 17px; height: 17px; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
-  .status { width: 11px; height: 11px; border-radius: 50%; background: #c2c8d0; position: relative; margin-right: 4px; }
-  .status.ok { background: #22c55e; box-shadow: 0 0 7px rgba(34,197,94,.7); }
-  .status.ok::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: #22c55e; animation: statuspulse 2.2s ease-out infinite; }
-  .status.stale { background: #ef4444; box-shadow: 0 0 7px rgba(239,68,68,.65); }
-  .status.stale::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: #ef4444; animation: statuspulse 2.2s ease-out infinite; }
+  .status { width: 11px; height: 11px; border-radius: 50%; background: var(--status-off); position: relative; margin-right: 4px; }
+  .status.ok { background: var(--ok); box-shadow: 0 0 7px var(--ok-glow); }
+  .status.ok::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--ok); animation: statuspulse 2.2s ease-out infinite; }
+  .status.stale { background: var(--stale); box-shadow: 0 0 7px var(--stale-glow); }
+  .status.stale::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--stale); animation: statuspulse 2.2s ease-out infinite; }
   @keyframes statuspulse { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(2.8); opacity: 0; } }
 
   .conn { position: relative; display: inline-flex; }
   .conn > .btn { -webkit-mask-image: radial-gradient(circle 9px at calc(100% - 3px) 3px, transparent 98%, #000 100%); mask-image: radial-gradient(circle 9px at calc(100% - 3px) 3px, transparent 98%, #000 100%); }
   .conn .status { position: absolute; top: -3px; right: -3px; margin: 0; z-index: 2; }
 
-  .toast { position: fixed; top: 14px; right: 18px; z-index: 50; display: flex; align-items: center; gap: 9px; padding: 10px 15px 10px 11px; border-radius: 12px; background: #fff; color: #157042; font-size: 13px; font-weight: 600; box-shadow: 0 10px 34px rgba(20,30,60,.20), 0 0 0 1px rgba(34,163,92,.22); opacity: 0; transform: translateY(-14px) scale(.96); pointer-events: none; transition: opacity .26s ease, transform .3s cubic-bezier(.2,.9,.3,1.4); }
+  .toast { position: fixed; top: 14px; right: 18px; z-index: 50; display: flex; align-items: center; gap: 9px; padding: 10px 15px 10px 11px; border-radius: 12px; background: var(--toast-bg); color: var(--toast-fg); font-size: 13px; font-weight: 600; box-shadow: 0 10px 34px var(--toast-shadow), 0 0 0 1px var(--toast-ring); opacity: 0; transform: translateY(-14px) scale(.96); pointer-events: none; transition: opacity .26s ease, transform .3s cubic-bezier(.2,.9,.3,1.4); }
   .toast.show { opacity: 1; transform: translateY(0) scale(1); }
-  .toast .ic { width: 21px; height: 21px; border-radius: 50%; background: #22a35c; color: #fff; display: grid; place-items: center; flex: none; }
+  .toast .ic { width: 21px; height: 21px; border-radius: 50%; background: var(--toast-ic); color: #fff; display: grid; place-items: center; flex: none; }
   .toast .ic svg { width: 13px; height: 13px; }
   .body { display: flex; flex: 1; min-height: 0; }
-  .graphwrap { flex: 1; position: relative; overflow: hidden; touch-action: none; background: #ffffff; }
+  .graphwrap { flex: 1; position: relative; overflow: hidden; touch-action: none; background: var(--graph-bg); }
   canvas { display: block; }
-  .legend { position: absolute; left: 14px; bottom: 12px; display: flex; gap: 14px; font-size: 12px; color: #6b7280; background: rgba(255,255,255,.85); padding: 6px 10px; border-radius: 8px; border: 1px solid #e6e8ec; }
+  .legend { position: absolute; left: 14px; bottom: 12px; display: flex; gap: 14px; font-size: 12px; color: var(--overlay-fg); background: var(--overlay-bg); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); }
   .legend .d { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: 0; }
   .d.blue { background: #4f7cff; } .d.gray { background: #aab2bf; } .d.dead { background: #e0533d; }
   .zoomctl { position: absolute; right: 14px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
   .zoomctl button { width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 17px; line-height: 1; border-radius: 8px; }
-  .hint { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; font-size: 11.5px; color: #8a92a0; background: rgba(255,255,255,.85); padding: 5px 9px; border-radius: 7px; border: 1px solid #e6e8ec; pointer-events: none; opacity: 0; transition: opacity .4s; white-space: nowrap; }
+  .hint { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; font-size: 11.5px; color: var(--muted); background: var(--overlay-bg); padding: 5px 9px; border-radius: 7px; border: 1px solid var(--border); pointer-events: none; opacity: 0; transition: opacity .4s; white-space: nowrap; }
   .hint.show { opacity: 1; }
-  .crumbs { position: absolute; left: 14px; top: 12px; display: flex; align-items: center; gap: 1px; flex-wrap: wrap; max-width: 62%; font-size: 12px; background: rgba(255,255,255,.85); padding: 4px 6px; border-radius: 8px; border: 1px solid #e6e8ec; }
-  .crumbs .cr { color: #5b6472; cursor: pointer; padding: 2px 7px; border-radius: 6px; transition: background .12s ease, color .12s ease; }
-  .crumbs .cr:hover { background: #eef1f6; color: #1a1c22; }
-  .crumbs .cr.cur { color: #1a1c22; font-weight: 600; cursor: default; }
+  .crumbs { position: absolute; left: 14px; top: 12px; display: flex; align-items: center; gap: 1px; flex-wrap: wrap; max-width: 62%; font-size: 12px; background: var(--overlay-bg); padding: 4px 6px; border-radius: 8px; border: 1px solid var(--border); }
+  .crumbs .cr { color: var(--crumb-fg); cursor: pointer; padding: 2px 7px; border-radius: 6px; transition: background .12s ease, color .12s ease; }
+  .crumbs .cr:hover { background: var(--row-hover); color: var(--crumb-cur); }
+  .crumbs .cr.cur { color: var(--crumb-cur); font-weight: 600; cursor: default; }
   .crumbs .cr.cur:hover { background: transparent; }
-  .crumbs .sep { color: #c2c8d0; }
+  .crumbs .sep { color: var(--sep); }
   .d.sq { border-radius: 3px; }
-  .side { width: 400px; flex: none; border-left: 1px solid #e6e8ec; background: #fff; overflow-y: auto; overflow-x: hidden; padding: 16px; scrollbar-width: thin; scrollbar-color: #d3d7de transparent; }
+  .side { width: 400px; flex: none; border-left: 1px solid var(--border); background: var(--surface); overflow-y: auto; overflow-x: hidden; padding: 16px; scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
   .side::-webkit-scrollbar { width: 9px; }
   .side::-webkit-scrollbar-track { background: transparent; }
-  .side::-webkit-scrollbar-thumb { background-color: #d3d7de; border-radius: 8px; border: 2.5px solid #fff; }
-  .side::-webkit-scrollbar-thumb:hover { background-color: #b9bfc9; }
+  .side::-webkit-scrollbar-thumb { background-color: var(--scroll-thumb); border-radius: 8px; border: 2.5px solid var(--surface); }
+  .side::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
   .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .card { background: #f6f7f9; border-radius: 10px; padding: 12px; }
+  .card { background: var(--card); border-radius: 10px; padding: 12px; }
   .card .n { font-size: 22px; font-weight: 600; }
-  .card .l { font-size: 12px; color: #8a92a0; }
-  input { width: 100%; margin: 16px 0 6px; padding: 9px 11px; border: 1px solid #d3d7de; border-radius: 8px; font: inherit; box-sizing: border-box; }
-  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #8a92a0; margin: 20px 0 8px; }
+  .card .l { font-size: 12px; color: var(--muted); }
+  input { width: 100%; margin: 16px 0 6px; padding: 9px 11px; border: 1px solid var(--border-strong); border-radius: 8px; font: inherit; box-sizing: border-box; background: var(--btn-bg); color: var(--fg); }
+  input::placeholder { color: var(--muted); }
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 20px 0 8px; }
   .row { display: flex; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 7px; cursor: pointer; min-width: 0; }
-  .row:hover { background: #f1f3f6; }
+  .row:hover { background: var(--row-hover); }
   .row .mono { min-width: 0; overflow-wrap: anywhere; }
-  .loc { color: #8a92a0; font-size: 12px; flex: none; }
+  .loc { color: var(--muted); font-size: 12px; flex: none; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; overflow-wrap: anywhere; }
-  .ptitle { color: #4f7cff; margin-bottom: 8px; word-break: break-all; }
-  .sig { padding: 4px 0; border-bottom: 1px solid #f0f2f5; overflow-wrap: anywhere; }
-  .tag { background: #eef1f6; color: #5b6472; border-radius: 5px; padding: 1px 6px; font-size: 11px; margin-left: 6px; }
-  @media (prefers-color-scheme: dark) {
-    body { color: #e6e8ec; background: #0f1116; }
-    .topbar { background: rgba(23,26,33,.82); border-color: #262b34; }
-    .side { background: #171a21; border-color: #262b34; scrollbar-color: #2c3340 transparent; }
-    .side::-webkit-scrollbar-thumb { background-color: #2c3340; border-color: #171a21; }
-    .side::-webkit-scrollbar-thumb:hover { background-color: #3a4250; }
-    button { background: #1c2029; color: #e6e8ec; border-color: #2c3340; } button:hover { background: #232833; }
-    .btn-ghost { background: #1c2029; color: #cdd3dc; border-color: #2c3340; box-shadow: none; }
-    .btn-ghost:hover { background: #232833; border-color: #3a4250; }
-    .card { background: #1c2029; }
-    .status { background: #3a4250; }
-    .status.ok { background: #34d47f; box-shadow: 0 0 8px rgba(52,212,127,.7); }
-    .status.ok::after { background: #34d47f; }
-    .status.stale { background: #f87171; box-shadow: 0 0 8px rgba(248,113,113,.7); }
-    .status.stale::after { background: #f87171; }
-    .toast { background: #1c2029; color: #4bd48a; box-shadow: 0 10px 34px rgba(0,0,0,.5), 0 0 0 1px rgba(75,212,138,.28); }
-    .toast .ic { background: #2ea866; }
-    .row:hover { background: #232833; } .sig { border-color: #21252e; } .tag { background: #232833; }
-    .graphwrap { background: #0f1116; }
-    .legend { background: rgba(23,26,33,.85); color: #9aa3b0; border-color: #262b34; }
-    .hint { background: rgba(23,26,33,.85); color: #9aa3b0; border-color: #262b34; }
-    .crumbs { background: rgba(23,26,33,.85); border-color: #262b34; }
-    .crumbs .cr { color: #9aa3b0; } .crumbs .cr:hover { background: #232833; color: #e6e8ec; }
-    .crumbs .cr.cur { color: #e6e8ec; } .crumbs .sep { color: #3a4250; }
-  }
+  .ptitle { color: var(--accent); margin-bottom: 8px; word-break: break-all; }
+  .sig { padding: 4px 0; border-bottom: 1px solid var(--sig-border); overflow-wrap: anywhere; }
+  .tag { background: var(--tag-bg); color: var(--tag-fg); border-radius: 5px; padding: 1px 6px; font-size: 11px; margin-left: 6px; }
 </style>
 </head>
 <body>
@@ -124,6 +212,7 @@ export function renderDashboardPage(): string {
       <span>Sens<span class="dot">.</span> <span id="proj" class="muted"></span></span>
     </div>
     <div class="actions">
+      <button id="btnTheme" class="btn btn-ghost btn-icon" title="Toggle theme" aria-label="Toggle theme"></button>
       <div class="conn">
         <button id="btnConnect" class="btn btn-primary btn-icon" title="Connect to Claude Code" aria-label="Connect to Claude Code">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg>
@@ -134,7 +223,7 @@ export function renderDashboardPage(): string {
         <button id="btnReindex" class="btn btn-ghost btn-icon" title="Rebuild index" aria-label="Rebuild index">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
         </button>
-        <span id="freshBadge" class="status" title="Checking index freshness\u2026"></span>
+        <span id="freshBadge" class="status" title="Checking index freshness…"></span>
       </div>
     </div>
   </header>
@@ -177,11 +266,36 @@ export function renderDashboardPage(): string {
 </div>
 <script>
 (function(){
-  // Clean, professional palette that follows the system light/dark theme.
-  var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  var PAL = dark
-    ? { bg:'#0f1116', link:'rgba(180,190,208,0.16)', linkHot:'#6f9bff', label:'#aeb6c2', blue:'#6f9bff', gray:'#69707d', dead:'#e0705d', ring:'#e9edf3', dim:0.26 }
-    : { bg:'#ffffff', link:'rgba(40,50,70,0.14)', linkHot:'#4f7cff', label:'#5b6472', blue:'#4f7cff', gray:'#aab2bf', dead:'#e0533d', ring:'#1a1c22', dim:0.28 };
+  // ---- theme: follows the system by default, overridable with the toolbar toggle ----
+  var THEME_KEY = 'sens-theme';
+  var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  function systemDark(){ return mq ? mq.matches : false; }
+  function storedTheme(){ try { return localStorage.getItem(THEME_KEY); } catch(e){ return null; } }
+  function resolvedDark(){ var t = storedTheme(); return t === 'light' || t === 'dark' ? t === 'dark' : systemDark(); }
+  // The canvas graph is drawn imperatively, so its colors can't come from CSS — we
+  // mirror the same theme decision here. Link colors are kept legible on both grounds.
+  function palette(dark){
+    return dark
+      ? { bg:'#0f1116', link:'rgba(180,190,208,0.22)', linkHot:'#6f9bff', label:'#aeb6c2', blue:'#6f9bff', gray:'#69707d', dead:'#e0705d', ring:'#e9edf3', dim:0.26 }
+      : { bg:'#ffffff', link:'rgba(40,50,70,0.24)', linkHot:'#4f7cff', label:'#5b6472', blue:'#4f7cff', gray:'#9aa2b0', dead:'#e0533d', ring:'#1a1c22', dim:0.28 };
+  }
+  var PAL = palette(resolvedDark());
+
+  function themeIcon(dark){
+    return dark
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  }
+  function applyTheme(){
+    var t = storedTheme();
+    if(t === 'light' || t === 'dark'){ document.documentElement.setAttribute('data-theme', t); }
+    else { document.documentElement.removeAttribute('data-theme'); }
+    var dk = resolvedDark();
+    PAL = palette(dk);
+    var b = document.getElementById('btnTheme');
+    if(b){ b.innerHTML = themeIcon(dk); var lbl = dk ? 'Switch to light theme' : 'Switch to dark theme'; b.title = lbl; b.setAttribute('aria-label', lbl); }
+    ensureRunning();
+  }
 
   var canvas = document.getElementById('graph');
   var ctx = canvas.getContext('2d');
@@ -604,6 +718,21 @@ export function renderDashboardPage(): string {
   document.getElementById('btnConnect').addEventListener('click', function(){
     api('/api/connect','POST').then(function(){ return api('/api/data'); }).then(function(d){ data=d; renderSidebar(); if(d.connected) showToast('Connected to Claude Code'); });
   });
+
+  // theme toggle: cycle stored preference between light and dark; changing it repaints
+  // both the CSS chrome (via [data-theme]) and the canvas palette.
+  document.getElementById('btnTheme').addEventListener('click', function(){
+    var next = resolvedDark() ? 'light' : 'dark';
+    try { localStorage.setItem(THEME_KEY, next); } catch(e){}
+    applyTheme();
+  });
+  // follow the OS while the user hasn't picked a theme of their own
+  if(mq){
+    var onSys = function(){ if(!storedTheme()) applyTheme(); };
+    if(mq.addEventListener) mq.addEventListener('change', onSys);
+    else if(mq.addListener) mq.addListener(onSys);
+  }
+  applyTheme();
 
   // brief hint on first load
   var hint=document.getElementById('hint');

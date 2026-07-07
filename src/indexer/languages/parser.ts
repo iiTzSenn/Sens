@@ -36,9 +36,30 @@ export interface LanguageParser {
 
 import { typescriptParser } from "./typescript.js";
 import { pythonParser } from "./python.js";
+import { goParser } from "./go.js";
+import { rustParser } from "./rust.js";
+import { javaParser } from "./java.js";
+import { csharpParser } from "./csharp.js";
+import { cParser } from "./c.js";
+import { cppParser } from "./cpp.js";
+import { phpParser } from "./php.js";
+import { rubyParser } from "./ruby.js";
+import { kotlinParser } from "./kotlin.js";
 
 /** All languages Sens can index. Order is not significant. */
-export const PARSERS: LanguageParser[] = [typescriptParser, pythonParser];
+export const PARSERS: LanguageParser[] = [
+  typescriptParser,
+  pythonParser,
+  goParser,
+  rustParser,
+  javaParser,
+  csharpParser,
+  cParser,
+  cppParser,
+  phpParser,
+  rubyParser,
+  kotlinParser,
+];
 
 const EXT_TO_PARSER = new Map<string, LanguageParser>();
 for (const p of PARSERS) {

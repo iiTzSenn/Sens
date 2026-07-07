@@ -7,6 +7,7 @@ import {
   sourceGlob,
   type IndexContribution,
 } from "./languages/parser.js";
+import { disposeParsers } from "./languages/treesitter/base.js";
 
 const DEFAULT_IGNORE = [
   "**/node_modules/**",
@@ -53,10 +54,16 @@ export async function buildIndex(
   }
 
   const contributions: IndexContribution[] = [];
-  for (const parser of PARSERS) {
-    const files = byParser.get(parser.name);
-    if (!files || files.length === 0) continue;
-    contributions.push(await parser.build(root, files));
+  try {
+    for (const parser of PARSERS) {
+      const files = byParser.get(parser.name);
+      if (!files || files.length === 0) continue;
+      contributions.push(await parser.build(root, files));
+    }
+  } finally {
+    // Release tree-sitter grammars once indexing is done (frees the emscripten
+    // heap; the WASM modules themselves stay compiled until the process ends).
+    await disposeParsers();
   }
 
   return mergeContributions(root, contributions);

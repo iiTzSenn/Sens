@@ -74,6 +74,10 @@ That's it. Claude Code launches Sens on demand — no per-project install, no ma
 | `dead_code` | Unused symbols / exports (candidates) | — |
 | `file_dependencies` | What a file imports and what imports it (import graph) | Grepping for imports across the project |
 
+## Working rules
+
+Sens's MCP server also hands Claude a short set of **working rules** it follows when writing or changing code — reuse what exists instead of duplicating, keep code minimal but maintainable, and leave nothing orphaned — each tied to the tool that lets it *verify* the rule (`already_exists`/`find_symbol` before writing, `dead_code` before finishing, `who_uses` before a rename). They load automatically over MCP; run `sens rules` to read them, or `sens rules --write` to drop a `SENS_RULES.md` you can reference from your `CLAUDE.md` / `AGENTS.md`.
+
 ## Slash commands
 
 Sens also registers prompts, so it shows up in Claude Code's `/` menu:
@@ -84,6 +88,7 @@ Sens also registers prompts, so it shows up in Claude Code's `/` menu:
 | `/sens dead-code` | List dead-code candidates |
 | `/sens find <name>` | Locate a symbol |
 | `/sens exists <keywords>` | Check for existing code before writing |
+| `/sens rules` | Load the working rules and follow them |
 | `/sens dashboard` | Open the web dashboard (graph) |
 
 ## CLI
@@ -101,6 +106,8 @@ npx sens-mcp dead-code      # unused symbols (candidates)
 npx sens-mcp deps <file>    # what a file imports and what imports it
 npx sens-mcp report         # self-contained HTML report → .sens/report.html
 npx sens-mcp dashboard      # interactive web dashboard
+npx sens-mcp rules          # print the coding rules (--write to save SENS_RULES.md)
+npx sens-mcp usage          # which Sens tools the model has actually called
 ```
 
 > Installed globally (`npm i -g sens-mcp`) the command is just `sens <command>`.
@@ -140,9 +147,9 @@ Pluggable per-language parsers behind one language-agnostic index. Sens walks yo
 **Languages:**
 
 - **JavaScript / TypeScript** (`.ts .tsx .js .jsx .mts .cts`) via [ts-morph](https://ts-morph.com) — cross-file references are resolved *semantically* (it follows your imports).
-- **Python** (`.py .pyi`) via [tree-sitter](https://tree-sitter.github.io/) — functions, classes, methods, module constants, and an import graph. References are resolved *by name* (the best a dynamic language allows without full type inference), so `who_uses` / `dead-code` are slightly more approximate than for JS/TS: they over-count rather than miss, which keeps dead-code candidates conservative. Public = not a `_underscore` name.
+- **Python, Go, Rust, Java, C#, C, C++, PHP, Ruby, Kotlin** via [tree-sitter](https://tree-sitter.github.io/) — functions, classes/structs, methods, constants, and an import graph per file.
 
-A mixed repo (e.g. a TS frontend + a Python backend) is indexed as one project. More languages via tree-sitter are on the roadmap.
+Everything lands in one language-agnostic index, so a mixed repo (e.g. a TS frontend + a Python or Go backend) is indexed as a single project. For the tree-sitter languages, cross-file references are resolved *by name* — the best a syntax-only parser can do without whole-program type inference — so `who_uses` / `dead-code` are slightly more approximate than for JS/TS: they over-count rather than miss, which keeps dead-code candidates conservative. Adding a language is a small self-contained parser (`src/indexer/languages/`); more are on the roadmap.
 
 ## Configuration
 

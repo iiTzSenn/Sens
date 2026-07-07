@@ -3,6 +3,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { createEngine } from "../core.js";
 import { VERSION } from "../index.js";
+import { AGENT_RULES } from "../rules.js";
+import { logUsage } from "../usage.js";
 import {
   formatMap,
   formatSymbols,
@@ -23,27 +25,21 @@ const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 export async function startMcpServer(root: string): Promise<void> {
   const server = new McpServer(
     { name: "sens", version: VERSION },
-    {
-      instructions: [
-        "Sens indexes this project so you can query it instead of reading files wholesale.",
-        "",
-        "- Orient with `project_map` first. Don't open files just to see what's there.",
-        "- Use `find_symbol`, `who_uses`, and `file_outline` instead of grep or reading whole files.",
-        "- Use `file_dependencies` to jump between related files (what a file imports / what imports it) instead of reading import statements by hand.",
-        "- `who_uses` on a heavily-used symbol returns a partial summary (busiest files) by default to save tokens. " +
-          "That summary is NOT the full list \u2014 before renaming or editing every usage, call it again with " +
-          "full:true so you don't silently miss files.",
-        "- Before writing new code, call `already_exists` with your intended functionality. " +
-          "Its matching is keyword-substring, not semantic: if a natural-language query returns nothing relevant, " +
-          "retry with 1-2 short, distinctive keywords instead of a full sentence — common domain words " +
-          '(e.g. "order", "user") can bury the real match under unrelated results with the same generic word.',
-        "- `dead_code` results are candidates, not certainties. Before deleting anything it flags, check for dynamic usage " +
-          "it cannot see: `React.lazy(() => import(...))`, other dynamic `import()` calls, string-based/reflective access, " +
-          "or framework auto-imports. When in doubt, grep the exact symbol name across the repo as a final check.",
-      ].join("\n"),
-    },
+    { instructions: AGENT_RULES },
   );
   const getEngine = async () => (await createEngine(root)).engine;
+
+  // Wrap a tool handler so every call the model makes is recorded to the usage
+  // log first — this is how we can tell whether Sens is actually being used.
+  const track =
+    <A extends Record<string, unknown>>(
+      tool: string,
+      handler: (args: A) => Promise<ReturnType<typeof text>>,
+    ) =>
+    (args: A): Promise<ReturnType<typeof text>> => {
+      logUsage(root, tool, args);
+      return handler(args);
+    };
 
   server.registerTool(
     "project_map",
@@ -52,7 +48,9 @@ export async function startMcpServer(root: string): Promise<void> {
         "Compact map of the project: one line per file with its exported symbols. Use this to orient yourself instead of reading many files.",
       inputSchema: { subdir: z.string().optional() },
     },
-    async ({ subdir }) => text(formatMap((await getEngine()).map(subdir))),
+    track("project_map", async ({ subdir }: { subdir?: string }) =>
+      text(formatMap((await getEngine()).map(subdir))),
+    ),
   );
 
   server.registerTool(
@@ -62,7 +60,9 @@ export async function startMcpServer(root: string): Promise<void> {
         "Locate where a symbol is defined: returns file:line and its signature. Replaces grep.",
       inputSchema: { name: z.string() },
     },
-    async ({ name }) => text(formatSymbols((await getEngine()).findSymbol(name))),
+    track("find_symbol", async ({ name }: { name: string }) =>
+      text(formatSymbols((await getEngine()).findSymbol(name))),
+    ),
   );
 
   server.registerTool(
@@ -74,8 +74,9 @@ export async function startMcpServer(root: string): Promise<void> {
         "pass full:true to get every call site before renaming/editing all usages, so you don't miss any.",
       inputSchema: { name: z.string(), full: z.boolean().optional() },
     },
-    async ({ name, full }) =>
+    track("who_uses", async ({ name, full }: { name: string; full?: boolean }) =>
       text(formatWhoUses((await getEngine()).whoUses(name), { full })),
+    ),
   );
 
   server.registerTool(
@@ -85,8 +86,9 @@ export async function startMcpServer(root: string): Promise<void> {
         "Signatures of the symbols in a file, without their bodies. Far cheaper than reading the whole file.",
       inputSchema: { file: z.string() },
     },
-    async ({ file }) =>
+    track("file_outline", async ({ file }: { file: string }) =>
       text(formatSymbols((await getEngine()).fileOutline(file))),
+    ),
   );
 
   server.registerTool(
@@ -98,8 +100,9 @@ export async function startMcpServer(root: string): Promise<void> {
         "different/narrower keywords if the first query returns nothing relevant (common domain words can bury the real match).",
       inputSchema: { query: z.string() },
     },
-    async ({ query }) =>
+    track("already_exists", async ({ query }: { query: string }) =>
       text(formatSymbols((await getEngine()).alreadyExists(query))),
+    ),
   );
 
   server.registerTool(
@@ -111,8 +114,9 @@ export async function startMcpServer(root: string): Promise<void> {
         "symbol name across the repo if unsure before removing it.",
       inputSchema: { subdir: z.string().optional() },
     },
-    async ({ subdir }) =>
+    track("dead_code", async ({ subdir }: { subdir?: string }) =>
       text(formatDeadCode((await getEngine()).deadCode(subdir))),
+    ),
   );
 
   server.registerTool(
@@ -122,8 +126,9 @@ export async function startMcpServer(root: string): Promise<void> {
         "What a file imports and what imports it, from the precomputed import graph. Use this to jump straight to related files instead of grepping or reading the whole project.",
       inputSchema: { file: z.string() },
     },
-    async ({ file }) =>
+    track("file_dependencies", async ({ file }: { file: string }) =>
       text(formatFileDependencies((await getEngine()).fileDependencies(file))),
+    ),
   );
 
   // Prompts show up as typeable slash commands in Claude Code (tools do not).
@@ -213,6 +218,27 @@ export async function startMcpServer(root: string): Promise<void> {
           content: {
             type: "text",
             text: "Open the Sens web dashboard so I can see the project graph. Run the `sens dashboard` command (it starts a local web server) as a BACKGROUND process — do not wait on it — then tell me the http://localhost:4319 URL to open. If `sens` is not on PATH, run the installed Sens build's `dist/cli.js dashboard` with node instead.",
+          },
+        },
+      ],
+    }),
+  );
+
+  server.registerPrompt(
+    "rules",
+    {
+      title: "Sens: working rules",
+      description: "Load the coding rules (reuse over duplicate, no orphan code) and follow them.",
+    },
+    () => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+              "Follow these Sens working rules for the rest of this session, using the sens tools to verify them:\n\n" +
+              AGENT_RULES,
           },
         },
       ],

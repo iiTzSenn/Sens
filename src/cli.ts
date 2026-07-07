@@ -5,10 +5,9 @@ import path from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { VERSION } from "./index.js";
 import { createEngine } from "./core.js";
-import { startMcpServer } from "./mcp/server.js";
-import { startDashboard } from "./dashboard/server.js";
-import { renderReport } from "./report/html.js";
 import { sensDir } from "./paths.js";
+import { AGENT_RULES } from "./rules.js";
+import { readUsage, formatUsage } from "./usage.js";
 import { supportedLanguages } from "./indexer/languages/parser.js";
 import {
   formatMap,
@@ -122,6 +121,7 @@ program
   .option("-o, --out <path>", "output file path")
   .action(async (opts: { out?: string }) => {
     const { engine, index } = await createEngine(root);
+    const { renderReport } = await import("./report/html.js");
     const out = opts.out ?? path.join(sensDir(root), "report.html");
     mkdirSync(path.dirname(out), { recursive: true });
     writeFileSync(out, renderReport(index, engine), "utf8");
@@ -135,14 +135,42 @@ program
   .option("-r, --root <dir>", "project directory to inspect", ".")
   .option("--no-open", "do not open the browser automatically")
   .action(async (opts: { port: string; root: string; open: boolean }) => {
+    const { startDashboard } = await import("./dashboard/server.js");
     await startDashboard(path.resolve(opts.root), { port: Number(opts.port), open: opts.open });
+  });
+
+program
+  .command("rules")
+  .description("Print the coding rules Sens gives the model (reuse over duplicate, no orphan code)")
+  .option("-w, --write [file]", "write the rules to a file instead of printing (default: SENS_RULES.md)")
+  .action((opts: { write?: string | boolean }) => {
+    if (opts.write) {
+      const out = typeof opts.write === "string" ? opts.write : "SENS_RULES.md";
+      writeFileSync(out, AGENT_RULES + "\n", "utf8");
+      console.log(
+        `${pc.green("✓")} rules written to ${pc.cyan(out)} ${pc.dim("— reference it from your CLAUDE.md / AGENTS.md")}`,
+      );
+    } else {
+      console.log(AGENT_RULES);
+    }
+  });
+
+program
+  .command("usage")
+  .description("Show which Sens tools the model has actually called (from the MCP usage log)")
+  .action(() => {
+    console.log(formatUsage(readUsage(root)));
   });
 
 program
   .command("mcp")
   .description("Start the MCP server (stdio) for Claude Code")
   .action(async () => {
+    const { startMcpServer } = await import("./mcp/server.js");
     await startMcpServer(root);
   });
 
-program.parseAsync();
+program.parseAsync().catch((err) => {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});
