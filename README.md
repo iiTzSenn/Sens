@@ -135,9 +135,14 @@ A reproducible benchmark suite ([`bench/run.ts`](bench/run.ts)) measures this on
 
 ## How it works
 
-TypeScript + [ts-morph](https://ts-morph.com). Sens walks your source (respecting `.gitignore`), extracts top-level symbols with compact signatures, and resolves cross-file references in a single pass. The index is cached in `.sens/index.json` and only rebuilt when file mtimes change; a schema version invalidates stale caches across upgrades.
+Pluggable per-language parsers behind one language-agnostic index. Sens walks your source (respecting `.gitignore`), extracts top-level symbols with compact signatures, resolves references, and caches the result in `.sens/index.json` — only rebuilt when file mtimes change; a schema version invalidates stale caches across upgrades.
 
-**JS/TS today** (`.ts .tsx .js .jsx .mts .cts`). More languages via tree-sitter are on the roadmap.
+**Languages:**
+
+- **JavaScript / TypeScript** (`.ts .tsx .js .jsx .mts .cts`) via [ts-morph](https://ts-morph.com) — cross-file references are resolved *semantically* (it follows your imports).
+- **Python** (`.py .pyi`) via [tree-sitter](https://tree-sitter.github.io/) — functions, classes, methods, module constants, and an import graph. References are resolved *by name* (the best a dynamic language allows without full type inference), so `who_uses` / `dead-code` are slightly more approximate than for JS/TS: they over-count rather than miss, which keeps dead-code candidates conservative. Public = not a `_underscore` name.
+
+A mixed repo (e.g. a TS frontend + a Python backend) is indexed as one project. More languages via tree-sitter are on the roadmap.
 
 ## Configuration
 

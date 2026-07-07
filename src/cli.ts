@@ -9,6 +9,7 @@ import { startMcpServer } from "./mcp/server.js";
 import { startDashboard } from "./dashboard/server.js";
 import { renderReport } from "./report/html.js";
 import { sensDir } from "./paths.js";
+import { supportedLanguages } from "./indexer/languages/parser.js";
 import {
   formatMap,
   formatSymbols,
@@ -39,6 +40,14 @@ program
       `${pc.green("✓")} ${fromCache ? "cache is fresh" : "index rebuilt"} — ` +
         `${index.files.length} files, ${index.symbols.length} symbols ${pc.dim(`(${ms}ms)`)}`,
     );
+    if (index.files.length === 0) {
+      console.log(
+        pc.yellow(
+          `⚠ No source files found to index. Sens indexes: ${supportedLanguages()}.\n` +
+            "  If this project uses another language, it isn't supported yet.",
+        ),
+      );
+    }
   });
 
 program

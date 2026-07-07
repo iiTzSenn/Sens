@@ -1,7 +1,7 @@
 // Core data model for the Sens project index.
 
 /** Bump when the index shape or indexing logic changes, to invalidate caches. */
-export const INDEX_SCHEMA_VERSION = 2;
+export const INDEX_SCHEMA_VERSION = 3;
 
 export type SymbolKind =
   | "function"
