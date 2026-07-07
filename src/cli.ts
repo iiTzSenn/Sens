@@ -6,6 +6,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { VERSION } from "./index.js";
 import { createEngine } from "./core.js";
 import { startMcpServer } from "./mcp/server.js";
+import { startDashboard } from "./dashboard/server.js";
 import { renderReport } from "./report/html.js";
 import { sensDir } from "./paths.js";
 import {
@@ -105,6 +106,16 @@ program
     mkdirSync(path.dirname(out), { recursive: true });
     writeFileSync(out, renderReport(index, engine), "utf8");
     console.log(`${pc.green("✓")} report written to ${pc.cyan(out)}`);
+  });
+
+program
+  .command("dashboard")
+  .description("Start the local web dashboard (graph, dead code, Claude Code setup)")
+  .option("-p, --port <port>", "port to listen on", "4319")
+  .option("-r, --root <dir>", "project directory to inspect", ".")
+  .option("--no-open", "do not open the browser automatically")
+  .action(async (opts: { port: string; root: string; open: boolean }) => {
+    await startDashboard(path.resolve(opts.root), { port: Number(opts.port), open: opts.open });
   });
 
 program

@@ -56,9 +56,23 @@ npx sens-mcp outline <file> # a file's signatures, no bodies
 npx sens-mcp exists <kw...> # does something like this already exist?
 npx sens-mcp dead-code      # unused symbols (candidates)
 npx sens-mcp report         # write a self-contained HTML report to .sens/report.html
+npx sens-mcp dashboard      # open the interactive web dashboard
 ```
 
 > The `sens` bin is installed under both `sens` and `sens-mcp`. If you install globally (`npm i -g sens-mcp`), just run `sens <command>`.
+
+## The dashboard
+
+`sens dashboard` starts a local web UI (default `http://localhost:4319`) with:
+
+- an **interactive graph** of your project (files as nodes, imports as edges — drag, click a node to see its symbols);
+- live **stats** and a clickable **dead-code** list;
+- a symbol **search**;
+- a **Connect to Claude Code** button that writes the `.mcp.json` for you (one click to activate), and a **Rebuild index** button.
+
+```bash
+npx sens-mcp dashboard --root . --port 4319   # --no-open to skip opening the browser
+```
 
 ## The HTML report
 
@@ -97,7 +111,7 @@ TypeScript + [ts-morph](https://ts-morph.com). Sens walks your source (respectin
 - Enforcement hook (warn/block when an edit introduces dead code or a duplicate)
 - Semantic `already_exists` (embeddings) + near-duplicate detection
 - More languages (tree-sitter), Vue/Svelte SFCs
-- Live web dashboard
+- Dashboard: symbol-level graph, live file watching
 
 ## Docs
 
