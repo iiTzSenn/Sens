@@ -105,7 +105,7 @@ Seis componentes con responsabilidad única:
 | `find_symbol` | nombre del símbolo | Archivo, línea y firma de la definición | `grep` |
 | `who_uses` | nombre del símbolo | Lista de sitios (archivo:línea) que lo usan | `grep` + lecturas |
 | `file_outline` | ruta de archivo | Firmas de sus símbolos (sin cuerpos) | Leer el archivo entero |
-| `already_exists` | descripción o nombre de una funcionalidad | Coincidencias existentes que podrían reutilizarse (búsqueda por nombre/símbolo) | Duplicar sin querer |
+| `already_exists` | nombre o palabras clave de una funcionalidad | Coincidencias existentes que podrían reutilizarse (búsqueda por nombre/símbolo, no semántica en v1) | Duplicar sin querer |
 | `dead_code` | (opcional: subcarpeta) | Símbolos/exports con cero usos (candidatos) | — |
 
 Notas:
@@ -153,7 +153,7 @@ Notas:
 
 **Fuera de v1 (hoja de ruta):**
 1. **Hook de enforcement** (PostToolUse) que avise/bloquee cuando una edición introduce código muerto o un duplicado.
-2. **Detección de duplicados** "parecidos" (fuzzy / semántica).
+2. **Búsqueda semántica** (embeddings) para `already_exists` y **detección de duplicados** "parecidos" (fuzzy / semántica).
 3. **Métricas de complejidad** / hotspots.
 4. **Más lenguajes** vía tree-sitter (Python, Go, Rust…).
 5. **Dashboard web en vivo** con grafo interactivo.
