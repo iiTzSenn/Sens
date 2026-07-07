@@ -1,0 +1,44 @@
+{
+  "name": "sens-mcp",
+  "version": "0.0.1",
+  "description": "A project index for Claude Code — let the model query your codebase instead of reading it all. Saves subscription usage and keeps code clean.",
+  "type": "module",
+  "bin": {
+    "sens": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "node dist/cli.js"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "mcp",
+    "code-index",
+    "dead-code",
+    "ai",
+    "tokens"
+  ],
+  "author": "Sofia",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^15.0.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  }
+}
