@@ -12,6 +12,14 @@ export interface MapEntry {
   internalCount: number;
 }
 
+export interface FileDependencies {
+  file: string;
+  /** Files this file imports (internal, resolved). */
+  imports: string[];
+  /** Files that import this file (internal, resolved). */
+  importedBy: string[];
+}
+
 /** Answers the six Sens queries over a built project index. */
 export class QueryEngine {
   constructor(
@@ -92,6 +100,34 @@ export class QueryEngine {
       entries.push({ file, exported, internalCount: syms.length - exported.length });
     }
     return entries.sort((a, b) => a.file.localeCompare(b.file));
+  }
+
+  /**
+   * A file's neighbors in the (precomputed) import graph: what it imports
+   * and what imports it. Lets a caller jump straight to related files
+   * instead of grepping or reading the whole project.
+   */
+  fileDependencies(file: string): FileDependencies {
+    const norm = file.replace(/\\/g, "/");
+    const target =
+      this.index.files.find((f) => f.path === norm || f.path.endsWith(norm))
+        ?.path ?? norm;
+    const fileSet = new Set(this.index.files.map((f) => f.path));
+    const imports = [
+      ...new Set(
+        this.index.imports
+          .filter((i) => i.from === target && i.to !== target && fileSet.has(i.to))
+          .map((i) => i.to),
+      ),
+    ].sort();
+    const importedBy = [
+      ...new Set(
+        this.index.imports
+          .filter((i) => i.to === target && i.from !== target)
+          .map((i) => i.from),
+      ),
+    ].sort();
+    return { file: target, imports, importedBy };
   }
 
   /** Unused symbols (candidates). Excludes methods, tests, entry-point exports. */

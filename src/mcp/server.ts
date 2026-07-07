@@ -8,6 +8,7 @@ import {
   formatSymbols,
   formatWhoUses,
   formatDeadCode,
+  formatFileDependencies,
 } from "../format.js";
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
@@ -20,7 +21,28 @@ const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
  * an editing session without re-parsing when nothing changed.
  */
 export async function startMcpServer(root: string): Promise<void> {
-  const server = new McpServer({ name: "sens", version: VERSION });
+  const server = new McpServer(
+    { name: "sens", version: VERSION },
+    {
+      instructions: [
+        "Sens indexes this project so you can query it instead of reading files wholesale.",
+        "",
+        "- Orient with `project_map` first. Don't open files just to see what's there.",
+        "- Use `find_symbol`, `who_uses`, and `file_outline` instead of grep or reading whole files.",
+        "- Use `file_dependencies` to jump between related files (what a file imports / what imports it) instead of reading import statements by hand.",
+        "- `who_uses` on a heavily-used symbol returns a partial summary (busiest files) by default to save tokens. " +
+          "That summary is NOT the full list \u2014 before renaming or editing every usage, call it again with " +
+          "full:true so you don't silently miss files.",
+        "- Before writing new code, call `already_exists` with your intended functionality. " +
+          "Its matching is keyword-substring, not semantic: if a natural-language query returns nothing relevant, " +
+          "retry with 1-2 short, distinctive keywords instead of a full sentence — common domain words " +
+          '(e.g. "order", "user") can bury the real match under unrelated results with the same generic word.',
+        "- `dead_code` results are candidates, not certainties. Before deleting anything it flags, check for dynamic usage " +
+          "it cannot see: `React.lazy(() => import(...))`, other dynamic `import()` calls, string-based/reflective access, " +
+          "or framework auto-imports. When in doubt, grep the exact symbol name across the repo as a final check.",
+      ].join("\n"),
+    },
+  );
   const getEngine = async () => (await createEngine(root)).engine;
 
   server.registerTool(
@@ -47,10 +69,13 @@ export async function startMcpServer(root: string): Promise<void> {
     "who_uses",
     {
       description:
-        "List every place a symbol is used, so you can edit it safely without grepping.",
-      inputSchema: { name: z.string() },
+        "List every place a symbol is used, so you can edit it safely without grepping. " +
+        "For heavily-used symbols this defaults to a partial summary (busiest files) to save tokens — " +
+        "pass full:true to get every call site before renaming/editing all usages, so you don't miss any.",
+      inputSchema: { name: z.string(), full: z.boolean().optional() },
     },
-    async ({ name }) => text(formatWhoUses((await getEngine()).whoUses(name))),
+    async ({ name, full }) =>
+      text(formatWhoUses((await getEngine()).whoUses(name), { full })),
   );
 
   server.registerTool(
@@ -68,7 +93,9 @@ export async function startMcpServer(root: string): Promise<void> {
     "already_exists",
     {
       description:
-        "Before writing new code, check whether something matching these keywords already exists — reuse it instead of duplicating.",
+        "Before writing new code, check whether something matching these keywords already exists — reuse it instead of duplicating. " +
+        "Matching is keyword-substring, not semantic: prefer 1-2 short, distinctive keywords over a full sentence, and retry with " +
+        "different/narrower keywords if the first query returns nothing relevant (common domain words can bury the real match).",
       inputSchema: { query: z.string() },
     },
     async ({ query }) =>
@@ -79,11 +106,24 @@ export async function startMcpServer(root: string): Promise<void> {
     "dead_code",
     {
       description:
-        "List unused symbols (candidates). Verify before deleting: dynamic usage and framework auto-imports may not be detected.",
+        "List unused symbols (candidates). Verify before deleting: this can't see dynamic usage " +
+        "(React.lazy/import(), string-based access, reflection) or framework auto-imports — grep the exact " +
+        "symbol name across the repo if unsure before removing it.",
       inputSchema: { subdir: z.string().optional() },
     },
     async ({ subdir }) =>
       text(formatDeadCode((await getEngine()).deadCode(subdir))),
+  );
+
+  server.registerTool(
+    "file_dependencies",
+    {
+      description:
+        "What a file imports and what imports it, from the precomputed import graph. Use this to jump straight to related files instead of grepping or reading the whole project.",
+      inputSchema: { file: z.string() },
+    },
+    async ({ file }) =>
+      text(formatFileDependencies((await getEngine()).fileDependencies(file))),
   );
 
   // Prompts show up as typeable slash commands in Claude Code (tools do not).

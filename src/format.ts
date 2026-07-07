@@ -1,7 +1,7 @@
 // Plain-text formatters for query results, shared by the CLI and MCP server.
 
 import type { SymbolInfo } from "./types.js";
-import type { MapEntry, WhoUsesResult } from "./query/engine.js";
+import type { MapEntry, WhoUsesResult, FileDependencies } from "./query/engine.js";
 
 export function formatMap(entries: MapEntry[]): string {
   const lines: string[] = [`project map — ${entries.length} file(s)`, ""];
@@ -23,14 +23,45 @@ export function formatSymbols(syms: SymbolInfo[]): string {
     .join("\n");
 }
 
-export function formatWhoUses(results: WhoUsesResult[]): string {
+// Above this many call sites, listing every file:line by default wastes
+// tokens for a quick overview — group by file and show the busiest ones
+// instead. This is a SUMMARY, not a substitute for the full list: pass
+// `full: true` to get every site before doing a project-wide edit/rename,
+// so a truncated view never gets mistaken for complete coverage.
+const MAX_INLINE_REFS = 30;
+const MAX_GROUPED_FILES = 10;
+
+export function formatWhoUses(
+  results: WhoUsesResult[],
+  opts: { full?: boolean } = {},
+): string {
   if (results.length === 0) return "symbol not found";
   const lines: string[] = [];
   for (const r of results) {
     lines.push(
       `${r.symbol.name}  (${r.symbol.file}:${r.symbol.line}) — ${r.references.length} use(s)`,
     );
-    for (const ref of r.references) lines.push(`  ${ref.file}:${ref.line}`);
+    if (opts.full || r.references.length <= MAX_INLINE_REFS) {
+      for (const ref of r.references) lines.push(`  ${ref.file}:${ref.line}`);
+      continue;
+    }
+    const byFile = new Map<string, number>();
+    for (const ref of r.references) {
+      byFile.set(ref.file, (byFile.get(ref.file) ?? 0) + 1);
+    }
+    const sorted = [...byFile.entries()].sort((a, b) => b[1] - a[1]);
+    const top = sorted.slice(0, MAX_GROUPED_FILES);
+    lines.push(
+      `  PARTIAL SUMMARY (not the full list) \u2014 used in ${byFile.size} file(s), busiest first:`,
+    );
+    for (const [file, count] of top) lines.push(`  ${file}  (${count}x)`);
+    if (sorted.length > top.length) {
+      lines.push(`  (+${sorted.length - top.length} more file(s) not shown)`);
+    }
+    lines.push(
+      "  Do not treat this as complete \u2014 call who_uses again with full:true to get every " +
+        "call site before renaming/editing all usages.",
+    );
   }
   return lines.join("\n");
 }
@@ -45,6 +76,21 @@ export function formatDeadCode(syms: SymbolInfo[]): string {
     lines.push(
       `${s.file}:${s.line}  ${s.kind} ${s.name}${s.exported ? "  [exported]" : ""}`,
     );
+  }
+  return lines.join("\n");
+}
+
+export function formatFileDependencies(deps: FileDependencies): string {
+  const lines: string[] = [deps.file];
+  if (deps.imports.length === 0) lines.push("  imports: (none)");
+  else {
+    lines.push(`  imports (${deps.imports.length}):`);
+    for (const f of deps.imports) lines.push(`    ${f}`);
+  }
+  if (deps.importedBy.length === 0) lines.push("  imported by: (none)");
+  else {
+    lines.push(`  imported by (${deps.importedBy.length}):`);
+    for (const f of deps.importedBy) lines.push(`    ${f}`);
   }
   return lines.join("\n");
 }

@@ -72,6 +72,7 @@ That's it. Claude Code launches Sens on demand — no per-project install, no ma
 | `file_outline` | A file's signatures, without its bodies | Reading the whole file |
 | `already_exists` | Whether something matching keywords already exists | Duplicating by accident |
 | `dead_code` | Unused symbols / exports (candidates) | — |
+| `file_dependencies` | What a file imports and what imports it (import graph) | Grepping for imports across the project |
 
 ## Slash commands
 
@@ -97,6 +98,7 @@ npx sens-mcp who <name>     # where a symbol is used
 npx sens-mcp outline <file> # a file's signatures, no bodies
 npx sens-mcp exists <kw...> # does something like this already exist?
 npx sens-mcp dead-code      # unused symbols (candidates)
+npx sens-mcp deps <file>    # what a file imports and what imports it
 npx sens-mcp report         # self-contained HTML report → .sens/report.html
 npx sens-mcp dashboard      # interactive web dashboard
 ```
@@ -120,16 +122,16 @@ npx sens-mcp dashboard --root . --port 4319   # --no-open to skip opening the br
 
 ## Does it actually help?
 
-Early numbers from dogfooding Sens on a real Vite + React app and on Sens itself:
+A reproducible benchmark suite ([`bench/run.ts`](bench/run.ts)) measures this on Sens's own repo and fixtures — run it yourself with `npm run bench`. No estimates, no anecdotes: every number below comes straight from that script.
 
 | Metric | Result | How it's measured |
 | --- | --- | --- |
-| Tokens to **orient** in a project | **~95% fewer** *(est.)* | Project map ≈ 450 tokens vs ≈ 9,000 to read the source tree |
-| **Re-index** when nothing changed | **~37× faster** | 975 ms cold build → 26 ms from cache |
-| **Duplication** | caught *before* writing | `already_exists` surfaces existing code |
-| **Dead code** | found, with 0 false positives on i18n | after the object-shorthand reference fix |
+| Size to **orient** in a project | **~97% fewer characters** | `project_map` output vs. concatenating every file in `src/` |
+| **Re-index** when nothing changed | **~100\u2013125\u00d7 faster** *(varies by run/hardware)* | median cold build (`force: true`) vs. median cached read, 5 runs each |
+| **Duplication** | caught *before* writing | `already_exists("subtract two numbers")` surfaces the existing `subtract` |
+| **Dead code** false positives | **0 out of 8** labeled symbols | against fixtures with known used / dead / object-shorthand-referenced symbols |
 
-> These are early, estimated figures from real usage — not a formal benchmark suite yet. Rigorous, reproducible benchmarks are on the [roadmap](#roadmap).
+> Re-run `npm run bench` on your own machine or project to reproduce (or challenge) these numbers. Re-index speed varies with CPU and disk, so treat it as a range, not a fixed multiplier.
 
 ## How it works
 
@@ -167,7 +169,7 @@ Test files count as usage sources but are never themselves reported as dead. **V
 - [ ] Semantic `already_exists` (embeddings) + near-duplicate detection
 - [ ] More languages via tree-sitter; Vue/Svelte SFCs
 - [ ] Dashboard: symbol-level graph, live file watching
-- [ ] A reproducible benchmark suite
+- [x] A reproducible benchmark suite (`npm run bench`)
 
 ## Contributing
 

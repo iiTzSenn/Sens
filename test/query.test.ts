@@ -56,4 +56,12 @@ describe("query engine", () => {
     expect(dead).not.toContain("subtract"); // exported from an entry point
     expect(dead).toContain("unusedHelper"); // not exported -> still a candidate
   });
+
+  it("resolves a file's import-graph neighbors", async () => {
+    const e = await engine();
+    const deps = e.fileDependencies("app.ts");
+    expect(deps.imports.some((f) => f.endsWith("math.ts"))).toBe(true);
+    const reverse = e.fileDependencies("math.ts");
+    expect(reverse.importedBy.some((f) => f.endsWith("app.ts"))).toBe(true);
+  });
 });

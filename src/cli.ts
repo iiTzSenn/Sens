@@ -14,6 +14,7 @@ import {
   formatSymbols,
   formatWhoUses,
   formatDeadCode,
+  formatFileDependencies,
 } from "./format.js";
 
 const root = process.cwd();
@@ -62,9 +63,10 @@ program
   .command("who")
   .argument("<name>", "symbol name")
   .description("List where a symbol is used")
-  .action(async (name: string) => {
+  .option("--full", "list every call site instead of a partial summary for heavily-used symbols")
+  .action(async (name: string, opts: { full?: boolean }) => {
     const { engine } = await createEngine(root);
-    console.log(formatWhoUses(engine.whoUses(name)));
+    console.log(formatWhoUses(engine.whoUses(name), { full: opts.full }));
   });
 
 program
@@ -94,6 +96,15 @@ program
     const dead = engine.deadCode(subdir);
     const out = formatDeadCode(dead);
     console.log(dead.length ? pc.yellow(out) : pc.green(out));
+  });
+
+program
+  .command("deps")
+  .argument("<file>", "file path")
+  .description("List a file's imports and importers (import graph)")
+  .action(async (file: string) => {
+    const { engine } = await createEngine(root);
+    console.log(formatFileDependencies(engine.fileDependencies(file)));
   });
 
 program
