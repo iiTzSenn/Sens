@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/sens-mcp"><img alt="npm version" src="https://img.shields.io/npm/v/sens-mcp?style=flat-square&color=cb3837&logo=npm"></a>
   <a href="#license"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-1a7f47?style=flat-square"></a>
   <img alt="Built for Claude Code" src="https://img.shields.io/badge/built_for-Claude_Code-4f7cff?style=flat-square">
   <img alt="MCP server" src="https://img.shields.io/badge/MCP-server-7a5cff?style=flat-square">
