@@ -5,7 +5,7 @@
   "type": "module",
   "bin": {
     "sens": "dist/cli.js",
-    "sens-mcp": "dist/mcp.js"
+    "sens-mcp": "dist/cli.js"
   },
   "files": [
     "dist"
