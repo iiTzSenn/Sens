@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+  <rect width="1200" height="340" rx="20" fill="#0f1116"/>
+
+  <!-- graph motif -->
+  <g stroke="#8a92a0" stroke-opacity="0.30" stroke-width="2">
+    <line x1="985" y1="205" x2="945" y2="112"/>
+    <line x1="985" y1="205" x2="1092" y2="168"/>
+    <line x1="985" y1="205" x2="892" y2="242"/>
+    <line x1="985" y1="205" x2="905" y2="150"/>
+    <line x1="945" y1="112" x2="905" y2="150"/>
+    <line x1="945" y1="112" x2="1052" y2="82"/>
+    <line x1="1092" y1="168" x2="1082" y2="262"/>
+  </g>
+  <g>
+    <circle cx="985" cy="205" r="16" fill="#4f7cff"/>
+    <circle cx="945" cy="112" r="13" fill="#4f7cff"/>
+    <circle cx="1092" cy="168" r="12" fill="#4f7cff"/>
+    <circle cx="905" cy="150" r="10" fill="#4f7cff"/>
+    <circle cx="1052" cy="82" r="10" fill="#8a92a0"/>
+    <circle cx="892" cy="242" r="9" fill="#8a92a0"/>
+    <circle cx="1082" cy="262" r="11" fill="#e0533d"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="62" y="168" font-size="96" font-weight="700" fill="#f3f5f8" letter-spacing="-3">Sens<tspan fill="#4f7cff">.</tspan></text>
+
+  <!-- tagline -->
+  <text x="66" y="216" font-size="27" font-weight="500" fill="#c7ccd4">A project index for Claude Code</text>
+  <text x="66" y="252" font-size="21" fill="#8a92a0">Query your codebase instead of reading it all.</text>
+
+  <!-- pills -->
+  <g font-size="15" font-weight="600">
+    <rect x="66" y="278" width="66" height="30" rx="15" fill="#1c2029"/>
+    <text x="99" y="298" fill="#7aa2ff" text-anchor="middle">MCP</text>
+    <rect x="142" y="278" width="60" height="30" rx="15" fill="#1c2029"/>
+    <text x="172" y="298" fill="#7aa2ff" text-anchor="middle">CLI</text>
+    <rect x="212" y="278" width="122" height="30" rx="15" fill="#1c2029"/>
+    <text x="273" y="298" fill="#7aa2ff" text-anchor="middle">Dashboard</text>
+  </g>
+</svg>
