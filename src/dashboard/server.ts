@@ -27,6 +27,7 @@ function buildData(root: string, index: ProjectIndex, engine: QueryEngine) {
       name: s.name,
       file: s.file,
       line: s.line,
+      kind: s.kind,
       signature: s.signature,
       exported: s.exported,
     })),

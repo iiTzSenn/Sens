@@ -258,6 +258,19 @@ export function renderDashboardPage(): string {
   .ptitle { color: var(--accent); margin-bottom: 8px; word-break: break-all; }
   .sig { padding: 4px 0; border-bottom: 1px solid var(--sig-border); overflow-wrap: anywhere; }
   .tag { background: var(--tag-bg); color: var(--tag-fg); border-radius: 5px; padding: 1px 6px; font-size: 11px; margin-inline-start: 6px; }
+  .tag.dead { background: rgba(224,83,61,.15); color: #e0533d; }
+  /* file-inspector + insights blocks inside the panel */
+  .psub { display: flex; align-items: center; gap: 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 15px 0 4px; }
+  .psub .ar { color: var(--accent); font-size: 12px; }
+  .psub .cnt { margin-inline-start: auto; color: var(--tag-fg); background: var(--tag-bg); border-radius: 20px; padding: 0 7px; font-size: 10px; line-height: 16px; }
+  .fstats { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 2px; }
+  .pill { font-size: 11px; color: var(--tag-fg); background: var(--tag-bg); border-radius: 6px; padding: 2px 7px; }
+  .pill b { font-weight: 600; color: var(--fg); }
+  .pill.acc b { color: var(--accent); }
+  .pill.dead b { color: #e0533d; }
+  .kind { color: var(--muted); font-size: 11px; flex: none; }
+  .ins-note { color: var(--muted); font-size: 12px; margin: 0 0 4px; }
+  .cnum { color: var(--accent); font-size: 12px; flex: none; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -326,7 +339,7 @@ export function renderDashboardPage(): string {
       </div>
       <input id="search" placeholder="Search symbols…" data-i18n-ph="searchPh" autocomplete="off">
       <div id="results"></div>
-      <h3 data-i18n="headSelected">Selected file</h3>
+      <h3 id="headPanel" data-i18n="headSelected">Selected file</h3>
       <div id="panel"></div>
       <h3 data-i18n="headDead">Dead-code candidates</h3>
       <div id="dead"></div>
@@ -659,6 +672,25 @@ export function renderDashboardPage(): string {
     rawNodes = (data.graph && data.graph.nodes) || [];
     rawLinks = (data.graph && data.graph.links) || [];
     curPath = commonDir();
+    buildFileGraph();
+    buildDeadSet();
+  }
+  // Project-wide file dependency maps (independent of the current drill level): what each
+  // file imports (fan-out) and what imports it (fan-in). Drives the file inspector + insights.
+  var fOut = {}, fIn = {};
+  function buildFileGraph(){
+    fOut = {}; fIn = {};
+    rawNodes.forEach(function(n){ fOut[n.id] = []; fIn[n.id] = []; });
+    rawLinks.forEach(function(l){
+      if(fOut[l.source]) fOut[l.source].push(l.target);
+      if(fIn[l.target]) fIn[l.target].push(l.source);
+    });
+  }
+  // Symbols flagged as dead, keyed by file+line, so a symbol row can wear a "dead" badge.
+  var deadAt = {};
+  function buildDeadSet(){
+    deadAt = {};
+    (data.dead || []).forEach(function(d){ deadAt[d.file + ':' + d.line] = true; });
   }
   function childrenOf(prefix){ return levelGroups(prefix); }
   function drillTo(prefix){
@@ -835,14 +867,16 @@ export function renderDashboardPage(): string {
     return false;
   }
 
+  var interacting = false;   // true while the view is panning/zooming/simulating — drives the fast (label-less) draw pass
   function loop(){
     // Physics only drives the node-link force layout; every other type is closed-form geometry.
     var forceOn = gtype === 'node-link' && layout === 'force';
     var hot = forceOn && (alpha > 0.02 || dragging);
     if(hot){ physics(); if(!dragging) alpha *= 0.985; }
     var settled = easeView();
+    interacting = hot || dragging || panning || !settled;
     draw();
-    if(hot || dragging || !settled){ raf = requestAnimationFrame(loop); } else { raf = 0; }
+    if(interacting){ raf = requestAnimationFrame(loop); } else { raf = 0; }
   }
   function ensureRunning(){ if(!raf) raf = requestAnimationFrame(loop); }
   function reheat(a){ if(gtype !== 'node-link' || layout !== 'force'){ ensureRunning(); return; } alpha = Math.max(alpha, a == null ? 0.6 : a); ensureRunning(); }
@@ -869,21 +903,34 @@ export function renderDashboardPage(): string {
     var d = VIEWS[gtype]; (d && d.draw ? d.draw : drawNodeLink)();
   }
 
+  // Visible world rectangle (screen viewport mapped back to world space), padded so nodes
+  // straddling the edge still draw. Everything outside is skipped — the big win at scale,
+  // since a zoomed-in view has almost all nodes off-screen.
+  function viewBounds(pad){
+    var ik = 1/tf.k, p = (pad||0) * ik;
+    return { x0:(0-tf.x)*ik - p, y0:(0-tf.y)*ik - p, x1:(view.w-tf.x)*ik + p, y1:(view.h-tf.y)*ik + p };
+  }
   function drawNodeLink(){
     var focus = hoverNode || selected;
     var nb = focus ? neigh[focus.id] : null;
     var lw = 1/tf.k;
+    var vb = viewBounds(60);
+    var labels = !interacting;   // labels are the costliest per-node op — skip them while moving
+    var shownLabels = 0, LABEL_CAP = 140;   // and cap them so a dense still view stays cheap
 
-    // links — thin and restrained; the focused node's edges are emphasised
+    // links — thin and restrained; the focused node's edges are emphasised. Cull any whose
+    // bounding box misses the viewport (keeps edges that cross it, drops the rest).
     for(var i=0;i<links.length;i++){
       var a=byId[links[i].source], b=byId[links[i].target]; if(!a||!b) continue;
+      if(Math.max(a.x,b.x)<vb.x0 || Math.min(a.x,b.x)>vb.x1 || Math.max(a.y,b.y)<vb.y0 || Math.min(a.y,b.y)>vb.y1) continue;
       var touch = focus && (links[i].source===focus.id || links[i].target===focus.id);
       ctx.globalAlpha = focus ? (touch ? 1 : 0.35) : 1;
       ctx.strokeStyle = touch ? PAL.linkHot : PAL.link;
       ctx.lineWidth = (touch ? 1.6 : Math.min(0.8 + Math.log((links[i].weight||1) + 1) * 0.5, 3)) * lw;
-      if(links[i].ext){ ctx.setLineDash([4*lw, 3*lw]); }
+      var dash = links[i].ext && !interacting;   // dashes are cheap-per-link but add up; solid while moving
+      if(dash){ ctx.setLineDash([4*lw, 3*lw]); }
       ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-      if(links[i].ext){ ctx.setLineDash([]); }
+      if(dash){ ctx.setLineDash([]); }
     }
     ctx.globalAlpha = 1;
 
@@ -892,6 +939,7 @@ export function renderDashboardPage(): string {
     ctx.font = (11/tf.k) + 'px ui-sans-serif, system-ui, sans-serif';
     for(var k=0;k<nodes.length;k++){
       var n=nodes[k], r=radius(n);
+      if(n.x+r<vb.x0 || n.x-r>vb.x1 || n.y+r<vb.y0 || n.y-r>vb.y1) continue;   // off-screen: skip
       var active = !focus || n===focus || (nb && nb[n.id]);
       ctx.globalAlpha = active ? 1 : PAL.dim;
       nodeShape(n, r);
@@ -899,16 +947,19 @@ export function renderDashboardPage(): string {
       if(n.external){
         ctx.globalAlpha = active ? 0.55 : PAL.dim * 0.7; ctx.fillStyle = color(n); ctx.fill();
         ctx.globalAlpha = active ? 1 : PAL.dim;
-        ctx.setLineDash([3*lw, 3*lw]); ctx.lineWidth = 1.3*lw; ctx.strokeStyle = PAL.ext; ctx.stroke(); ctx.setLineDash([]);
+        if(!interacting){ ctx.setLineDash([3*lw, 3*lw]); }
+        ctx.lineWidth = 1.3*lw; ctx.strokeStyle = PAL.ext; ctx.stroke();
+        if(!interacting){ ctx.setLineDash([]); }
       } else {
         ctx.fillStyle = color(n); ctx.fill();
         ctx.lineWidth = 1.5*lw; ctx.strokeStyle = PAL.bg; ctx.stroke();
       }
       if(selected===n){ ctx.lineWidth = 2*lw; ctx.strokeStyle = PAL.ring; ctx.stroke(); }
       else if(n===focus){ ctx.lineWidth = 1.6*lw; ctx.strokeStyle = PAL.ring; ctx.stroke(); }
-      // smart labels: folders and external anchors are always named; files only when zoomed in, focused, or a hub
-      if(active && (n.folder || n.external || n===focus || tf.k >= 0.9 || n.deg >= 8)){
-        ctx.fillStyle = PAL.label; ctx.fillText(n.label, n.x, n.y - r - 6*lw);
+      // smart labels: folders and external anchors are always named; files only when zoomed in, focused, or a hub.
+      // Suppressed entirely while moving, and capped per frame so a dense view can't stall on text.
+      if(labels && active && shownLabels < LABEL_CAP && (n.folder || n.external || n===focus || tf.k >= 0.9 || n.deg >= 8)){
+        ctx.fillStyle = PAL.label; ctx.fillText(n.label, n.x, n.y - r - 6*lw); shownLabels++;
       }
     }
     ctx.globalAlpha = 1;
@@ -1274,9 +1325,41 @@ export function renderDashboardPage(): string {
     });
   }
 
+  // ---- panel building blocks (shared by the file inspector and the insights view) ----
+  function setPanelHead(key){ document.getElementById('headPanel').textContent = t(key); }
+  function dirHint(id){ var i=id.lastIndexOf('/'); if(i<0) return ''; var d=id.slice(0,i), j=d.lastIndexOf('/'); return j<0?d:d.slice(j+1); }
+  function pill(mod, num, label){
+    var p=el('span','pill'+(mod?' '+mod:'')); p.appendChild(el('b', null, String(num)));
+    p.appendChild(document.createTextNode(' '+label)); return p;
+  }
+  function psubPlain(label, count){
+    var h=el('div','psub'); h.appendChild(el('span',null,label));
+    if(count!=null) h.appendChild(el('span','cnt', String(count))); return h;
+  }
+  // a clickable file row that reveals the file in the graph; caller appends any right-side badge
+  function fileRow(fileId){
+    var row=el('div','row'); row.title=fileId;
+    row.appendChild(el('span','mono', base(fileId)));
+    row.addEventListener('click', function(){ revealFile(fileId); });
+    return row;
+  }
+  function depSection(host, arrow, labelKey, ids){
+    if(!ids.length) return;
+    var h=el('div','psub');
+    h.appendChild(el('span','ar', arrow));
+    h.appendChild(el('span',null,t(labelKey)));
+    h.appendChild(el('span','cnt', String(ids.length)));
+    host.appendChild(h);
+    ids.slice().sort(function(a,b){ return base(a).localeCompare(base(b)); }).forEach(function(id){
+      var row=fileRow(id), d=dirHint(id); if(d) row.appendChild(el('span','loc', d));
+      host.appendChild(row);
+    });
+  }
+
   function renderPanel(){
     var host=document.getElementById('panel'); host.innerHTML='';
-    if(!selected){ host.appendChild(el('div','muted',t('panelEmpty'))); return; }
+    if(!selected){ setPanelHead('headInsights'); renderInsights(host); return; }
+    setPanelHead('headSelected');
     host.appendChild(el('div','ptitle mono', selected.id));
     if(selected.folder){
       host.appendChild(el('div','muted', tp('folderMeta', { files: selected.files, symbols: selected.symbols })));
@@ -1293,13 +1376,46 @@ export function renderDashboardPage(): string {
       });
       return;
     }
-    data.symbols.filter(function(s){ return s.file===selected.id; })
-      .sort(function(a,b){ return a.line-b.line; })
-      .forEach(function(s){
-        var row=el('div','sig mono', s.signature);
-        if(s.exported) row.appendChild(el('span','tag',t('tagExport')));
-        host.appendChild(row);
-      });
+    // ---- file inspector: health, dependencies (both directions), then symbols ----
+    var syms = data.symbols.filter(function(s){ return s.file===selected.id; });
+    var exp=0, dead=0;
+    syms.forEach(function(s){ if(s.exported) exp++; if(deadAt[s.file+':'+s.line]) dead++; });
+    var stats=el('div','fstats');
+    stats.appendChild(pill('acc', syms.length, t('cardSymbols')));
+    if(exp) stats.appendChild(pill('', exp, t('cardExported')));
+    if(dead) stats.appendChild(pill('dead', dead, t('cardDead')));
+    host.appendChild(stats);
+
+    var outs = fOut[selected.id] || [], ins = fIn[selected.id] || [];
+    if(!outs.length && !ins.length) host.appendChild(el('div','ins-note', t('depsNone')));
+    depSection(host, '↓', 'depsOut', outs);
+    depSection(host, '↑', 'depsIn', ins);
+
+    host.appendChild(psubPlain(t('cardSymbols'), syms.length));
+    syms.sort(function(a,b){ return a.line-b.line; }).forEach(function(s){
+      var row=el('div','sig mono', s.signature);
+      if(s.exported) row.appendChild(el('span','tag',t('tagExport')));
+      if(deadAt[s.file+':'+s.line]) row.appendChild(el('span','tag dead',t('tagDead')));
+      host.appendChild(row);
+    });
+  }
+
+  // Default panel when nothing is selected: an actionable read of the dependency graph —
+  // the hubs everything imports, and the isolated files nothing touches.
+  function renderInsights(host){
+    if(!rawNodes.length){ host.appendChild(el('div','muted', t('panelEmpty'))); return; }
+    host.appendChild(el('div','ins-note', t('panelEmpty')));
+    var hubs = rawNodes.filter(function(n){ return (fIn[n.id]||[]).length>0; })
+      .sort(function(a,b){ return fIn[b.id].length - fIn[a.id].length; }).slice(0,8);
+    var orphans = rawNodes.filter(function(n){ return !(fIn[n.id]||[]).length && !(fOut[n.id]||[]).length; }).slice(0,10);
+    if(hubs.length){
+      host.appendChild(psubPlain(t('insHubs'), null));
+      hubs.forEach(function(n){ var row=fileRow(n.id); row.appendChild(el('span','cnum', String(fIn[n.id].length))); host.appendChild(row); });
+    }
+    if(orphans.length){
+      host.appendChild(psubPlain(t('insOrphans'), orphans.length));
+      orphans.forEach(function(n){ host.appendChild(fileRow(n.id)); });
+    }
   }
 
   function focusNode(n){
@@ -1310,13 +1426,17 @@ export function renderDashboardPage(): string {
   document.getElementById('search').addEventListener('input', function(e){
     var q=e.target.value.toLowerCase().trim(), host=document.getElementById('results'); host.innerHTML='';
     if(!q) return;
-    data.symbols.filter(function(s){ return s.name.toLowerCase().indexOf(q)>=0; }).slice(0,20).forEach(function(s){
-      var row=el('div','row');
-      row.appendChild(el('span','mono', s.name));
-      row.appendChild(el('span','loc', base(s.file)+':'+s.line));
-      row.addEventListener('click', function(){ revealFile(s.file); });
-      host.appendChild(row);
-    });
+    data.symbols.filter(function(s){ return s.name.toLowerCase().indexOf(q)>=0; })
+      .sort(function(a,b){ return (b.exported?1:0)-(a.exported?1:0) || a.name.length-b.name.length; })
+      .slice(0,20).forEach(function(s){
+        var row=el('div','row'); row.title=s.file+':'+s.line;
+        var left=el('span','mono', s.name);
+        if(s.exported) left.appendChild(el('span','tag',t('tagExport')));
+        row.appendChild(left);
+        if(s.kind) row.appendChild(el('span','kind', s.kind));
+        row.addEventListener('click', function(){ revealFile(s.file); });
+        host.appendChild(row);
+      });
   });
 
   function setFreshBadge(fresh){
