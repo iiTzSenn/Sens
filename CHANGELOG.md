@@ -26,6 +26,10 @@ All notable changes to `sens-mcp` are documented here. This project follows
   hook, so usage logging and output formatting are identical across all three —
   and `sens usage` records CLI- and hook-driven calls too, not only MCP.
 
+### Fixed
+- `sens --version` reported a hard-coded `0.0.1` regardless of the real version; it
+  now derives from `package.json` at build time and tracks `npm version`.
+
 ## [0.4.0] — 2026-07-08
 
 ### Added
