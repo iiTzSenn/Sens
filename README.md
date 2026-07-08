@@ -125,7 +125,13 @@ npx sens-mcp usage          # which Sens tools the model has actually called
 npx sens-mcp dashboard --root . --port 4319   # --no-open to skip opening the browser
 ```
 
-<p align="center"><i>Nodes are files; blue = has exports, gray = internal, red = has dead code.</i></p>
+<p align="center">
+  <img src="docs/dashboard_light.webp" alt="Sens dashboard — project dependency graph (light theme)" width="90%">
+  <br><br>
+  <img src="docs/dashboard_dark.webp" alt="Sens dashboard — project dependency graph (dark theme)" width="90%">
+</p>
+
+<p align="center"><i>Nodes are files; blue = has exports, gray = internal, red = has dead code. Light &amp; dark themes, multiple graph layouts (network, chord, arc, treemap…).</i></p>
 
 ## Does it actually help?
 
