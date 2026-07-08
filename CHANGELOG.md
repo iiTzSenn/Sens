@@ -4,6 +4,25 @@ All notable changes to `sens-mcp` are documented here. This project follows
 [Semantic Versioning](https://semver.org/): `patch` = fix, `minor` = feature,
 `major` = breaking change.
 
+## [0.3.0] — 2026-07-08
+
+### Added
+- **Dashboard internationalization** — a language selector in the top bar with
+  25 locales, including right-to-left (Arabic, Hebrew, Persian). The UI
+  auto-detects the browser language on first load and remembers the choice.
+- **A logo** — a constellation mark (the code graph the tool builds), shipped as
+  SVG and PNG variants under `assets/`, an SVG favicon, and the brand mark in the
+  dashboard.
+
+### Improved
+- **Graph links at every depth** — drilling into a folder no longer hides how its
+  files connect: dependencies that leave the current level are drawn as external
+  boundary nodes, so deep views keep their connecting lines instead of becoming
+  loose dots.
+- **Dashboard polish** — the light/dark toggle animates the sun/moon icon and
+  cross-fades the whole UI smoothly, the language globe spins on use, and the
+  connection status dots are now static (no pulsing).
+
 ## [0.2.0] — 2026-07-07
 
 ### Added
