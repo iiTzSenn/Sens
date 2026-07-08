@@ -156,16 +156,22 @@ export function renderDashboardPage(): string {
   #btnTheme svg { transform-origin: center; }
   #btnTheme svg.theme-spin { animation: theme-swap .5s cubic-bezier(.34,1.5,.5,1); }
   @keyframes theme-swap { 0% { transform: rotate(-140deg) scale(.2); opacity: 0; } 55% { opacity: 1; } 100% { transform: rotate(0) scale(1); opacity: 1; } }
-  /* language button: the globe does a full 360° with a little mid-spin bulge */
-  #btnLang svg { transform-origin: center; }
-  #btnLang svg.globe-spin { animation: globe-spin .6s cubic-bezier(.4,0,.2,1); }
-  @keyframes globe-spin { 0% { transform: rotate(0) scale(1); } 50% { transform: rotate(180deg) scale(1.18); } 100% { transform: rotate(360deg) scale(1); } }
+  /* language button: the globe does a half turn (180°) with a little mid-spin bulge.
+     No transform transition here — otherwise the .25s revert from 180°→0° reads, on a
+     point-symmetric globe, as the spin continuing all the way round to a full turn. */
+  #btnLang svg { transform-origin: center; transition: none; }
+  #btnLang svg.globe-spin { animation: globe-spin .55s cubic-bezier(.4,0,.2,1); }
+  @keyframes globe-spin { 0% { transform: rotate(0) scale(1); } 50% { transform: rotate(90deg) scale(1.16); } 100% { transform: rotate(180deg) scale(1); } }
   /* soft, quick cross-fade of the whole UI during a light/dark switch — the class is
      only present for the ~300ms of the toggle, so hovers and load stay instant. */
   :root.theming, :root.theming * { transition: background-color .3s ease, border-color .3s ease, color .3s ease, fill .3s ease, box-shadow .3s ease !important; }
   @media (prefers-reduced-motion: reduce) {
     #btnTheme svg.theme-spin, #btnLang svg.globe-spin { animation: none; }
     :root.theming, :root.theming * { transition: none !important; }
+    .btn-icon svg, .cmenu-btn svg, .zoomctl button { transition: none !important; }
+    .btn-icon:hover svg, .cmenu-btn:hover svg, .zoomctl button:hover,
+    #btnReindex:hover svg, #btnCanvasMenu[aria-expanded="true"] svg { transform: none !important; }
+    .menu:not([hidden]) { animation: none !important; }
   }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
@@ -177,16 +183,38 @@ export function renderDashboardPage(): string {
   .conn > .btn { -webkit-mask-image: radial-gradient(circle 9px at calc(100% - 3px) 3px, transparent 98%, #000 100%); mask-image: radial-gradient(circle 9px at calc(100% - 3px) 3px, transparent 98%, #000 100%); }
   .conn .status { position: absolute; top: -3px; right: -3px; margin: 0; z-index: 2; }
 
-  .langwrap { position: relative; display: inline-flex; }
-  .langmenu { position: absolute; top: calc(100% + 6px); inset-inline-end: 0; min-width: 190px; max-height: 340px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 5px; box-shadow: 0 12px 34px var(--toast-shadow); z-index: 60; scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
-  .langmenu[hidden] { display: none; }
-  .langmenu::-webkit-scrollbar { width: 9px; }
-  .langmenu::-webkit-scrollbar-thumb { background-color: var(--scroll-thumb); border-radius: 8px; border: 2.5px solid var(--surface); }
-  .langitem { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; color: var(--fg); white-space: nowrap; }
-  .langitem:hover { background: var(--row-hover); }
-  .langitem.active { color: var(--accent); font-weight: 600; }
-  .langitem .chk { flex: none; width: 14px; height: 14px; opacity: 0; }
-  .langitem.active .chk { opacity: 1; }
+  /* Shared popover menu (language, export, layout) — one style, three uses. */
+  .menuwrap { position: relative; display: inline-flex; }
+  .menu { position: absolute; top: calc(100% + 6px); inset-inline-end: 0; min-width: 190px; max-height: 340px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 5px; box-shadow: 0 12px 34px var(--toast-shadow); z-index: 60; scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+  .menu[hidden] { display: none; }
+  .menu::-webkit-scrollbar { width: 9px; }
+  .menu::-webkit-scrollbar-thumb { background-color: var(--scroll-thumb); border-radius: 8px; border: 2.5px solid var(--surface); }
+  .menuitem { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; color: var(--fg); white-space: nowrap; }
+  .menuitem:hover { background: var(--row-hover); }
+  .menuitem.active { color: var(--accent); font-weight: 600; }
+  .menuitem .chk { flex: none; width: 14px; height: 14px; opacity: 0; }
+  .menuitem.active .chk { opacity: 1; }
+  .menuext { color: var(--muted); font-size: 11px; font-weight: 400; }
+  /* three-dot (⋮) control anchored inside the graph canvas, top-right */
+  .cmenu { position: absolute; inset-inline-end: 14px; top: 12px; z-index: 25; }
+  .cmenu-btn { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 9px; border: 1px solid var(--border); background: var(--overlay-bg); color: var(--ghost-fg); cursor: pointer; backdrop-filter: saturate(1.3) blur(8px); box-shadow: 0 1px 3px rgba(20,30,60,.10); }
+  .cmenu-btn:hover { background: var(--btn-hover); border-color: var(--border-strong); }
+  .cmenu-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .cmenu-btn svg { width: 20px; height: 20px; flex: none; }
+  .cmenu .menu { min-width: 214px; }
+  .menu-head { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 9px 10px 4px; user-select: none; }
+  .menuitem + .menu-head { border-top: 1px solid var(--border); margin-top: 5px; }
+  /* smooth, springy feedback on the toolbar / canvas icons */
+  .btn-icon svg, .cmenu-btn svg { transition: transform .25s cubic-bezier(.34,1.45,.5,1); }
+  .btn-icon:hover svg, .cmenu-btn:hover svg { transform: scale(1.16); }
+  .btn-icon:active svg, .cmenu-btn:active svg { transform: scale(.92); }
+  #btnCanvasMenu[aria-expanded="true"] svg { transform: rotate(90deg); }
+  #btnReindex:hover svg { transform: rotate(-40deg); }
+  .zoomctl button { transition: background .15s ease, transform .18s cubic-bezier(.34,1.4,.5,1); }
+  .zoomctl button:hover { transform: scale(1.1); }
+  .zoomctl button:active { transform: scale(.94); }
+  .menu:not([hidden]) { animation: menu-pop .16s cubic-bezier(.2,.9,.3,1.1); transform-origin: top right; }
+  @keyframes menu-pop { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
 
   .toast { position: fixed; top: 14px; right: 18px; z-index: 50; display: flex; align-items: center; gap: 9px; padding: 10px 15px 10px 11px; border-radius: 12px; background: var(--toast-bg); color: var(--toast-fg); font-size: 13px; font-weight: 600; box-shadow: 0 10px 34px var(--toast-shadow), 0 0 0 1px var(--toast-ring); opacity: 0; transform: translateY(-14px) scale(.96); pointer-events: none; transition: opacity .26s ease, transform .3s cubic-bezier(.2,.9,.3,1.4); }
   .toast.show { opacity: 1; transform: translateY(0) scale(1); }
@@ -240,11 +268,11 @@ export function renderDashboardPage(): string {
       <span>Sens<span class="dot">.</span> <span id="proj" class="muted"></span></span>
     </div>
     <div class="actions">
-      <div class="langwrap">
+      <div class="menuwrap">
         <button id="btnLang" class="btn btn-ghost btn-icon" data-i18n-title="langLabel" data-i18n-aria="langLabel" title="Language" aria-label="Language" aria-haspopup="true" aria-expanded="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/></svg>
         </button>
-        <div id="langMenu" class="langmenu" role="menu" hidden></div>
+        <div id="langMenu" class="menu" role="menu" hidden></div>
       </div>
       <button id="btnTheme" class="btn btn-ghost btn-icon" title="Toggle theme" aria-label="Toggle theme"></button>
       <div class="conn">
@@ -268,6 +296,12 @@ export function renderDashboardPage(): string {
   <div class="body">
     <div class="graphwrap">
       <canvas id="graph"></canvas>
+      <div id="canvasMenuWrap" class="cmenu">
+        <button id="btnCanvasMenu" class="cmenu-btn" data-i18n-title="menuOptions" data-i18n-aria="menuOptions" title="Options" aria-label="Options" aria-haspopup="true" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="4.5" r="2.65"/><circle cx="12" cy="12" r="2.65"/><circle cx="12" cy="19.5" r="2.65"/></svg>
+        </button>
+        <div id="canvasMenu" class="menu cmenu-panel" role="menu" hidden></div>
+      </div>
       <div id="crumbs" class="crumbs"></div>
       <div id="hint" class="hint" data-i18n="hint">Double-click a folder to open it · breadcrumb to go back · scroll to zoom · click a node for details</div>
       <div class="legend">
@@ -367,19 +401,105 @@ export function renderDashboardPage(): string {
     els = document.querySelectorAll('[data-i18n-ph]');
     for(i=0;i<els.length;i++){ els[i].placeholder = t(els[i].getAttribute('data-i18n-ph')); }
   }
+  function checkSvg(){
+    var chk = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    chk.setAttribute('class', 'chk'); chk.setAttribute('viewBox', '0 0 24 24'); chk.setAttribute('fill', 'none');
+    chk.setAttribute('stroke', 'currentColor'); chk.setAttribute('stroke-width', '3');
+    chk.innerHTML = '<polyline points="20 6 9 17 4 12" stroke-linecap="round" stroke-linejoin="round"/>';
+    return chk;
+  }
   function buildLangMenu(){
     var host = document.getElementById('langMenu'); host.innerHTML = '';
     LANGS.forEach(function(L){
-      var row = el('div', 'langitem' + (L.code === lang ? ' active' : ''));
+      var row = el('div', 'menuitem' + (L.code === lang ? ' active' : ''));
       row.setAttribute('role', 'menuitemradio');
       row.setAttribute('aria-checked', L.code === lang ? 'true' : 'false');
       row.appendChild(el('span', null, L.name));
-      var chk = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      chk.setAttribute('class', 'chk'); chk.setAttribute('viewBox', '0 0 24 24'); chk.setAttribute('fill', 'none');
-      chk.setAttribute('stroke', 'currentColor'); chk.setAttribute('stroke-width', '3');
-      chk.innerHTML = '<polyline points="20 6 9 17 4 12" stroke-linecap="round" stroke-linejoin="round"/>';
-      row.appendChild(chk);
+      row.appendChild(checkSvg());
       row.addEventListener('click', function(){ setLang(L.code); });
+      host.appendChild(row);
+    });
+  }
+
+  // Export menu: each item downloads the full file graph in one exchange format. Node
+  // attributes (symbols/exports/dead) ride along in every format except the CSV edge list.
+  var EXPORTS = [
+    { fmt:'gexf', name:'Gephi', ext:'.gexf' },
+    { fmt:'graphml', name:'GraphML', ext:'.graphml' },
+    { fmt:'dot', name:'Graphviz', ext:'.dot' },
+    { fmt:'json', name:'JSON', ext:'.json' },
+    { fmt:'csv', name:'CSV', ext:'.csv' }
+  ];
+  function downloadExport(fmt){
+    var a = document.createElement('a');
+    a.href = '/api/export?format=' + encodeURIComponent(fmt);
+    a.download = ''; document.body.appendChild(a); a.click(); a.remove();
+  }
+  // Layout ("shape") options for the network type: force (the Gephi/ForceAtlas default) + static.
+  var LAYOUT_ITEMS = [
+    { id:'force', key:'layoutForce', hint:'ForceAtlas' },
+    { id:'hierarchical', key:'layoutHierarchical', hint:'' },
+    { id:'circular', key:'layoutCircular', hint:'' },
+    { id:'grid', key:'layoutGrid', hint:'' }
+  ];
+  function setLayout(name){
+    closeMenus();
+    if(name === layout) return;
+    layout = name;
+    try { localStorage.setItem(LAYOUT_KEY, name); } catch(e){}
+    buildCanvasMenu();
+    // the layout only governs the node-link type; other types have their own geometry
+    if(data && gtype === 'node-link'){ layoutNodes(); fitView(true); ensureRunning(); }
+  }
+
+  var GTYPE_KEY = 'sens-gtype';
+  var GTYPES = ['node-link','matrix','chord','arc','treemap','sunburst','sankey','bundling'];
+  var gtype = (function(){ try { var s = localStorage.getItem(GTYPE_KEY); return GTYPES.indexOf(s) >= 0 ? s : 'node-link'; } catch(e){ return 'node-link'; } })();
+  var bbox = null;  // world-space bounds the active view wants framed (null → derive from node positions)
+  var GTYPE_ITEMS = [
+    { id:'node-link', name:'Network' }, { id:'matrix', name:'Matrix' },
+    { id:'chord', name:'Chord' }, { id:'arc', name:'Arc' },
+    { id:'treemap', name:'Treemap' }, { id:'sunburst', name:'Sunburst' },
+    { id:'sankey', name:'Sankey' }, { id:'bundling', name:'Bundling' }
+  ];
+  function setGType(name){
+    closeMenus();
+    if(name === gtype || GTYPES.indexOf(name) < 0) return;
+    gtype = name;
+    try { localStorage.setItem(GTYPE_KEY, name); } catch(e){}
+    buildCanvasMenu();
+    if(data){ selected = null; hoverNode = null; applyView(); fitView(true); ensureRunning(); }
+  }
+
+  // The in-canvas ⋮ menu gathers the three graph controls (type · shape · export) into one
+  // panel, so the top bar stays clean. Rebuilt on language / type / layout change.
+  function menuHead(txt){ return el('div', 'menu-head', txt); }
+  function buildCanvasMenu(){
+    var host = document.getElementById('canvasMenu'); if(!host) return; host.innerHTML = '';
+    host.appendChild(menuHead(t('menuType')));
+    GTYPE_ITEMS.forEach(function(x){
+      var row = el('div', 'menuitem' + (x.id === gtype ? ' active' : ''));
+      row.setAttribute('role', 'menuitemradio'); row.setAttribute('aria-checked', x.id === gtype ? 'true' : 'false');
+      row.appendChild(el('span', null, x.name)); row.appendChild(checkSvg());
+      row.addEventListener('click', function(){ setGType(x.id); });
+      host.appendChild(row);
+    });
+    if(gtype === 'node-link'){
+      host.appendChild(menuHead(t('menuLayout')));
+      LAYOUT_ITEMS.forEach(function(x){
+        var row = el('div', 'menuitem' + (x.id === layout ? ' active' : ''));
+        row.setAttribute('role', 'menuitemradio'); row.setAttribute('aria-checked', x.id === layout ? 'true' : 'false');
+        var name = el('span', null, t(x.key)); if(x.hint) name.appendChild(el('span', 'menuext', ' · ' + x.hint));
+        row.appendChild(name); row.appendChild(checkSvg());
+        row.addEventListener('click', function(){ setLayout(x.id); });
+        host.appendChild(row);
+      });
+    }
+    host.appendChild(menuHead(t('menuExport')));
+    EXPORTS.forEach(function(x){
+      var row = el('div', 'menuitem'); row.setAttribute('role', 'menuitem');
+      row.appendChild(el('span', null, x.name)); row.appendChild(el('span', 'menuext', x.ext));
+      row.addEventListener('click', function(){ downloadExport(x.fmt); closeMenus(); });
       host.appendChild(row);
     });
   }
@@ -392,24 +512,34 @@ export function renderDashboardPage(): string {
     applyTheme();                 // refresh the theme button label in the new language
     if(lastFresh != null) setFreshBadge(lastFresh);
     buildLangMenu();
+    buildCanvasMenu();
     if(data){ renderSidebar(); renderCrumbs(); }
   }
   function setLang(code){
     try { localStorage.setItem(LANG_KEY, code); } catch(e){}
-    closeLangMenu();
+    closeMenus();
     applyLang();
     spinGlobe();   // little confirmation spin after picking a language
   }
-  function closeLangMenu(){
-    var m = document.getElementById('langMenu'); if(!m.hidden){ m.hidden = true; document.getElementById('btnLang').setAttribute('aria-expanded', 'false'); }
+  // Three popovers (language, export, layout) share one open/close controller: opening one
+  // closes the others, and an outside click or Escape closes them all.
+  var MENUS = [['langMenu','btnLang'], ['canvasMenu','btnCanvasMenu']];
+  function setMenuOpen(menuId, btnId, open){
+    var m = document.getElementById(menuId); if(!m) return;
+    m.hidden = !open; document.getElementById(btnId).setAttribute('aria-expanded', open ? 'true' : 'false');
   }
-  function toggleLangMenu(){
-    var m = document.getElementById('langMenu'), b = document.getElementById('btnLang');
-    m.hidden = !m.hidden; b.setAttribute('aria-expanded', m.hidden ? 'false' : 'true');
+  function closeMenus(except){
+    MENUS.forEach(function(x){ if(x[0] !== except) setMenuOpen(x[0], x[1], false); });
+  }
+  function openMenu(menuId, btnId){
+    var willOpen = document.getElementById(menuId).hidden;
+    closeMenus(willOpen ? menuId : null);
+    setMenuOpen(menuId, btnId, willOpen);
   }
   function spinGlobe(){
-    var svg = document.getElementById('btnLang').firstElementChild; if(!svg) return;
-    svg.classList.remove('globe-spin'); void svg.offsetWidth;   // reflow so the spin restarts on every click
+    var btn = document.getElementById('btnLang'), svg = btn && btn.firstElementChild; if(!svg) return;
+    svg.classList.remove('globe-spin');
+    void btn.offsetWidth;   // reflow on the button — SVG elements have no offsetWidth, so reading the svg's never forced one and the spin only ran once
     svg.classList.add('globe-spin');
   }
 
@@ -426,6 +556,12 @@ export function renderDashboardPage(): string {
   // screen = world * k + (x,y)
   var tf = { k: 1, x: 0, y: 0 };
   var target = { k: 1, x: 0, y: 0 };
+
+  // ---- graph layout: force (ForceAtlas-style, the Gephi default) or a static arrangement ----
+  var LAYOUT_KEY = 'sens-layout';
+  function storedLayout(){ try { return localStorage.getItem(LAYOUT_KEY); } catch(e){ return null; } }
+  var LAYOUTS = ['force','hierarchical','circular','grid'];
+  var layout = (function(){ var s = storedLayout(); return LAYOUTS.indexOf(s) >= 0 ? s : 'force'; })();
 
   function api(path, method){ return fetch(path, { method: method || 'GET' }).then(function(r){ return r.json(); }); }
   function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
@@ -563,12 +699,10 @@ export function renderDashboardPage(): string {
 
   function initGraph(){
     var lvl = buildLevel();
-    nodes = lvl.order.map(function(g, i){
-      var a = (i / Math.max(1, lvl.order.length)) * Math.PI * 2;
-      var R = 40 + lvl.order.length * 6;
+    nodes = lvl.order.map(function(g){
       return { id:g.id, label:g.label, folder:g.folder, external:g.external, prefix:g.prefix,
                symbols:g.symbols, exported:g.exported, dead:g.dead, files:g.files,
-               x: Math.cos(a) * R, y: Math.sin(a) * R, vx:0, vy:0, fixed:false, deg:0 };
+               x:0, y:0, vx:0, vy:0, fixed:false, deg:0 };
     });
     byId = {}; nodes.forEach(function(n){ byId[n.id] = n; });
     links = lvl.links;
@@ -580,12 +714,82 @@ export function renderDashboardPage(): string {
     });
     nodes.forEach(function(n){ var d = 0, m = neigh[n.id]; for(var kk in m) d++; n.deg = d; });
     renderCrumbs();
-    // Pre-settle with a cooling schedule so the layout converges to a compact, stable
-    // frame even for large graphs — a constant high alpha diverges/oscillates at scale.
+    applyView();
+    fitView(false);
+  }
+
+  // Position/geometry for the active graph type: node-link runs a physics layout, every other
+  // type computes closed-form geometry and pins the frame (alpha 0, no physics).
+  function applyView(){
+    bbox = null;
+    var d = VIEWS[gtype];
+    if(d){ d.build(); alpha = 0; }
+    else layoutNodes();
+  }
+
+  // Position every node according to the active layout. The force layout pre-settles with a
+  // cooling schedule (stable even for large graphs); the static layouts are O(n) closed-form
+  // placements — cheap no matter how huge the graph is — and pin nodes so physics stays off.
+  function layoutNodes(){
+    if(!nodes.length) return;
+    if(layout === 'hierarchical') hierLayout();
+    else if(layout === 'circular') circularLayout();
+    else if(layout === 'grid') gridLayout();
+    else forceLayout();
+  }
+  function forceLayout(){
+    var n = nodes.length, R = 40 + n * 6;
+    nodes.forEach(function(nd, i){
+      var a = (i / Math.max(1, n)) * PI2;
+      nd.x = Math.cos(a) * R; nd.y = Math.sin(a) * R; nd.vx = 0; nd.vy = 0; nd.fixed = false;
+    });
+    // Constant high alpha diverges/oscillates at scale, so cool it down over the pre-settle.
     alpha = 1;
     for(var s = 0; s < 300; s++){ physics(); alpha *= 0.985; }
     alpha = 0.06;
-    fitView(false);
+  }
+  function circularLayout(){
+    var n = nodes.length, R = Math.max(120, (n * 70) / PI2);
+    nodes.forEach(function(nd, i){
+      var a = (i / n) * PI2 - Math.PI / 2;
+      nd.x = Math.cos(a) * R; nd.y = Math.sin(a) * R; nd.vx = 0; nd.vy = 0; nd.fixed = true;
+    });
+    alpha = 0;
+  }
+  function gridLayout(){
+    var n = nodes.length, cols = Math.ceil(Math.sqrt(n)), gap = 90;
+    var rows = Math.ceil(n / cols), w = (cols - 1) * gap, h = (rows - 1) * gap;
+    nodes.forEach(function(nd, i){
+      nd.x = (i % cols) * gap - w / 2; nd.y = Math.floor(i / cols) * gap - h / 2;
+      nd.vx = 0; nd.vy = 0; nd.fixed = true;
+    });
+    alpha = 0;
+  }
+  // Layered top-down by dependency depth: an importer sits above the files it imports.
+  // Longest-path levels via relaxation, capped so an import cycle can't loop forever.
+  function hierLayout(){
+    var level = {}, i;
+    nodes.forEach(function(nd){ level[nd.id] = 0; });
+    var cap = nodes.length, changed = true, iter = 0;
+    while(changed && iter++ < cap){
+      changed = false;
+      for(i = 0; i < links.length; i++){
+        var s = links[i].source, t = links[i].target;
+        if(level[s] == null || level[t] == null) continue;
+        if(level[t] < level[s] + 1){ level[t] = Math.min(level[s] + 1, cap); changed = true; }
+      }
+    }
+    var byLevel = {}, maxL = 0;
+    nodes.forEach(function(nd){ var L = level[nd.id] || 0; (byLevel[L] = byLevel[L] || []).push(nd); if(L > maxL) maxL = L; });
+    var rowGap = 120, colGap = 90;
+    for(var L = 0; L <= maxL; L++){
+      var arr = byLevel[L] || [], w = (arr.length - 1) * colGap;
+      arr.forEach(function(nd, idx){
+        nd.x = idx * colGap - w / 2; nd.y = L * rowGap - (maxL * rowGap) / 2;
+        nd.vx = 0; nd.vy = 0; nd.fixed = true;
+      });
+    }
+    alpha = 0;
   }
 
   function radius(n){ return n.folder ? 7 + Math.min(20, Math.sqrt(n.files) * 3.2) : 5 + Math.min(15, n.symbols * 0.8); }
@@ -632,14 +836,16 @@ export function renderDashboardPage(): string {
   }
 
   function loop(){
-    var hot = alpha > 0.02 || dragging;
+    // Physics only drives the node-link force layout; every other type is closed-form geometry.
+    var forceOn = gtype === 'node-link' && layout === 'force';
+    var hot = forceOn && (alpha > 0.02 || dragging);
     if(hot){ physics(); if(!dragging) alpha *= 0.985; }
     var settled = easeView();
     draw();
-    if(hot || !settled){ raf = requestAnimationFrame(loop); } else { raf = 0; }
+    if(hot || dragging || !settled){ raf = requestAnimationFrame(loop); } else { raf = 0; }
   }
   function ensureRunning(){ if(!raf) raf = requestAnimationFrame(loop); }
-  function reheat(a){ alpha = Math.max(alpha, a == null ? 0.6 : a); ensureRunning(); }
+  function reheat(a){ if(gtype !== 'node-link' || layout !== 'force'){ ensureRunning(); return; } alpha = Math.max(alpha, a == null ? 0.6 : a); ensureRunning(); }
 
   var PI2 = Math.PI * 2;
 
@@ -654,11 +860,16 @@ export function renderDashboardPage(): string {
     }
   }
 
+  // Every graph type draws in the same world space (so pan/zoom/fit are shared); draw()
+  // just clears, applies the transform, and dispatches to the active type's renderer.
   function draw(){
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,view.w,view.h);
     ctx.setTransform(tf.k*dpr, 0, 0, tf.k*dpr, tf.x*dpr, tf.y*dpr);
+    var d = VIEWS[gtype]; (d && d.draw ? d.draw : drawNodeLink)();
+  }
 
+  function drawNodeLink(){
     var focus = hoverNode || selected;
     var nb = focus ? neigh[focus.id] : null;
     var lw = 1/tf.k;
@@ -705,13 +916,257 @@ export function renderDashboardPage(): string {
 
   function nodeAt(sx, sy){
     var w = toWorld(tf, sx, sy);
+    var d = VIEWS[gtype];
+    if(d && d.hit) return d.hit(w.x, w.y);
+    return hitNodeLink(w.x, w.y);
+  }
+  function hitNodeLink(wx, wy){
     for(var i=nodes.length-1;i>=0;i--){
-      var n=nodes[i], r=radius(n)+4/tf.k, dx=w.x-n.x, dy=w.y-n.y;
+      var n=nodes[i], r=radius(n)+4/tf.k, dx=wx-n.x, dy=wy-n.y;
       if(n.folder){ if(Math.abs(dx)<=r && Math.abs(dy)<=r) return n; }
       else if(dx*dx+dy*dy<=r*r) return n;
     }
     return null;
   }
+
+  // ================= alternative graph types =================
+  // Each renderer consumes the same per-level nodes/links the node-link view uses, so drilling,
+  // selection and the side panel work identically. build() sets geometry + bbox; draw() paints;
+  // hit(wx,wy) returns the group under a world point. External-reference nodes are dropped from the
+  // space-filling types (treemap/sunburst) where they have no meaning.
+  function sizeOf(n){ return Math.max(1, n.folder ? n.files : n.symbols); }
+  function byGroup(a, b){
+    var ax = a.external ? 2 : (a.folder ? 0 : 1), bx = b.external ? 2 : (b.folder ? 0 : 1);
+    if(ax !== bx) return ax - bx;
+    return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0);
+  }
+  function ordered(){ return nodes.slice().sort(byGroup); }
+  function sumBy(arr, f){ var s = 0; for(var i=0;i<arr.length;i++) s += f(arr[i]); return s; }
+
+  // --- adjacency matrix: rows/cols = files, a painted cell = a dependency. Scales to huge graphs. ---
+  var mat = null;
+  function buildMatrix(){
+    var ord = ordered(), n = ord.length, idx = {};
+    ord.forEach(function(nd, i){ idx[nd.id] = i; });
+    var cell = 20, span = n * cell, x0 = -span / 2, y0 = -span / 2, cells = [];
+    for(var i=0;i<links.length;i++){ var r = idx[links[i].source], c = idx[links[i].target]; if(r == null || c == null) continue; cells.push({ r:r, c:c, w:links[i].weight || 1 }); }
+    mat = { ord:ord, idx:idx, n:n, cell:cell, x0:x0, y0:y0, cells:cells };
+    var gut = 160;
+    bbox = { minx:x0 - gut, miny:y0 - gut, maxx:x0 + span, maxy:y0 + span };
+  }
+  function drawMatrix(){
+    if(!mat) return; var lw = 1/tf.k, n = mat.n, cell = mat.cell, x0 = mat.x0, y0 = mat.y0, g;
+    var focus = hoverNode || selected, fi = focus ? mat.idx[focus.id] : -1;
+    ctx.strokeStyle = PAL.link; ctx.lineWidth = 0.5 * lw; ctx.globalAlpha = 0.5; ctx.beginPath();
+    for(g=0; g<=n; g++){ var p = g*cell; ctx.moveTo(x0, y0+p); ctx.lineTo(x0+n*cell, y0+p); ctx.moveTo(x0+p, y0); ctx.lineTo(x0+p, y0+n*cell); }
+    ctx.stroke(); ctx.globalAlpha = 1;
+    for(var i=0;i<mat.cells.length;i++){ var cl = mat.cells[i], x = x0+cl.c*cell, y = y0+cl.r*cell, hot = fi>=0 && (cl.r===fi || cl.c===fi);
+      ctx.fillStyle = hot ? PAL.linkHot : PAL.blue; ctx.globalAlpha = hot ? 1 : Math.min(0.9, 0.4 + Math.log(cl.w+1)*0.3);
+      ctx.fillRect(x+1.5*lw, y+1.5*lw, cell-3*lw, cell-3*lw); }
+    ctx.globalAlpha = 1; ctx.font = (12/tf.k) + 'px ui-sans-serif, system-ui, sans-serif';
+    for(var j=0;j<n;j++){ var nd = mat.ord[j], on = fi<0 || fi===j;
+      ctx.globalAlpha = on ? 1 : 0.35; ctx.fillStyle = (fi===j) ? PAL.linkHot : PAL.label;
+      ctx.textAlign = 'end'; ctx.textBaseline = 'middle'; ctx.fillText(nd.label, x0 - 6*lw, y0 + j*cell + cell/2);
+      ctx.save(); ctx.translate(x0 + j*cell + cell/2, y0 - 6*lw); ctx.rotate(-Math.PI/4);
+      ctx.textAlign = 'start'; ctx.textBaseline = 'middle'; ctx.fillText(nd.label, 0, 0); ctx.restore(); }
+    ctx.globalAlpha = 1;
+  }
+  function hitMatrix(wx, wy){
+    if(!mat) return null; var n = mat.n, cell = mat.cell, x0 = mat.x0, y0 = mat.y0;
+    var inRows = wy >= y0 && wy <= y0 + n*cell, inCols = wx >= x0 && wx <= x0 + n*cell;
+    if(inRows && wx < x0 && wx > x0 - 160) return mat.ord[Math.floor((wy - y0)/cell)];
+    if(inCols && wy < y0 && wy > y0 - 160) return mat.ord[Math.floor((wx - x0)/cell)];
+    if(inRows && inCols) return mat.ord[Math.floor((wy - y0)/cell)];
+    return null;
+  }
+
+  // --- chord / dependency wheel: nodes on a ring, arcs curve through the centre ---
+  var chord = null;
+  function buildChord(){
+    var ord = ordered(), n = ord.length, R = Math.max(120, (n * 48) / PI2);
+    ord.forEach(function(nd, i){ var a = (i/n)*PI2 - Math.PI/2; nd.x = Math.cos(a)*R; nd.y = Math.sin(a)*R; nd._a = a; });
+    chord = { ord:ord, R:R }; bbox = { minx:-R*1.4, miny:-R*1.4, maxx:R*1.4, maxy:R*1.4 };
+  }
+  function drawRing(ord, curved){
+    var lw = 1/tf.k, focus = hoverNode || selected, nb = focus ? neigh[focus.id] : null, beta = 0.82, i;
+    for(i=0;i<links.length;i++){ var a=byId[links[i].source], b=byId[links[i].target]; if(!a||!b) continue;
+      var touch = focus && (links[i].source===focus.id || links[i].target===focus.id);
+      ctx.globalAlpha = focus ? (touch ? 1 : (curved ? 0.08 : 0.1)) : (curved ? 0.45 : 0.5);
+      ctx.strokeStyle = touch ? PAL.linkHot : PAL.link; ctx.lineWidth = (touch ? 1.8 : 0.9) * lw; ctx.beginPath(); ctx.moveTo(a.x, a.y);
+      if(curved) ctx.bezierCurveTo(a.x*beta, a.y*beta, b.x*beta, b.y*beta, b.x, b.y);
+      else ctx.quadraticCurveTo(0, 0, b.x, b.y);
+      ctx.stroke(); }
+    ctx.globalAlpha = 1; ctx.font = (11/tf.k) + 'px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle';
+    for(i=0;i<ord.length;i++){ var nd = ord[i], active = !focus || nd===focus || (nb && nb[nd.id]);
+      ctx.globalAlpha = active ? 1 : PAL.dim; ctx.beginPath(); ctx.arc(nd.x, nd.y, (nd.folder?5:4)*lw, 0, PI2); ctx.fillStyle = color(nd); ctx.fill();
+      if(active){ var right = Math.cos(nd._a) >= 0; ctx.save(); ctx.translate(nd.x, nd.y); ctx.rotate(nd._a + (right?0:Math.PI));
+        ctx.textAlign = right ? 'start' : 'end'; ctx.fillStyle = PAL.label; ctx.fillText(nd.label, (right?1:-1)*8*lw, 0); ctx.restore(); } }
+    ctx.globalAlpha = 1;
+  }
+  function drawChord(){ if(chord) drawRing(chord.ord, false); }
+  function hitRing(ord, wx, wy){
+    if(!ord) return null; var best=null, bd=1e9;
+    for(var i=0;i<ord.length;i++){ var nd=ord[i], dx=wx-nd.x, dy=wy-nd.y, d=dx*dx+dy*dy; if(d<bd){ bd=d; best=nd; } }
+    var thr = 12/tf.k; return bd <= thr*thr ? best : null;
+  }
+  function hitChord(wx, wy){ return hitRing(chord && chord.ord, wx, wy); }
+
+  // --- hierarchical edge bundling: same ring, edges bundled toward the centre ---
+  var bundle = null;
+  function buildBundling(){
+    var ord = ordered(), n = ord.length, R = Math.max(130, (n * 46) / PI2);
+    ord.forEach(function(nd, i){ var a = (i/n)*PI2 - Math.PI/2; nd.x = Math.cos(a)*R; nd.y = Math.sin(a)*R; nd._a = a; });
+    bundle = { ord:ord, R:R }; bbox = { minx:-R*1.4, miny:-R*1.4, maxx:R*1.4, maxy:R*1.4 };
+  }
+  function drawBundling(){ if(bundle) drawRing(bundle.ord, true); }
+  function hitBundling(wx, wy){ return hitRing(bundle && bundle.ord, wx, wy); }
+
+  // --- arc diagram: nodes on a line, dependencies as semicircles above ---
+  var arc = null;
+  function buildArc(){
+    var ord = ordered(), n = ord.length, gap = Math.max(44, Math.min(90, 760/Math.max(1,n))), w = (n-1)*gap;
+    ord.forEach(function(nd, i){ nd.x = i*gap - w/2; nd.y = 0; });
+    arc = { ord:ord, gap:gap, w:w }; bbox = { minx:-w/2 - 30, miny:-w/2 - 20, maxx:w/2 + 30, maxy:90 };
+  }
+  function drawArc(){
+    if(!arc) return; var lw = 1/tf.k, focus = hoverNode || selected, nb = focus ? neigh[focus.id] : null, i;
+    for(i=0;i<links.length;i++){ var a=byId[links[i].source], b=byId[links[i].target]; if(!a||!b) continue;
+      var cx=(a.x+b.x)/2, r=Math.abs(b.x-a.x)/2, touch = focus && (links[i].source===focus.id || links[i].target===focus.id);
+      ctx.globalAlpha = focus ? (touch ? 1 : 0.12) : 0.55; ctx.strokeStyle = touch ? PAL.linkHot : PAL.link; ctx.lineWidth = (touch ? 1.8 : 0.9) * lw;
+      ctx.beginPath(); ctx.arc(cx, 0, r, Math.PI, 0, false); ctx.stroke(); }   // upper semicircle (y is down)
+    ctx.globalAlpha = 1; ctx.font = (11/tf.k) + 'px ui-sans-serif, system-ui, sans-serif';
+    for(i=0;i<arc.ord.length;i++){ var nd = arc.ord[i], active = !focus || nd===focus || (nb && nb[nd.id]);
+      ctx.globalAlpha = active ? 1 : PAL.dim; ctx.beginPath(); ctx.arc(nd.x, 0, (nd.folder?5:4)*lw, 0, PI2); ctx.fillStyle = color(nd); ctx.fill();
+      if(active){ ctx.save(); ctx.translate(nd.x, 10*lw); ctx.rotate(Math.PI/4); ctx.textAlign = 'start'; ctx.textBaseline = 'middle'; ctx.fillStyle = PAL.label; ctx.fillText(nd.label, 0, 0); ctx.restore(); } }
+    ctx.globalAlpha = 1;
+  }
+  function hitArc(wx, wy){
+    if(!arc) return null; var best=null, bd=1e9;
+    for(var i=0;i<arc.ord.length;i++){ var nd=arc.ord[i], dx=wx-nd.x, dy=wy, d=dx*dx+dy*dy; if(d<bd){ bd=d; best=nd; } }
+    var thr = 16/tf.k; return bd <= thr*thr ? best : null;
+  }
+
+  // --- treemap: squarified rectangles, area by symbol/file count, nested by colour ---
+  var tree = null;
+  function squarify(items, x, y, w, h){
+    var out = [], vals = items.map(function(it){ return { node:it.node, v:it.v }; }), total = 0, i;
+    for(i=0;i<vals.length;i++) total += vals[i].v;
+    if(total <= 0) return out;
+    var sc = (w*h) / total; for(i=0;i<vals.length;i++) vals[i].area = vals[i].v * sc;
+    var rect = { x:x, y:y, w:w, h:h }, row = [], k = 0;
+    function worst(rw, s){ var sum=0, mx=-Infinity, mn=Infinity; for(var q=0;q<rw.length;q++){ sum+=rw[q].area; if(rw[q].area>mx)mx=rw[q].area; if(rw[q].area<mn)mn=rw[q].area; } var s2=s*s, sm2=sum*sum; return Math.max((s2*mx)/sm2, sm2/(s2*mn)); }
+    function place(rw){ var sum=0, q; for(q=0;q<rw.length;q++) sum+=rw[q].area;
+      if(rect.w >= rect.h){ var cw = sum / rect.h, cy = rect.y; for(q=0;q<rw.length;q++){ var rh = rw[q].area / cw; out.push({ node:rw[q].node, x:rect.x, y:cy, w:cw, h:rh }); cy += rh; } rect.x += cw; rect.w -= cw; }
+      else { var ch = sum / rect.w, cx = rect.x; for(q=0;q<rw.length;q++){ var rwid = rw[q].area / ch; out.push({ node:rw[q].node, x:cx, y:rect.y, w:rwid, h:ch }); cx += rwid; } rect.y += ch; rect.h -= ch; } }
+    while(k < vals.length){ var s = Math.min(rect.w, rect.h), withNext = row.concat([vals[k]]);
+      if(row.length === 0 || worst(withNext, s) <= worst(row, s)){ row = withNext; k++; } else { place(row); row = []; } }
+    if(row.length) place(row);
+    return out;
+  }
+  function buildTreemap(){
+    var items = nodes.filter(function(n){ return !n.external; }).map(function(n){ return { node:n, v:sizeOf(n) }; });
+    items.sort(function(a, b){ return b.v - a.v; });
+    var W = 900, H = 620;
+    tree = { rects: squarify(items, 0, 0, W, H), W:W, H:H };
+    bbox = { minx:-12, miny:-12, maxx:W+12, maxy:H+12 };
+  }
+  function drawTreemap(){
+    if(!tree) return; var lw = 1/tf.k, focus = hoverNode || selected;
+    ctx.textBaseline = 'top'; ctx.textAlign = 'start'; ctx.font = (12/tf.k) + 'px ui-sans-serif, system-ui, sans-serif';
+    for(var i=0;i<tree.rects.length;i++){ var rc = tree.rects[i], n = rc.node, active = !focus || n === focus;
+      ctx.globalAlpha = active ? 1 : PAL.dim; ctx.fillStyle = color(n); ctx.fillRect(rc.x, rc.y, rc.w, rc.h);
+      ctx.globalAlpha = 1; ctx.lineWidth = 1.2*lw; ctx.strokeStyle = PAL.bg; ctx.strokeRect(rc.x, rc.y, rc.w, rc.h);
+      if(n === selected || n === focus){ ctx.lineWidth = 2*lw; ctx.strokeStyle = PAL.ring; ctx.strokeRect(rc.x, rc.y, rc.w, rc.h); }
+      var pad = 5*lw, lbl = n.folder ? n.label + '/' : n.label;
+      if(rc.w > 34 && rc.h > 18 && ctx.measureText(lbl).width <= rc.w - 2*pad){ ctx.fillStyle = '#ffffff'; ctx.globalAlpha = active ? 1 : PAL.dim; ctx.fillText(lbl, rc.x + pad, rc.y + pad); ctx.globalAlpha = 1; } }
+    ctx.globalAlpha = 1;
+  }
+  function hitTreemap(wx, wy){
+    if(!tree) return null;
+    for(var i=0;i<tree.rects.length;i++){ var rc = tree.rects[i]; if(wx>=rc.x && wx<=rc.x+rc.w && wy>=rc.y && wy<=rc.y+rc.h) return rc.node; }
+    return null;
+  }
+
+  // --- sunburst: inner ring = this level, outer ring = each folder's children ---
+  var sun = null;
+  function buildSunburst(){
+    var items = nodes.filter(function(n){ return !n.external; }), total = sumBy(items, sizeOf) || 1;
+    var r0 = 60, r1 = 150, r2 = 230, a = -Math.PI/2, arcs = [];
+    items.forEach(function(n){ var span = (sizeOf(n)/total) * PI2, a1 = a + span;
+      arcs.push({ node:n, a0:a, a1:a1, r0:r0, r1:r1 });
+      if(n.folder){ var kids = childrenOf(n.prefix), kt = sumBy(kids, sizeOf) || 1, ca = a;
+        for(var j=0;j<kids.length;j++){ var kf = sizeOf(kids[j])/kt, ka1 = ca + kf*span; arcs.push({ node:kids[j], a0:ca, a1:ka1, r0:r1, r1:r2, child:true }); ca = ka1; } }
+      a = a1; });
+    sun = { arcs:arcs, r2:r2 }; bbox = { minx:-r2*1.15, miny:-r2*1.15, maxx:r2*1.15, maxy:r2*1.15 };
+  }
+  function drawSunburst(){
+    if(!sun) return; var lw = 1/tf.k, focus = hoverNode || selected;
+    for(var i=0;i<sun.arcs.length;i++){ var s = sun.arcs[i], n = s.node, active = !focus || (focus && n.id === focus.id);
+      ctx.globalAlpha = (active ? 1 : PAL.dim) * (s.child ? 0.82 : 1);
+      ctx.beginPath(); ctx.arc(0, 0, s.r1, s.a0, s.a1, false); ctx.arc(0, 0, s.r0, s.a1, s.a0, true); ctx.closePath();
+      ctx.fillStyle = color(n); ctx.fill(); ctx.globalAlpha = 1; ctx.lineWidth = 1*lw; ctx.strokeStyle = PAL.bg; ctx.stroke();
+      if(focus && n.id === focus.id){ ctx.lineWidth = 2*lw; ctx.strokeStyle = PAL.ring; ctx.stroke(); }
+      if((s.a1 - s.a0) > 0.12){ var mid = (s.a0+s.a1)/2, rr = (s.r0+s.r1)/2, right = Math.cos(mid) >= 0;
+        ctx.save(); ctx.translate(Math.cos(mid)*rr, Math.sin(mid)*rr); ctx.rotate(mid + (right?0:Math.PI));
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = (10/tf.k) + 'px ui-sans-serif, system-ui, sans-serif';
+        ctx.fillStyle = '#ffffff'; ctx.globalAlpha = active ? 1 : PAL.dim;
+        if(ctx.measureText(n.label).width < (s.r1 - s.r0) - 8*lw) ctx.fillText(n.label, 0, 0); ctx.restore(); ctx.globalAlpha = 1; } }
+    ctx.globalAlpha = 1;
+  }
+  function hitSunburst(wx, wy){
+    if(!sun) return null; var r = Math.sqrt(wx*wx + wy*wy), a = Math.atan2(wy, wx);
+    for(var i=0;i<sun.arcs.length;i++){ var s = sun.arcs[i]; if(r < s.r0 || r > s.r1) continue;
+      var aa = a; while(aa < s.a0) aa += PI2; while(aa >= s.a0 + PI2) aa -= PI2; if(aa >= s.a0 && aa <= s.a1) return s.node; }
+    return null;
+  }
+
+  // --- sankey: files laid out in dependency layers, imports as flowing ribbons ---
+  var sankey = null;
+  function buildSankey(){
+    var level = {}, i, s, t; nodes.forEach(function(n){ level[n.id] = 0; });
+    var cap = nodes.length, changed = true, iter = 0;
+    while(changed && iter++ < cap){ changed = false; for(i=0;i<links.length;i++){ s = links[i].source; t = links[i].target; if(level[s]==null||level[t]==null) continue; if(level[t] < level[s]+1){ level[t] = Math.min(level[s]+1, cap); changed = true; } } }
+    var maxL = 0; nodes.forEach(function(n){ if(level[n.id] > maxL) maxL = level[n.id]; });
+    var cols = []; for(i=0;i<=maxL;i++) cols.push([]); nodes.forEach(function(n){ cols[level[n.id]].push(n); });
+    var colGap = 230, barW = 16, vGap = 14, H = 620, thr = {}; nodes.forEach(function(n){ thr[n.id] = sizeOf(n); });
+    var sc = 1; cols.forEach(function(col){ var raw = sumBy(col, function(n){ return thr[n.id]; }), avail = H - Math.max(0, col.length-1)*vGap; if(raw*sc > avail) sc = avail / Math.max(1, raw); });
+    var pos = {}; cols.forEach(function(col, li){ var x = li*colGap - (maxL*colGap)/2, totH = sumBy(col, function(n){ return thr[n.id]*sc; }) + Math.max(0, col.length-1)*vGap, y = -totH/2;
+      col.forEach(function(n){ var hh = Math.max(4, thr[n.id]*sc); pos[n.id] = { x:x, y:y, w:barW, h:hh, inY:y, outY:y }; y += hh + vGap; }); });
+    var ribbons = []; for(i=0;i<links.length;i++){ var a = pos[links[i].source], b = pos[links[i].target]; if(!a||!b) continue;
+      var th = Math.max(1.5, Math.min(a.h, b.h) * 0.4), sy = a.outY + th/2, ty = b.inY + th/2; a.outY += th; b.inY += th;
+      ribbons.push({ x1:a.x + barW, y1:sy, x2:b.x, y2:ty, t:th, s:links[i].source, tg:links[i].target }); }
+    sankey = { pos:pos, ribbons:ribbons, order:nodes.slice() };
+    var span = (maxL*colGap)/2 + colGap;
+    bbox = { minx:-span, miny:-H/2 - 30, maxx:span, maxy:H/2 + 30 };
+  }
+  function drawSankey(){
+    if(!sankey) return; var lw = 1/tf.k, focus = hoverNode || selected, i;
+    for(i=0;i<sankey.ribbons.length;i++){ var rb = sankey.ribbons[i], touch = focus && (rb.s===focus.id || rb.tg===focus.id), mx = (rb.x1+rb.x2)/2;
+      ctx.globalAlpha = focus ? (touch ? 0.7 : 0.1) : 0.35; ctx.strokeStyle = touch ? PAL.linkHot : PAL.link; ctx.lineWidth = Math.max(1*lw, rb.t);
+      ctx.beginPath(); ctx.moveTo(rb.x1, rb.y1); ctx.bezierCurveTo(mx, rb.y1, mx, rb.y2, rb.x2, rb.y2); ctx.stroke(); }
+    ctx.globalAlpha = 1; ctx.font = (11/tf.k) + 'px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle';
+    var nb = focus ? neigh[focus.id] : null;
+    for(i=0;i<sankey.order.length;i++){ var n = sankey.order[i], p = sankey.pos[n.id]; if(!p) continue;
+      var active = !focus || n===focus || (nb && nb[n.id]); ctx.globalAlpha = active ? 1 : PAL.dim; ctx.fillStyle = color(n); ctx.fillRect(p.x, p.y, p.w, p.h);
+      if(n===selected){ ctx.lineWidth = 2*lw; ctx.strokeStyle = PAL.ring; ctx.strokeRect(p.x, p.y, p.w, p.h); }
+      if(active){ ctx.fillStyle = PAL.label; ctx.textAlign = 'start'; ctx.fillText(n.label, p.x + p.w + 5*lw, p.y + p.h/2); } }
+    ctx.globalAlpha = 1;
+  }
+  function hitSankey(wx, wy){
+    if(!sankey) return null;
+    for(var i=0;i<sankey.order.length;i++){ var n = sankey.order[i], p = sankey.pos[n.id]; if(!p) continue; if(wx>=p.x && wx<=p.x+p.w && wy>=p.y && wy<=p.y+p.h) return n; }
+    return null;
+  }
+
+  var VIEWS = {
+    matrix:   { build: buildMatrix,   draw: drawMatrix,   hit: hitMatrix },
+    chord:    { build: buildChord,    draw: drawChord,    hit: hitChord },
+    arc:      { build: buildArc,      draw: drawArc,      hit: hitArc },
+    treemap:  { build: buildTreemap,  draw: drawTreemap,  hit: hitTreemap },
+    sunburst: { build: buildSunburst, draw: drawSunburst, hit: hitSunburst },
+    sankey:   { build: buildSankey,   draw: drawSankey,   hit: hitSankey },
+    bundling: { build: buildBundling, draw: drawBundling, hit: hitBundling }
+  };
 
   // ---- interaction ----
   var down=false, moved=false, startN=null, panning=false, last={x:0,y:0};
@@ -719,7 +1174,8 @@ export function renderDashboardPage(): string {
 
   canvas.addEventListener('mousedown', function(e){
     var p=pos(e); startN=nodeAt(p.x,p.y); down=true; moved=false; last=p;
-    if(startN){ dragging=startN; startN.fixed=true; canvas.style.cursor='grabbing'; }
+    // dragging a node only makes sense in node-link; elsewhere a press pans (a click still selects)
+    if(startN && gtype==='node-link'){ dragging=startN; startN.fixed=true; canvas.style.cursor='grabbing'; }
     else { panning=true; canvas.style.cursor='grabbing'; }
   });
   window.addEventListener('mousemove', function(e){
@@ -773,10 +1229,16 @@ export function renderDashboardPage(): string {
   document.getElementById('zfit').addEventListener('click', function(){ fitView(true); });
 
   function fitView(animate){
-    if(!nodes.length) return;
-    var minx=1e9, miny=1e9, maxx=-1e9, maxy=-1e9;
-    nodes.forEach(function(n){ var r=radius(n)+18;
-      if(n.x-r<minx)minx=n.x-r; if(n.y-r<miny)miny=n.y-r; if(n.x+r>maxx)maxx=n.x+r; if(n.y+r>maxy)maxy=n.y+r; });
+    var minx, miny, maxx, maxy;
+    if(bbox){
+      // a non-node-link view supplied its own world-space bounds
+      minx=bbox.minx; miny=bbox.miny; maxx=bbox.maxx; maxy=bbox.maxy;
+    } else {
+      if(!nodes.length) return;
+      minx=1e9; miny=1e9; maxx=-1e9; maxy=-1e9;
+      nodes.forEach(function(n){ var r=radius(n)+18;
+        if(n.x-r<minx)minx=n.x-r; if(n.y-r<miny)miny=n.y-r; if(n.x+r>maxx)maxx=n.x+r; if(n.y+r>maxy)maxy=n.y+r; });
+    }
     var bw=Math.max(1,maxx-minx), bh=Math.max(1,maxy-miny), pad=48;
     var k=clamp(Math.min((view.w-pad)/bw, (view.h-pad)/bh), 0.04, 2.2);
     var cx=(minx+maxx)/2, cy=(miny+maxy)/2;
@@ -896,13 +1358,13 @@ export function renderDashboardPage(): string {
     applyTheme(true);
   });
 
-  // language menu: globe button toggles a popover; picking a locale re-renders the UI
-  document.getElementById('btnLang').addEventListener('click', function(e){ e.stopPropagation(); spinGlobe(); toggleLangMenu(); });
+  // menu buttons: each toggles its own popover (opening one closes the others)
+  document.getElementById('btnLang').addEventListener('click', function(e){ e.stopPropagation(); spinGlobe(); openMenu('langMenu','btnLang'); });
+  document.getElementById('btnCanvasMenu').addEventListener('click', function(e){ e.stopPropagation(); openMenu('canvasMenu','btnCanvasMenu'); });
   document.addEventListener('click', function(e){
-    var w = document.getElementById('btnLang').parentNode;
-    if(!w.contains(e.target)) closeLangMenu();
+    MENUS.forEach(function(x){ var w = document.getElementById(x[1]).parentNode; if(!w.contains(e.target)) setMenuOpen(x[0], x[1], false); });
   });
-  window.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeLangMenu(); });
+  window.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeMenus(); });
   // follow the OS while the user hasn't picked a theme of their own
   if(mq){
     var onSys = function(){ if(!storedTheme()) applyTheme(); };

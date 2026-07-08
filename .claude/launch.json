@@ -6,6 +6,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["dist/cli.js", "dashboard", "--port", "4322", "--no-open"],
       "port": 4322
+    },
+    {
+      "name": "sens-dashboard-4327",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["dist/cli.js", "dashboard", "--port", "4327", "--no-open"],
+      "port": 4327
     }
   ]
 }

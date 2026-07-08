@@ -8,38 +8,10 @@ import { loadIndex, isFresh } from "../store/store.js";
 import type { ProjectIndex } from "../types.js";
 import type { QueryEngine } from "../query/engine.js";
 import { renderDashboardPage } from "./page.js";
+import { buildGraph, serializeGraph, isExportFormat } from "./graph-export.js";
 
 function buildData(root: string, index: ProjectIndex, engine: QueryEngine) {
   const dead = engine.deadCode();
-  const deadByFile = new Map<string, number>();
-  for (const d of dead) deadByFile.set(d.file, (deadByFile.get(d.file) ?? 0) + 1);
-
-  const symByFile = new Map<string, number>();
-  const expByFile = new Map<string, number>();
-  for (const s of index.symbols) {
-    symByFile.set(s.file, (symByFile.get(s.file) ?? 0) + 1);
-    if (s.exported) expByFile.set(s.file, (expByFile.get(s.file) ?? 0) + 1);
-  }
-
-  const nodes = index.files.map((f) => ({
-    id: f.path,
-    label: f.path.split("/").pop() ?? f.path,
-    symbols: symByFile.get(f.path) ?? 0,
-    exported: expByFile.get(f.path) ?? 0,
-    dead: deadByFile.get(f.path) ?? 0,
-  }));
-
-  const fileSet = new Set(index.files.map((f) => f.path));
-  const seen = new Set<string>();
-  const links: { source: string; target: string }[] = [];
-  for (const imp of index.imports) {
-    if (!fileSet.has(imp.to) || imp.from === imp.to) continue;
-    const key = `${imp.from}->${imp.to}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    links.push({ source: imp.from, target: imp.to });
-  }
-
   return {
     project: path.basename(root) || "project",
     connected: isConnected(root),
@@ -49,7 +21,7 @@ function buildData(root: string, index: ProjectIndex, engine: QueryEngine) {
       exported: index.symbols.filter((s) => s.exported).length,
       dead: dead.length,
     },
-    graph: { nodes, links },
+    graph: buildGraph(index, dead),
     dead: dead.map((s) => ({ file: s.file, line: s.line, kind: s.kind, name: s.name })),
     symbols: index.symbols.map((s) => ({
       name: s.name,
@@ -121,6 +93,21 @@ export async function startDashboard(
       } else if (req.method === "GET" && url === "/api/data") {
         const { engine, index } = await createEngine(root);
         json(res, buildData(root, index, engine));
+      } else if (req.method === "GET" && url === "/api/export") {
+        const fmt = new URL(req.url ?? "/", "http://localhost").searchParams.get("format") ?? "";
+        if (!isExportFormat(fmt)) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: `unknown export format: ${fmt}` }));
+          return;
+        }
+        const { engine, index } = await createEngine(root);
+        const graph = buildGraph(index, engine.deadCode());
+        const out = serializeGraph(fmt, graph, path.basename(root) || "project");
+        res.writeHead(200, {
+          "content-type": out.mime,
+          "content-disposition": `attachment; filename="${out.filename}"`,
+        });
+        res.end(out.body);
       } else if (req.method === "GET" && url === "/api/freshness") {
         const config = loadConfig(root);
         const cached = loadIndex(root);
