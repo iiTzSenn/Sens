@@ -9,15 +9,8 @@ import { sensDir } from "./paths.js";
 import { AGENT_RULES } from "./rules.js";
 import { readUsage, formatUsage } from "./usage.js";
 import { supportedLanguages } from "./indexer/languages/parser.js";
-import {
-  formatMap,
-  formatSymbols,
-  formatWhoUses,
-  formatDeadCode,
-  formatFileDependencies,
-  formatExplain,
-  formatPath,
-} from "./format.js";
+import { runQuery } from "./queries.js";
+import { SKILL_MD, SKILL_NAME } from "./skill.js";
 
 const root = process.cwd();
 const program = new Command();
@@ -56,8 +49,7 @@ program
   .argument("[subdir]", "limit to a subdirectory")
   .description("Print a compact map of the project")
   .action(async (subdir?: string) => {
-    const { engine } = await createEngine(root);
-    console.log(formatMap(engine.map(subdir)));
+    console.log(await runQuery(root, "project_map", { subdir }));
   });
 
 program
@@ -65,8 +57,7 @@ program
   .argument("<name>", "symbol name")
   .description("Find where a symbol is defined")
   .action(async (name: string) => {
-    const { engine } = await createEngine(root);
-    console.log(formatSymbols(engine.findSymbol(name)));
+    console.log(await runQuery(root, "find_symbol", { name }));
   });
 
 program
@@ -75,8 +66,7 @@ program
   .description("List where a symbol is used")
   .option("--full", "list every call site instead of a partial summary for heavily-used symbols")
   .action(async (name: string, opts: { full?: boolean }) => {
-    const { engine } = await createEngine(root);
-    console.log(formatWhoUses(engine.whoUses(name), { full: opts.full }));
+    console.log(await runQuery(root, "who_uses", { name, full: opts.full }));
   });
 
 program
@@ -84,8 +74,7 @@ program
   .argument("<name>", "symbol name")
   .description("Show a symbol's callers and callees (call graph neighborhood)")
   .action(async (name: string) => {
-    const { engine } = await createEngine(root);
-    console.log(formatExplain(engine.explain(name)));
+    console.log(await runQuery(root, "explain_symbol", { name }));
   });
 
 program
@@ -94,8 +83,7 @@ program
   .argument("<to>", "target symbol name")
   .description("Shortest chain of calls/references connecting two symbols")
   .action(async (from: string, to: string) => {
-    const { engine } = await createEngine(root);
-    console.log(formatPath(engine.path(from, to), from, to));
+    console.log(await runQuery(root, "symbol_path", { from, to }));
   });
 
 program
@@ -103,8 +91,7 @@ program
   .argument("<file>", "file path")
   .description("Print a file's signatures, without its bodies")
   .action(async (file: string) => {
-    const { engine } = await createEngine(root);
-    console.log(formatSymbols(engine.fileOutline(file)));
+    console.log(await runQuery(root, "file_outline", { file }));
   });
 
 program
@@ -112,8 +99,7 @@ program
   .argument("<keywords...>", "keywords describing the functionality")
   .description("Check whether something matching these keywords already exists")
   .action(async (keywords: string[]) => {
-    const { engine } = await createEngine(root);
-    console.log(formatSymbols(engine.alreadyExists(keywords.join(" "))));
+    console.log(await runQuery(root, "already_exists", { query: keywords.join(" ") }));
   });
 
 program
@@ -121,10 +107,8 @@ program
   .argument("[subdir]", "limit to a subdirectory")
   .description("List unused symbols/exports (candidates)")
   .action(async (subdir?: string) => {
-    const { engine } = await createEngine(root);
-    const dead = engine.deadCode(subdir);
-    const out = formatDeadCode(dead);
-    console.log(dead.length ? pc.yellow(out) : pc.green(out));
+    const out = await runQuery(root, "dead_code", { subdir });
+    console.log(out.startsWith("no dead-code") ? pc.green(out) : pc.yellow(out));
   });
 
 program
@@ -132,8 +116,7 @@ program
   .argument("<file>", "file path")
   .description("List a file's imports and importers (import graph)")
   .action(async (file: string) => {
-    const { engine } = await createEngine(root);
-    console.log(formatFileDependencies(engine.fileDependencies(file)));
+    console.log(await runQuery(root, "file_dependencies", { file }));
   });
 
 program
@@ -177,10 +160,50 @@ program
   });
 
 program
+  .command("skill")
+  .description("Print the sens skill (SKILL.md), or install it into .claude/skills/")
+  .option("-w, --write [dir]", "write the skill into a project's .claude/skills/ (default: ./.claude/skills)")
+  .action((opts: { write?: string | boolean }) => {
+    if (opts.write) {
+      const base = typeof opts.write === "string" ? opts.write : path.join(".claude", "skills");
+      const dir = path.join(base, SKILL_NAME);
+      mkdirSync(dir, { recursive: true });
+      const out = path.join(dir, "SKILL.md");
+      writeFileSync(out, SKILL_MD, "utf8");
+      console.log(
+        `${pc.green("✓")} skill written to ${pc.cyan(out)} ${pc.dim("— Claude Code loads it on demand")}`,
+      );
+    } else {
+      console.log(SKILL_MD);
+    }
+  });
+
+program
   .command("usage")
   .description("Show which Sens tools the model has actually called (from the MCP usage log)")
   .action(() => {
     console.log(formatUsage(readUsage(root)));
+  });
+
+program
+  .command("init")
+  .description("Set up sens here: build the index, install the skill, wire the PreToolUse hook")
+  .action(async () => {
+    const { initProject } = await import("./init.js");
+    const r = await initProject(root);
+    console.log(`${pc.green("✓")} index built — ${r.indexedFiles} file(s)`);
+    console.log(`${pc.green("✓")} skill installed — ${pc.cyan(r.skillPath)}`);
+    if (r.hookWired === "skipped") {
+      console.log(
+        `${pc.yellow("⚠")} could not parse ${pc.cyan(r.settingsPath)} — add the PreToolUse hook manually`,
+      );
+    } else {
+      const verb = r.hookWired === "added" ? "wired into" : "already in";
+      console.log(`${pc.green("✓")} hook ${verb} ${pc.cyan(r.settingsPath)}`);
+    }
+    console.log(
+      pc.dim("\nsens must be on PATH (npm i -g sens-mcp) for the hook command to resolve."),
+    );
   });
 
 program
@@ -198,7 +221,7 @@ program
   )
   .action(async () => {
     const { runHook } = await import("./hook.js");
-    runHook();
+    await runHook();
   });
 
 program.parseAsync().catch((err) => {

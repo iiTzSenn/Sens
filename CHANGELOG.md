@@ -4,6 +4,28 @@ All notable changes to `sens-mcp` are documented here. This project follows
 [Semantic Versioning](https://semver.org/): `patch` = fix, `minor` = feature,
 `major` = breaking change.
 
+## [0.5.0] — 2026-07-08
+
+### Added
+- **`sens init`** — one command to set sens up in a project: builds the index,
+  installs the skill into `.claude/skills/sens/`, and wires the `PreToolUse` hook
+  into `.claude/settings.json` (merging, never clobbering existing settings). This
+  is the recommended setup path; the MCP server stays available for hosts that
+  only speak MCP.
+- **Skill** — sens now ships as a Claude Code skill (`sens skill` prints it, or
+  `--write` installs it). Unlike the always-loaded MCP tool schemas, a skill's
+  guidance only enters context when relevant, so it costs no tokens on turns that
+  don't touch code. It is composed from the same working rules as `sens rules`.
+
+### Improved
+- **The hook now answers, not just nudges.** When the model is about to grep for a
+  symbol sens knows, the hook substitutes the grep and returns the full `who_uses`
+  result; a Read of an indexed file gets that file's outline injected; anything
+  sens can't answer falls back to a one-line reminder.
+- **One shared query path** (`runQuery`) now backs the CLI, the MCP server and the
+  hook, so usage logging and output formatting are identical across all three —
+  and `sens usage` records CLI- and hook-driven calls too, not only MCP.
+
 ## [0.4.0] — 2026-07-08
 
 ### Added

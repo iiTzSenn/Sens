@@ -1,47 +1,24 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { createEngine } from "../core.js";
 import { VERSION } from "../index.js";
 import { AGENT_RULES } from "../rules.js";
-import { logUsage } from "../usage.js";
-import {
-  formatMap,
-  formatSymbols,
-  formatWhoUses,
-  formatDeadCode,
-  formatFileDependencies,
-  formatExplain,
-  formatPath,
-} from "../format.js";
+import { runQuery } from "../queries.js";
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 
 /**
  * Start the Sens MCP server over stdio.
  *
- * The index is (re)built per tool call via `createEngine`, which reuses the
- * on-disk cache when file mtimes are unchanged — so answers stay fresh across
- * an editing session without re-parsing when nothing changed.
+ * Every tool just forwards to `runQuery`, the shared path used by the CLI and the
+ * PreToolUse hook too — so the index cache, usage logging and output formatting
+ * are identical no matter which transport asked.
  */
 export async function startMcpServer(root: string): Promise<void> {
   const server = new McpServer(
     { name: "sens", version: VERSION },
     { instructions: AGENT_RULES },
   );
-  const getEngine = async () => (await createEngine(root)).engine;
-
-  // Wrap a tool handler so every call the model makes is recorded to the usage
-  // log first — this is how we can tell whether Sens is actually being used.
-  const track =
-    <A extends Record<string, unknown>>(
-      tool: string,
-      handler: (args: A) => Promise<ReturnType<typeof text>>,
-    ) =>
-    (args: A): Promise<ReturnType<typeof text>> => {
-      logUsage(root, tool, args);
-      return handler(args);
-    };
 
   server.registerTool(
     "project_map",
@@ -50,9 +27,8 @@ export async function startMcpServer(root: string): Promise<void> {
         "Compact map of the project: one line per file with its exported symbols. Use this to orient yourself instead of reading many files.",
       inputSchema: { subdir: z.string().optional() },
     },
-    track("project_map", async ({ subdir }: { subdir?: string }) =>
-      text(formatMap((await getEngine()).map(subdir))),
-    ),
+    async ({ subdir }: { subdir?: string }) =>
+      text(await runQuery(root, "project_map", { subdir })),
   );
 
   server.registerTool(
@@ -62,9 +38,8 @@ export async function startMcpServer(root: string): Promise<void> {
         "Locate where a symbol is defined: returns file:line and its signature. Replaces grep.",
       inputSchema: { name: z.string() },
     },
-    track("find_symbol", async ({ name }: { name: string }) =>
-      text(formatSymbols((await getEngine()).findSymbol(name))),
-    ),
+    async ({ name }: { name: string }) =>
+      text(await runQuery(root, "find_symbol", { name })),
   );
 
   server.registerTool(
@@ -76,9 +51,8 @@ export async function startMcpServer(root: string): Promise<void> {
         "pass full:true to get every call site before renaming/editing all usages, so you don't miss any.",
       inputSchema: { name: z.string(), full: z.boolean().optional() },
     },
-    track("who_uses", async ({ name, full }: { name: string; full?: boolean }) =>
-      text(formatWhoUses((await getEngine()).whoUses(name), { full })),
-    ),
+    async ({ name, full }: { name: string; full?: boolean }) =>
+      text(await runQuery(root, "who_uses", { name, full })),
   );
 
   server.registerTool(
@@ -88,9 +62,8 @@ export async function startMcpServer(root: string): Promise<void> {
         "Signatures of the symbols in a file, without their bodies. Far cheaper than reading the whole file.",
       inputSchema: { file: z.string() },
     },
-    track("file_outline", async ({ file }: { file: string }) =>
-      text(formatSymbols((await getEngine()).fileOutline(file))),
-    ),
+    async ({ file }: { file: string }) =>
+      text(await runQuery(root, "file_outline", { file })),
   );
 
   server.registerTool(
@@ -102,9 +75,8 @@ export async function startMcpServer(root: string): Promise<void> {
         "different/narrower keywords if the first query returns nothing relevant (common domain words can bury the real match).",
       inputSchema: { query: z.string() },
     },
-    track("already_exists", async ({ query }: { query: string }) =>
-      text(formatSymbols((await getEngine()).alreadyExists(query))),
-    ),
+    async ({ query }: { query: string }) =>
+      text(await runQuery(root, "already_exists", { query })),
   );
 
   server.registerTool(
@@ -116,9 +88,8 @@ export async function startMcpServer(root: string): Promise<void> {
         "symbol name across the repo if unsure before removing it.",
       inputSchema: { subdir: z.string().optional() },
     },
-    track("dead_code", async ({ subdir }: { subdir?: string }) =>
-      text(formatDeadCode((await getEngine()).deadCode(subdir))),
-    ),
+    async ({ subdir }: { subdir?: string }) =>
+      text(await runQuery(root, "dead_code", { subdir })),
   );
 
   server.registerTool(
@@ -128,9 +99,8 @@ export async function startMcpServer(root: string): Promise<void> {
         "What a file imports and what imports it, from the precomputed import graph. Use this to jump straight to related files instead of grepping or reading the whole project.",
       inputSchema: { file: z.string() },
     },
-    track("file_dependencies", async ({ file }: { file: string }) =>
-      text(formatFileDependencies((await getEngine()).fileDependencies(file))),
-    ),
+    async ({ file }: { file: string }) =>
+      text(await runQuery(root, "file_dependencies", { file })),
   );
 
   server.registerTool(
@@ -140,9 +110,8 @@ export async function startMcpServer(root: string): Promise<void> {
         "Show a symbol's neighborhood in the call graph: what references it (callers) and what it references (callees), each with file:line. Use this to understand how a function/class fits together and gather just the relevant code, instead of reading whole files. Cross-file within a language; for non-TypeScript languages edges are name-based (may over-include).",
       inputSchema: { name: z.string() },
     },
-    track("explain_symbol", async ({ name }: { name: string }) =>
-      text(formatExplain((await getEngine()).explain(name))),
-    ),
+    async ({ name }: { name: string }) =>
+      text(await runQuery(root, "explain_symbol", { name })),
   );
 
   server.registerTool(
@@ -152,9 +121,8 @@ export async function startMcpServer(root: string): Promise<void> {
         "Find the shortest chain of calls/references connecting one symbol to another — 'how does X reach Y'. Returns the symbols along the path with file:line, or reports they are not connected.",
       inputSchema: { from: z.string(), to: z.string() },
     },
-    track("symbol_path", async ({ from, to }: { from: string; to: string }) =>
-      text(formatPath((await getEngine()).path(from, to), from, to)),
-    ),
+    async ({ from, to }: { from: string; to: string }) =>
+      text(await runQuery(root, "symbol_path", { from, to })),
   );
 
   // Prompts show up as typeable slash commands in Claude Code (tools do not).

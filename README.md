@@ -22,7 +22,7 @@
 
 If you use Claude Code on a **subscription**, your pain isn't a per-token bill — it's the **usage limit** and the **context window filling up**. Every time the agent opens 20 files just to orient itself, it burns your quota and bloats the context (which then compacts and quietly loses memory).
 
-Sens keeps a compact **index** of your project and serves it to Claude over **MCP**, so the model asks focused questions instead of reading everything:
+Sens keeps a compact **index** of your project and serves it to Claude — through a **hook** that answers the model's searches before they run, a **skill** it loads on demand, or an **MCP** server — so the model asks focused questions instead of reading everything:
 
 > *"where is `login`?"* · *"who uses it?"* · *"does something like this already exist?"* · *"what's dead code here?"*
 
@@ -41,7 +41,20 @@ One engine, two payoffs:
 
 ## Quick start
 
-Add Sens as an MCP server. In your project's `.mcp.json` (or Claude Code's MCP config):
+Install Sens and set it up in your project:
+
+```bash
+npm i -g sens-mcp
+cd your-project
+sens init
+```
+
+`sens init` builds the index, installs a **skill** so Claude knows when to query Sens, and wires a **hook** that answers Claude's searches *before they run* — when the model is about to grep for a symbol, Sens returns it (and every use) directly, and a file read gets the outline injected first. Nothing else to start: just work normally and ask Claude naturally (*"any dead code? check with sens"*).
+
+<details>
+<summary><b>Prefer MCP?</b> (or a host that only speaks MCP)</summary>
+
+Add Sens as an MCP server instead. In your project's `.mcp.json` (or Claude Code's MCP config):
 
 ```json
 {
@@ -60,23 +73,28 @@ Or register it once for **every** project:
 claude mcp add sens -s user -- npx -y sens-mcp mcp
 ```
 
-That's it. Claude Code launches Sens on demand — no per-project install, no manual server to run. Then just ask Claude naturally: *"use sens to map this project"*, *"any dead code? check with sens"*.
+Claude Code launches Sens on demand — no per-project install, no manual server to run.
+</details>
 
-## What Claude gets (MCP tools)
+## What Claude gets
 
-| Tool | What it does | Replaces |
+The same set of operations, whether Claude runs them as `sens` commands (driven by the skill/hook) or as MCP tools:
+
+| Operation | What it does | Replaces |
 | --- | --- | --- |
 | `project_map` | A one-screen map of the repo with each file's exports | Reading many files to orient |
 | `find_symbol` | Where a symbol is defined (file:line + signature) | `grep` |
 | `who_uses` | Every place a symbol is used | `grep` + reads |
 | `file_outline` | A file's signatures, without its bodies | Reading the whole file |
 | `already_exists` | Whether something matching keywords already exists | Duplicating by accident |
+| `explain_symbol` | A symbol's callers and callees (call-graph neighborhood) | Reading files to trace a function |
+| `symbol_path` | The shortest chain of calls connecting two symbols | Manually following the call chain |
 | `dead_code` | Unused symbols / exports (candidates) | — |
 | `file_dependencies` | What a file imports and what imports it (import graph) | Grepping for imports across the project |
 
 ## Working rules
 
-Sens's MCP server also hands Claude a short set of **working rules** it follows when writing or changing code — reuse what exists instead of duplicating, keep code minimal but maintainable, and leave nothing orphaned — each tied to the tool that lets it *verify* the rule (`already_exists`/`find_symbol` before writing, `dead_code` before finishing, `who_uses` before a rename). They load automatically over MCP; run `sens rules` to read them, or `sens rules --write` to drop a `SENS_RULES.md` you can reference from your `CLAUDE.md` / `AGENTS.md`.
+Sens's MCP server also hands Claude a short set of **working rules** it follows when writing or changing code — reuse what exists instead of duplicating, keep code minimal but maintainable, and leave nothing orphaned — each tied to the tool that lets it *verify* the rule (`already_exists`/`find_symbol` before writing, `dead_code` before finishing, `who_uses` before a rename). They load automatically — bundled into the skill (installed by `sens init`) and sent as the MCP server's instructions; run `sens rules` to read them, or `sens rules --write` to drop a `SENS_RULES.md` you can reference from your `CLAUDE.md` / `AGENTS.md`.
 
 ## Slash commands
 
@@ -96,6 +114,7 @@ Sens also registers prompts, so it shows up in Claude Code's `/` menu:
 You can also drive Sens yourself:
 
 ```bash
+npx sens-mcp init           # set up here: index + skill + PreToolUse hook
 npx sens-mcp index          # build/update the index (cached by file mtime)
 npx sens-mcp map [subdir]   # compact project map
 npx sens-mcp find <name>    # where a symbol is defined
@@ -107,6 +126,7 @@ npx sens-mcp deps <file>    # what a file imports and what imports it
 npx sens-mcp report         # self-contained HTML report → .sens/report.html
 npx sens-mcp dashboard      # interactive web dashboard
 npx sens-mcp rules          # print the coding rules (--write to save SENS_RULES.md)
+npx sens-mcp skill          # print the Claude Code skill (--write to install it)
 npx sens-mcp usage          # which Sens tools the model has actually called
 ```
 
