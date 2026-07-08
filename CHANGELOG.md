@@ -4,6 +4,30 @@ All notable changes to `sens-mcp` are documented here. This project follows
 [Semantic Versioning](https://semver.org/): `patch` = fix, `minor` = feature,
 `major` = breaking change.
 
+## [0.4.0] — 2026-07-08
+
+### Added
+- **Symbol-level call graph** — references now record their *caller* (the symbol
+  whose body contains each use), turning the flat usage list into a real
+  call/reference graph. Two new queries expose it: `explain` (a symbol's callers
+  and callees in one call) and `path` (the shortest chain of calls connecting two
+  symbols). Available as CLI commands (`sens explain`, `sens path`) and MCP tools
+  (`explain_symbol`, `symbol_path`); `who_uses` now also shows which symbol each
+  use sits in.
+- **Nudge hook** — `sens hook` is a `PreToolUse` hook that gently reminds the
+  model to reach for sens (`find_symbol`, `file_outline`, `explain_symbol`, …)
+  before it greps or reads whole files. Fires at most once per session per tool
+  and stays silent on non-source files.
+- **Graph export** — the dashboard can export the dependency graph to GEXF,
+  GraphML, DOT, JSON and a CSV edge list via `/api/export`, so it opens in Gephi,
+  yEd, Cytoscape or Graphviz.
+
+### Improved
+- **Faster queries** — the query engine builds its name/file/id lookups, the
+  import adjacency and the call graph once up front (O(1) lookups), and the engine
+  is memoized per project so repeated MCP calls skip re-reading and re-parsing the
+  index from disk.
+
 ## [0.3.0] — 2026-07-08
 
 ### Added
