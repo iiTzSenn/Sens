@@ -15,6 +15,8 @@ import {
   formatWhoUses,
   formatDeadCode,
   formatFileDependencies,
+  formatExplain,
+  formatPath,
 } from "./format.js";
 
 const root = process.cwd();
@@ -75,6 +77,25 @@ program
   .action(async (name: string, opts: { full?: boolean }) => {
     const { engine } = await createEngine(root);
     console.log(formatWhoUses(engine.whoUses(name), { full: opts.full }));
+  });
+
+program
+  .command("explain")
+  .argument("<name>", "symbol name")
+  .description("Show a symbol's callers and callees (call graph neighborhood)")
+  .action(async (name: string) => {
+    const { engine } = await createEngine(root);
+    console.log(formatExplain(engine.explain(name)));
+  });
+
+program
+  .command("path")
+  .argument("<from>", "source symbol name")
+  .argument("<to>", "target symbol name")
+  .description("Shortest chain of calls/references connecting two symbols")
+  .action(async (from: string, to: string) => {
+    const { engine } = await createEngine(root);
+    console.log(formatPath(engine.path(from, to), from, to));
   });
 
 program
@@ -168,6 +189,16 @@ program
   .action(async () => {
     const { startMcpServer } = await import("./mcp/server.js");
     await startMcpServer(root);
+  });
+
+program
+  .command("hook")
+  .description(
+    "PreToolUse hook: nudge the model toward sens tools before it reads/greps (reads hook JSON from stdin)",
+  )
+  .action(async () => {
+    const { runHook } = await import("./hook.js");
+    runHook();
   });
 
 program.parseAsync().catch((err) => {

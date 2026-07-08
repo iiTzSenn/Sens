@@ -209,6 +209,28 @@ function dequote(s: string): string | null {
   return null;
 }
 
+/** A declared symbol's source span, used to attribute a use to the symbol whose
+ * body encloses it (the "caller" side of a reference edge — see Reference.from). */
+interface SymbolRange {
+  start: number;
+  end: number;
+  id: string;
+}
+
+/** The innermost span (largest start) containing byte offset `pos`, or undefined
+ * when `pos` sits at module/top-level scope. */
+function enclosingId(ranges: SymbolRange[], pos: number): string | undefined {
+  let id: string | undefined;
+  let bestStart = -1;
+  for (const r of ranges) {
+    if (r.start <= pos && pos < r.end && r.start > bestStart) {
+      id = r.id;
+      bestStart = r.start;
+    }
+  }
+  return id;
+}
+
 /** Named leaf nodes (no named children) — the identifier-like tokens whose text
  * we match against symbol names in the reference pass. Language-agnostic. */
 function collectLeaves(node: Node, out: Node[]): void {
@@ -237,6 +259,9 @@ export async function buildTreeSitter(
   const imports: ImportEdge[] = [];
   const references: Record<string, Reference[]> = {};
   const byName = new Map<string, string[]>();
+  // Declaration spans per file, so the reference pass can attribute each use to
+  // its enclosing symbol (the caller).
+  const rangesByFile = new Map<string, SymbolRange[]>();
   const trees: { file: string; tree: Node; root: Node; skip: Set<number> }[] = [];
   const relSet = new Set(absFiles.map((f) => rel(root, f)));
 
@@ -253,6 +278,7 @@ export async function buildTreeSitter(
     const rootNode = tree.rootNode;
     const skip = new Set<number>();
     const exportsList: string[] = [];
+    const ranges: SymbolRange[] = [];
 
     const emit: Emit = {
       symbol(s) {
@@ -274,6 +300,7 @@ export async function buildTreeSitter(
         const list = byName.get(simple);
         if (list) list.push(id);
         else byName.set(simple, [id]);
+        ranges.push({ start: s.node.startIndex, end: s.node.endIndex, id });
         skip.add(s.nameNode.startIndex);
         if (s.exported && s.kind !== "method") exportsList.push(s.name);
       },
@@ -283,6 +310,7 @@ export async function buildTreeSitter(
     };
 
     extract(rootNode, emit, { file, relSet });
+    rangesByFile.set(file, ranges);
     files.push({ path: file, mtimeMs: statSync(abs).mtimeMs, exports: exportsList });
     trees.push({ file, tree, root: rootNode, skip });
   }
@@ -291,6 +319,7 @@ export async function buildTreeSitter(
   // symbol with that name (name-based, cross-file). Over-counts rather than
   // misses, which keeps dead-code candidates conservative.
   for (const { file, tree, root: rootNode, skip } of trees) {
+    const ranges = rangesByFile.get(file) ?? [];
     const leaves: Node[] = [];
     collectLeaves(rootNode, leaves);
     for (const leaf of leaves) {
@@ -304,8 +333,13 @@ export async function buildTreeSitter(
         if (inner) targets = byName.get(inner);
       }
       if (!targets) continue;
-      const ref: Reference = { file, line: leaf.startPosition.row + 1 };
-      for (const symId of targets) references[symId].push(ref);
+      const line = leaf.startPosition.row + 1;
+      const from = enclosingId(ranges, leaf.startIndex);
+      for (const symId of targets) {
+        references[symId].push(
+          from && from !== symId ? { file, line, from } : { file, line },
+        );
+      }
     }
     tree.delete?.(); // free the emscripten-side parse tree
   }

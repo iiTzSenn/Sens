@@ -11,6 +11,8 @@ import {
   formatWhoUses,
   formatDeadCode,
   formatFileDependencies,
+  formatExplain,
+  formatPath,
 } from "../format.js";
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
@@ -131,6 +133,30 @@ export async function startMcpServer(root: string): Promise<void> {
     ),
   );
 
+  server.registerTool(
+    "explain_symbol",
+    {
+      description:
+        "Show a symbol's neighborhood in the call graph: what references it (callers) and what it references (callees), each with file:line. Use this to understand how a function/class fits together and gather just the relevant code, instead of reading whole files. Cross-file within a language; for non-TypeScript languages edges are name-based (may over-include).",
+      inputSchema: { name: z.string() },
+    },
+    track("explain_symbol", async ({ name }: { name: string }) =>
+      text(formatExplain((await getEngine()).explain(name))),
+    ),
+  );
+
+  server.registerTool(
+    "symbol_path",
+    {
+      description:
+        "Find the shortest chain of calls/references connecting one symbol to another — 'how does X reach Y'. Returns the symbols along the path with file:line, or reports they are not connected.",
+      inputSchema: { from: z.string(), to: z.string() },
+    },
+    track("symbol_path", async ({ from, to }: { from: string; to: string }) =>
+      text(formatPath((await getEngine()).path(from, to), from, to)),
+    ),
+  );
+
   // Prompts show up as typeable slash commands in Claude Code (tools do not).
   // Each one just asks Claude to run the matching Sens tool.
   server.registerPrompt(
@@ -179,6 +205,26 @@ export async function startMcpServer(root: string): Promise<void> {
           content: {
             type: "text",
             text: `Use the sens \`find_symbol\` tool to locate \`${name}\` and show its definition and signature.`,
+          },
+        },
+      ],
+    }),
+  );
+
+  server.registerPrompt(
+    "explain",
+    {
+      title: "Sens: explain symbol",
+      description: "Show a symbol's callers and callees from the call graph.",
+      argsSchema: { name: z.string() },
+    },
+    ({ name }) => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `Use the sens \`explain_symbol\` tool on \`${name}\` to show what calls it and what it calls, then summarize how it fits into the code.`,
           },
         },
       ],

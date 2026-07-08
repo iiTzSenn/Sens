@@ -1,7 +1,15 @@
 // Plain-text formatters for query results, shared by the CLI and MCP server.
 
 import type { SymbolInfo } from "./types.js";
-import type { MapEntry, WhoUsesResult, FileDependencies } from "./query/engine.js";
+import type {
+  MapEntry,
+  WhoUsesResult,
+  FileDependencies,
+  Neighborhood,
+} from "./query/engine.js";
+
+/** The declared name inside a symbol id (`file#name#line`). */
+const symbolName = (id: string): string => id.split("#")[1] ?? id;
 
 export function formatMap(entries: MapEntry[]): string {
   const lines: string[] = [`project map — ${entries.length} file(s)`, ""];
@@ -42,7 +50,10 @@ export function formatWhoUses(
       `${r.symbol.name}  (${r.symbol.file}:${r.symbol.line}) — ${r.references.length} use(s)`,
     );
     if (opts.full || r.references.length <= MAX_INLINE_REFS) {
-      for (const ref of r.references) lines.push(`  ${ref.file}:${ref.line}`);
+      for (const ref of r.references) {
+        const where = ref.from ? `  in ${symbolName(ref.from)}` : "";
+        lines.push(`  ${ref.file}:${ref.line}${where}`);
+      }
       continue;
     }
     const byFile = new Map<string, number>();
@@ -78,6 +89,35 @@ export function formatDeadCode(syms: SymbolInfo[]): string {
     );
   }
   return lines.join("\n");
+}
+
+export function formatExplain(results: Neighborhood[]): string {
+  if (results.length === 0) return "symbol not found";
+  const lines: string[] = [];
+  const block = (title: string, syms: SymbolInfo[]): void => {
+    lines.push(`  ${title} (${syms.length}):`);
+    if (syms.length === 0) lines.push("    (none)");
+    for (const s of syms) lines.push(`    ${s.name}  ${s.file}:${s.line}`);
+  };
+  for (const r of results) {
+    lines.push(
+      `${r.symbol.name}  (${r.symbol.file}:${r.symbol.line})  ${r.symbol.signature}`,
+    );
+    block("called by", r.callers);
+    block("calls", r.callees);
+  }
+  return lines.join("\n");
+}
+
+export function formatPath(
+  path: SymbolInfo[] | null,
+  from: string,
+  to: string,
+): string {
+  if (!path || path.length === 0) return `no path found from ${from} to ${to}`;
+  return path
+    .map((s, i) => `${i === 0 ? "" : "  → "}${s.name}  (${s.file}:${s.line})`)
+    .join("\n");
 }
 
 export function formatFileDependencies(deps: FileDependencies): string {

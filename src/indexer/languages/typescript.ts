@@ -65,6 +65,17 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
     if (nameNode) nameNodes.add(nameNode);
   };
 
+  // The declared symbol whose body encloses `node` (its nearest declaration
+  // ancestor), or undefined at module/top-level scope. This is the "caller"
+  // side of a reference edge — see Reference.from.
+  const enclosingSymbolId = (node: TsNode): string | undefined => {
+    for (let n = node.getParent(); n; n = n.getParent()) {
+      const id = declToId.get(n);
+      if (id) return id;
+    }
+    return undefined;
+  };
+
   for (const sf of project.getSourceFiles()) {
     const file = rel(root, sf.getFilePath());
     const exportsList: string[] = [];
@@ -191,7 +202,12 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
       for (const d of sym.getDeclarations()) {
         const targetId = declToId.get(d);
         if (targetId) {
-          references[targetId].push({ file, line: id.getStartLineNumber() });
+          const from = enclosingSymbolId(id);
+          references[targetId].push({
+            file,
+            line: id.getStartLineNumber(),
+            ...(from && from !== targetId ? { from } : {}),
+          });
           break;
         }
       }

@@ -1,7 +1,7 @@
 // Core data model for the Sens project index.
 
 /** Bump when the index shape or indexing logic changes, to invalidate caches. */
-export const INDEX_SCHEMA_VERSION = 4;
+export const INDEX_SCHEMA_VERSION = 5;
 
 export type SymbolKind =
   | "function"
@@ -32,6 +32,13 @@ export interface SymbolInfo {
 export interface Reference {
   file: string;
   line: number;
+  /**
+   * Id of the declared symbol whose body contains this use (the "caller"),
+   * or undefined when the use sits at module/top-level scope. This is what
+   * turns the flat usage list into a symbol-level call graph: an edge
+   * `from` → the referenced symbol.
+   */
+  from?: string;
 }
 
 export interface ImportEdge {

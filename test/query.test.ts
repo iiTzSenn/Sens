@@ -57,6 +57,26 @@ describe("query engine", () => {
     expect(dead).toContain("unusedHelper"); // not exported -> still a candidate
   });
 
+  it("explains a symbol's callers and callees", async () => {
+    const e = await engine();
+    const [addN] = e.explain("add");
+    expect(addN.callers.some((s) => s.name === "main")).toBe(true);
+    expect(addN.callees).toHaveLength(0);
+    const [mainN] = e.explain("main");
+    expect(mainN.callees.map((s) => s.name).sort()).toEqual(["PI", "add"]);
+  });
+
+  it("finds the shortest path between two symbols", async () => {
+    const e = await engine();
+    const p = e.path("main", "add");
+    expect(p?.map((s) => s.name)).toEqual(["main", "add"]);
+  });
+
+  it("returns null when two symbols are not connected", async () => {
+    const e = await engine();
+    expect(e.path("main", "subtract")).toBeNull();
+  });
+
   it("resolves a file's import-graph neighbors", async () => {
     const e = await engine();
     const deps = e.fileDependencies("app.ts");

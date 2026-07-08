@@ -29,6 +29,18 @@ export async function ensureIndex(
 }
 
 /**
+ * Process-lifetime cache of the last engine built per root. In a long-lived MCP
+ * session the same project is queried over and over; keeping the parsed index
+ * and its (map-heavy) engine in memory lets a fresh call skip re-reading and
+ * re-parsing the index from disk and rebuilding every lookup structure —
+ * we only run the cheap `isFresh` mtime check.
+ */
+const engineCache = new Map<
+  string,
+  { index: ProjectIndex; engine: QueryEngine }
+>();
+
+/**
  * Build (or reuse) the index and wrap it in a ready-to-query engine, applying
  * the project's Sens config (extra ignores + entry points).
  */
@@ -37,10 +49,18 @@ export async function createEngine(
   opts: EnsureOptions = {},
 ): Promise<{ engine: QueryEngine; index: ProjectIndex; fromCache: boolean }> {
   const config = loadConfig(root);
-  const { index, fromCache } = await ensureIndex(root, {
-    ...opts,
-    ignore: [...(opts.ignore ?? []), ...config.ignore],
-  });
+  const ignore = [...(opts.ignore ?? []), ...config.ignore];
+
+  if (!opts.force) {
+    const cached = engineCache.get(root);
+    if (cached && (await isFresh(root, cached.index, ignore))) {
+      return { engine: cached.engine, index: cached.index, fromCache: true };
+    }
+  }
+
+  const { index, fromCache } = await ensureIndex(root, { ...opts, ignore });
   const eps = await entryPointFiles(root, config);
-  return { engine: new QueryEngine(index, eps), index, fromCache };
+  const engine = new QueryEngine(index, eps);
+  engineCache.set(root, { index, engine });
+  return { engine, index, fromCache };
 }

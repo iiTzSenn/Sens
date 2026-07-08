@@ -20,35 +20,156 @@ export interface FileDependencies {
   importedBy: string[];
 }
 
-/** Answers the six Sens queries over a built project index. */
+/** A symbol and its immediate neighbors in the call/reference graph. */
+export interface Neighborhood {
+  symbol: SymbolInfo;
+  /** Declared symbols whose body references this one. */
+  callers: SymbolInfo[];
+  /** Declared symbols this one references from its own body. */
+  callees: SymbolInfo[];
+}
+
+/**
+ * Answers the Sens queries over a built project index. All lookup structures
+ * (name/file/id maps, the import adjacency and the symbol-level call graph) are
+ * built once in the constructor, so repeated queries are O(1)/O(neighbors)
+ * instead of scanning every symbol per call.
+ */
 export class QueryEngine {
+  private readonly byId = new Map<string, SymbolInfo>();
+  private readonly byNameLower = new Map<string, SymbolInfo[]>();
+  /** Keyed by full name and by the part after the last `.`, for who_uses/explain. */
+  private readonly byNameOrSuffix = new Map<string, SymbolInfo[]>();
+  private readonly byFile = new Map<string, SymbolInfo[]>();
+  private readonly fileSet: Set<string>;
+  private readonly importsFrom = new Map<string, Set<string>>();
+  private readonly importsTo = new Map<string, Set<string>>();
+  /** symbolId -> symbols it references (call graph, directed). */
+  private readonly calleesOf = new Map<string, Set<string>>();
+  /** symbolId -> symbols that reference it. */
+  private readonly callersOf = new Map<string, Set<string>>();
+
   constructor(
     private readonly index: ProjectIndex,
     private readonly entryPoints: Set<string> = new Set(),
-  ) {}
+  ) {
+    this.fileSet = new Set(index.files.map((f) => f.path));
+
+    for (const s of index.symbols) {
+      this.byId.set(s.id, s);
+      push(this.byNameLower, s.name.toLowerCase(), s);
+      push(this.byNameOrSuffix, s.name, s);
+      const dot = s.name.lastIndexOf(".");
+      if (dot !== -1) push(this.byNameOrSuffix, s.name.slice(dot + 1), s);
+      push(this.byFile, s.file, s);
+    }
+
+    for (const imp of index.imports) {
+      if (imp.from === imp.to) continue;
+      if (this.fileSet.has(imp.to)) add(this.importsFrom, imp.from, imp.to);
+      add(this.importsTo, imp.to, imp.from);
+    }
+
+    // Symbol-level call graph: a reference with a `from` is an edge
+    // caller -> referenced symbol.
+    for (const [targetId, refs] of Object.entries(index.references)) {
+      for (const ref of refs) {
+        if (!ref.from || ref.from === targetId) continue;
+        add(this.calleesOf, ref.from, targetId);
+        add(this.callersOf, targetId, ref.from);
+      }
+    }
+  }
 
   /** Exact (case-insensitive) symbol lookup. */
   findSymbol(name: string): SymbolInfo[] {
-    const q = name.toLowerCase();
-    return this.index.symbols.filter((s) => s.name.toLowerCase() === q);
+    return this.byNameLower.get(name.toLowerCase()) ?? [];
+  }
+
+  /** Symbols matching `name` bare or as `Class.method`. */
+  private resolve(name: string): SymbolInfo[] {
+    return this.byNameOrSuffix.get(name) ?? [];
   }
 
   /** Usage sites for every symbol matching `name` (bare or `Class.method`). */
   whoUses(name: string): WhoUsesResult[] {
-    return this.index.symbols
-      .filter((s) => s.name === name || s.name.endsWith(`.${name}`))
-      .map((s) => ({
-        symbol: s,
-        references: this.index.references[s.id] ?? [],
-      }));
+    return this.resolve(name).map((s) => ({
+      symbol: s,
+      references: this.index.references[s.id] ?? [],
+    }));
+  }
+
+  /**
+   * A symbol's neighbors in the call graph: what references it (callers) and
+   * what it references (callees). Lets a caller pull just the relevant slice of
+   * the codebase instead of reading whole files.
+   */
+  explain(name: string): Neighborhood[] {
+    return this.resolve(name).map((s) => ({
+      symbol: s,
+      callers: this.neighbors(this.callersOf.get(s.id)),
+      callees: this.neighbors(this.calleesOf.get(s.id)),
+    }));
+  }
+
+  private neighbors(ids: Set<string> | undefined): SymbolInfo[] {
+    if (!ids) return [];
+    const out: SymbolInfo[] = [];
+    for (const id of ids) {
+      const s = this.byId.get(id);
+      if (s) out.push(s);
+    }
+    return out.sort(byFileLine);
+  }
+
+  /**
+   * Shortest connection between any symbol named `a` and any named `b` over the
+   * (undirected) call graph — "how does X reach Y". Returns the chain of symbols
+   * from an `a` to a `b`, or null if they are not connected.
+   */
+  path(a: string, b: string): SymbolInfo[] | null {
+    const sources = this.resolve(a);
+    const targets = new Set(this.resolve(b).map((s) => s.id));
+    if (sources.length === 0 || targets.size === 0) return null;
+
+    const prev = new Map<string, string | null>();
+    const queue: string[] = [];
+    for (const s of sources) {
+      if (prev.has(s.id)) continue;
+      prev.set(s.id, null);
+      queue.push(s.id);
+    }
+
+    for (let i = 0; i < queue.length; i++) {
+      const id = queue[i];
+      if (targets.has(id)) return this.rebuild(prev, id);
+      for (const n of this.undirectedNeighbors(id)) {
+        if (prev.has(n)) continue;
+        prev.set(n, id);
+        queue.push(n);
+      }
+    }
+    return null;
+  }
+
+  private *undirectedNeighbors(id: string): Iterable<string> {
+    yield* this.calleesOf.get(id) ?? [];
+    yield* this.callersOf.get(id) ?? [];
+  }
+
+  private rebuild(prev: Map<string, string | null>, end: string): SymbolInfo[] {
+    const ids: string[] = [];
+    for (let cur: string | null = end; cur; cur = prev.get(cur) ?? null) ids.push(cur);
+    ids.reverse();
+    return ids.map((id) => this.byId.get(id)).filter((s): s is SymbolInfo => !!s);
   }
 
   /** Symbols declared in a file (matched by suffix), ordered by line. */
   fileOutline(file: string): SymbolInfo[] {
     const norm = file.replace(/\\/g, "/");
-    return this.index.symbols
-      .filter((s) => s.file === norm || s.file.endsWith(norm))
-      .sort((a, b) => a.line - b.line);
+    const exact = this.byFile.get(norm);
+    const syms = exact ?? this.index.symbols.filter((s) => s.file.endsWith(norm));
+    return [...syms].sort((a, b) => a.line - b.line);
   }
 
   /** Rank existing symbols against keywords, to encourage reuse over dup. */
@@ -82,18 +203,9 @@ export class QueryEngine {
   /** Compact per-file map (exported symbols + internal count). */
   map(subdir?: string): MapEntry[] {
     const sub = subdir?.replace(/\\/g, "/");
-    const byFile = new Map<string, SymbolInfo[]>();
-    for (const s of this.index.symbols) {
-      if (sub && !s.file.startsWith(sub)) continue;
-      let arr = byFile.get(s.file);
-      if (!arr) {
-        arr = [];
-        byFile.set(s.file, arr);
-      }
-      arr.push(s);
-    }
     const entries: MapEntry[] = [];
-    for (const [file, syms] of byFile) {
+    for (const [file, syms] of this.byFile) {
+      if (sub && !file.startsWith(sub)) continue;
       const exported = syms
         .filter((s) => s.exported && s.kind !== "method")
         .sort((a, b) => a.line - b.line);
@@ -112,22 +224,11 @@ export class QueryEngine {
     const target =
       this.index.files.find((f) => f.path === norm || f.path.endsWith(norm))
         ?.path ?? norm;
-    const fileSet = new Set(this.index.files.map((f) => f.path));
-    const imports = [
-      ...new Set(
-        this.index.imports
-          .filter((i) => i.from === target && i.to !== target && fileSet.has(i.to))
-          .map((i) => i.to),
-      ),
-    ].sort();
-    const importedBy = [
-      ...new Set(
-        this.index.imports
-          .filter((i) => i.to === target && i.from !== target)
-          .map((i) => i.from),
-      ),
-    ].sort();
-    return { file: target, imports, importedBy };
+    return {
+      file: target,
+      imports: [...(this.importsFrom.get(target) ?? [])].sort(),
+      importedBy: [...(this.importsTo.get(target) ?? [])].sort(),
+    };
   }
 
   /** Unused symbols (candidates). Excludes methods, tests, entry-point exports. */
@@ -142,4 +243,20 @@ export class QueryEngine {
       return true;
     });
   }
+}
+
+function push<K>(map: Map<K, SymbolInfo[]>, key: K, s: SymbolInfo): void {
+  const list = map.get(key);
+  if (list) list.push(s);
+  else map.set(key, [s]);
+}
+
+function add(map: Map<string, Set<string>>, key: string, value: string): void {
+  const set = map.get(key);
+  if (set) set.add(value);
+  else map.set(key, new Set([value]));
+}
+
+function byFileLine(a: SymbolInfo, b: SymbolInfo): number {
+  return a.file.localeCompare(b.file) || a.line - b.line;
 }

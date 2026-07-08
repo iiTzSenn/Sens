@@ -11,7 +11,7 @@ Sens indexes this project so you can *verify* these rules instead of guessing. U
 
 ## Before writing new code — search first, write second
 - Before adding any function, component, class, type, constant or helper, call \`already_exists\` with 1-2 distinctive keywords AND \`find_symbol\` for the likely names. If an equivalent already exists, REUSE it. Never write a second version of something that exists.
-- Orient with \`project_map\` and \`file_outline\` instead of reading whole files. Use \`file_dependencies\` to find related files.
+- Orient with \`project_map\` and \`file_outline\` instead of reading whole files. Use \`file_dependencies\` to find related files, and \`explain_symbol\` to see what calls a symbol and what it calls before you touch it — gather just the relevant code instead of reading everything.
 
 ## While writing — fewest lines that stay maintainable
 - Prefer reusing and composing existing code over adding new code. The best change often deletes more than it adds.
