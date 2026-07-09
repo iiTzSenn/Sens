@@ -115,6 +115,33 @@ export function box(lines: string[], opts: { title?: string; tone?: "brand" | "e
   );
 }
 
+/** One suggested next action: a `sens` command, or a bare gray tip (no cmd). */
+export interface Step {
+  cmd?: string;
+  hint: string;
+}
+
+/**
+ * A block of dynamic suggestions. With a title it reads as a "Próximos pasos"
+ * section (after a successful result); with an empty title the lines sit tight
+ * under the message (used when a query found nothing).
+ */
+export function nextSteps(steps: Step[], title = "Próximos pasos"): void {
+  if (steps.length === 0) return;
+  if (title) section(title);
+  const labels = steps.map((s) => (s.cmd ? `sens ${s.cmd}` : ""));
+  const w = Math.max(...labels.map((l) => l.length));
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    const arrow = c.meta(sym.arrow);
+    if (s.cmd) {
+      console.log(`${INDENT}${arrow} ${c.brand(labels[i].padEnd(w))}   ${c.meta(s.hint)}`);
+    } else {
+      console.log(`${INDENT}${arrow} ${c.meta(s.hint)}`);
+    }
+  }
+}
+
 export interface Spinner {
   /** Change the in-progress text (phase transitions) without a new line. */
   update(text: string): void;

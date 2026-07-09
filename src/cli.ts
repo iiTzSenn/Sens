@@ -20,6 +20,8 @@ import {
   renderPath,
   renderFileDependencies,
 } from "./cli/render.js";
+import * as suggest from "./cli/suggest.js";
+import type { Block } from "./cli/suggest.js";
 
 const root = process.cwd();
 const program = new Command();
@@ -59,10 +61,11 @@ async function getEngine(announce = false): ReturnType<typeof createEngine> {
   return res;
 }
 
-/** Render a query body between a header and trailing blank line. */
-function show(body: string): void {
+/** Render a query body plus optional dynamic suggestions, padded with blanks. */
+function show(body: string, block?: Block): void {
   ui.blank();
   ui.print(body);
+  if (block) ui.nextSteps(block.steps, block.title);
   ui.blank();
 }
 
@@ -125,7 +128,8 @@ program
     ui.header(`find ${name}`);
     const { engine } = await getEngine();
     logUsage(root, "find_symbol", { name });
-    show(renderSymbols(engine.findSymbol(name), `Sin coincidencias para “${name}”.`));
+    const syms = engine.findSymbol(name);
+    show(renderSymbols(syms, `Sin coincidencias para “${name}”.`), suggest.find(name, syms.length));
   });
 
 program
@@ -137,7 +141,8 @@ program
     ui.header(`who ${name}`);
     const { engine } = await getEngine();
     logUsage(root, "who_uses", { name, full: opts.full });
-    show(renderWhoUses(engine.whoUses(name), { full: opts.full }));
+    const results = engine.whoUses(name);
+    show(renderWhoUses(results, { full: opts.full }), suggest.who(name, results.length));
   });
 
 program
@@ -148,7 +153,8 @@ program
     ui.header(`explain ${name}`);
     const { engine } = await getEngine();
     logUsage(root, "explain_symbol", { name });
-    show(renderExplain(engine.explain(name)));
+    const results = engine.explain(name);
+    show(renderExplain(results), suggest.explain(name, results.length));
   });
 
 program
@@ -160,7 +166,8 @@ program
     ui.header(`path ${from} → ${to}`);
     const { engine } = await getEngine();
     logUsage(root, "symbol_path", { from, to });
-    show(renderPath(engine.path(from, to), from, to));
+    const p = engine.path(from, to);
+    show(renderPath(p, from, to), suggest.path(from, to, !!(p && p.length)));
   });
 
 program
@@ -171,7 +178,8 @@ program
     ui.header(`outline ${file}`);
     const { engine } = await getEngine();
     logUsage(root, "file_outline", { file });
-    show(renderSymbols(engine.fileOutline(file), `Sin símbolos en “${file}”.`));
+    const syms = engine.fileOutline(file);
+    show(renderSymbols(syms, `Sin símbolos en “${file}”.`), suggest.outline(file, syms.length));
   });
 
 program
@@ -183,7 +191,11 @@ program
     ui.header(`exists ${query}`);
     const { engine } = await getEngine();
     logUsage(root, "already_exists", { query });
-    show(renderSymbols(engine.alreadyExists(query), `Nada coincide con “${query}” — parece nuevo.`));
+    const syms = engine.alreadyExists(query);
+    show(
+      renderSymbols(syms, `Nada coincide con “${query}” — parece nuevo.`),
+      suggest.exists(query, syms.length, syms[0]?.name),
+    );
   });
 
 program
@@ -194,7 +206,8 @@ program
     ui.header(subdir ? `dead-code ${subdir}` : "dead-code");
     const { engine } = await getEngine();
     logUsage(root, "dead_code", { subdir });
-    show(renderDeadCode(engine.deadCode(subdir)));
+    const syms = engine.deadCode(subdir);
+    show(renderDeadCode(syms), suggest.deadCode(syms.length, syms[0]?.name));
   });
 
 program
@@ -205,7 +218,7 @@ program
     ui.header(`deps ${file}`);
     const { engine } = await getEngine();
     logUsage(root, "file_dependencies", { file });
-    show(renderFileDependencies(engine.fileDependencies(file)));
+    show(renderFileDependencies(engine.fileDependencies(file)), suggest.deps(file));
   });
 
 program

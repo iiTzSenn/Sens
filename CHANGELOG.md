@@ -4,6 +4,17 @@ All notable changes to `sens-mcp` are documented here. This project follows
 [Semantic Versioning](https://semver.org/): `patch` = fix, `minor` = feature,
 `major` = breaking change.
 
+## [Unreleased]
+
+### Added
+- **Dynamic command suggestions** — every query command now ends with context-aware
+  next steps, with your own argument spliced in: after `find login` it suggests
+  `sens who login` / `sens explain login`; after `dead-code` it points at
+  `sens who <candidate>` to confirm before deleting. When a query finds nothing, the
+  suggestions turn into help instead of a dead end (e.g. `find` with no match nudges you
+  to `sens exists <keywords>` or to reindex). Terminal-only — nothing here reaches the
+  model over MCP or the hook.
+
 ## [0.7.0] — 2026-07-09
 
 ### Added
