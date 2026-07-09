@@ -1,6 +1,6 @@
 {
   "name": "sens-mcp",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "A project index for Claude Code — let the model query your codebase instead of reading it all. Saves subscription usage and keeps code clean.",
   "type": "module",
   "bin": {
