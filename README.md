@@ -29,7 +29,14 @@
   <img src="docs/agents/cursor.svg" alt="Cursor" title="Cursor" height="46">
 </p>
 <p align="center">
-  <sub>Claude&nbsp;Code&nbsp;&nbsp;·&nbsp;&nbsp;Codex&nbsp;&nbsp;·&nbsp;&nbsp;GitHub&nbsp;Copilot&nbsp;&nbsp;·&nbsp;&nbsp;Cursor</sub>
+  <img alt="Windsurf" src="https://img.shields.io/badge/Windsurf-141a1e?style=for-the-badge&logo=windsurf&logoColor=58C4A6">
+  <img alt="Gemini CLI" src="https://img.shields.io/badge/Gemini_CLI-141a1e?style=for-the-badge&logo=googlegemini&logoColor=8AB4F8">
+  <img alt="Zed" src="https://img.shields.io/badge/Zed-141a1e?style=for-the-badge&logo=zedindustries&logoColor=white">
+  <img alt="Cline" src="https://img.shields.io/badge/Cline-141a1e?style=for-the-badge&logo=cline&logoColor=white">
+  <img alt="Continue" src="https://img.shields.io/badge/Continue-141a1e?style=for-the-badge&logo=continue&logoColor=white">
+</p>
+<p align="center">
+  <sub>Claude&nbsp;Code&nbsp;&nbsp;·&nbsp;&nbsp;Codex&nbsp;&nbsp;·&nbsp;&nbsp;GitHub&nbsp;Copilot&nbsp;&nbsp;·&nbsp;&nbsp;Cursor&nbsp;&nbsp;·&nbsp;&nbsp;Windsurf&nbsp;&nbsp;·&nbsp;&nbsp;Gemini&nbsp;CLI&nbsp;&nbsp;·&nbsp;&nbsp;Zed&nbsp;&nbsp;·&nbsp;&nbsp;Cline&nbsp;&nbsp;·&nbsp;&nbsp;Continue&nbsp;&nbsp;·&nbsp;&nbsp;any&nbsp;MCP&nbsp;client</sub>
 </p>
 
 ---
@@ -220,19 +227,27 @@ Optional `sens.config.json` at your project root:
 
 ## Dead code — read this
 
-Dead-code results are **candidates**, not certainties. Sens can't see:
+Dead-code results are **candidates**, not certainties — but they're now ranked so
+you know how far to trust each one. Sens reports everything **unreachable** from an
+entry point (including *dead islands* — clusters that only reference each other — and
+whole dead files), tiered by confidence:
 
-- dynamic usage (string-based access, reflection);
-- framework "magic" (e.g. Vue/Nuxt auto-imported components — SFC support is on the roadmap);
-- a public API meant for external consumers (use `entryPoints`).
+- 🟢 **HIGH** — internal, no references anywhere. Safe to remove after a glance.
+- 🟡 **MEDIUM** — internal, reached only from other dead code. Remove the cluster together.
+- 🔴 **LOW** — an export (maybe public API) or a method (maybe dynamic dispatch). **Verify first.**
 
-Test files count as usage sources but are never themselves reported as dead. **Verify before deleting.**
+Before reporting, Sens also greps your non-source files (JSON/config/templates) and
+flags any candidate whose name shows up there as a possible **reflective use**. Entry
+points are auto-detected (`package.json` across a monorepo; `main`/`init`/framework
+annotations per language), and test files count as usage but are never reported as dead.
+It still can't see every dynamic/reflective path, so: **verify LOW candidates before deleting.**
 
 ## Roadmap
 
 - [ ] Enforcement hook (warn/block when an edit introduces dead code or a duplicate)
 - [ ] Semantic `already_exists` (embeddings) + near-duplicate detection
-- [ ] More languages via tree-sitter; Vue/Svelte SFCs
+- [x] Per-language dead-code accuracy across all tree-sitter languages
+- [ ] Vue/Svelte SFC support; more languages via tree-sitter
 - [ ] Dashboard: symbol-level graph, live file watching
 - [x] A reproducible benchmark suite (`npm run bench`)
 

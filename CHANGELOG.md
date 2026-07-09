@@ -4,6 +4,50 @@ All notable changes to `sens-mcp` are documented here. This project follows
 [Semantic Versioning](https://semver.org/): `patch` = fix, `minor` = feature,
 `major` = breaking change.
 
+## [0.9.0] — 2026-07-09
+
+Dead-code detection rebuilt to be a signal you can act on — and extended to every
+supported language.
+
+### Added
+- **Reachability-based dead code** — candidates are now everything *unreachable*
+  from an entry point, not just symbols with zero references. This finds **dead
+  islands** (clusters of symbols that only reference each other while the whole
+  cluster is unused) that the old "unreferenced" check silently missed.
+- **Confidence tiers** — every candidate is ranked **HIGH** (internal, no
+  references), **MEDIUM** (internal dead island), or **LOW** (an export or method
+  that might be consumed outside the index / via dynamic dispatch), each with a
+  one-line reason. HIGH is safe to remove after a glance; LOW says "verify first".
+- **Whole dead files** — when nothing imports a file and none of its symbols is
+  reachable, Sens reports the module ("delete the file") instead of each symbol.
+- **Reflective auto-verification** — before reporting, Sens greps the non-indexed
+  files (JSON/YAML/config/templates/HTML) for each candidate's name and flags any
+  hit as a possible reflective use, downgrading its tier. It automates the "grep
+  before deleting" step.
+- **Auto entry points** — a package's public API is detected from `package.json`
+  (`main`/`module`/`bin`/`types`/`exports`), across every package in a monorepo,
+  so published API is no longer flagged as dead.
+- **Per-language accuracy for all tree-sitter languages** — Python & Rust resolve
+  imports/modules to files and use **import-scoped** references (so a symbol named
+  `helper` in one module is no longer kept alive by an unrelated `helper`
+  elsewhere); Go & Kotlin use **package-scoped** references with qualified-access
+  awareness; Go/Rust/Kotlin/Java/C#/C/C++ mark real **entry points** (`main`,
+  `init`, `#[no_mangle]`, framework annotations like `@Component`/`@Composable`,
+  ASP.NET controllers) so they're never false positives; visibility (`exported`)
+  is read correctly per language (Kotlin `private`/`internal`, C/C++ `static` /
+  anonymous namespace, and a fixed C# modifier check).
+- **Language-aware test-file detection** — `_test.go`, `test_*.py`, `conftest.py`,
+  `*_spec.rb`, `FooTest.kt`, `FooSpec.cs`, etc. are recognized so their symbols
+  aren't reported as dead.
+
+### Changed
+- **`dead_code` output** now groups by tier and lists whole dead files first, in
+  both the CLI and the MCP/text surface the model reads.
+- **TypeScript references resolve the project's `tsconfig`/`jsconfig` `paths`** —
+  alias imports like `@/utils` now resolve, so aliased code is no longer flagged
+  as dead. JSX, type-only usage, and re-export barrels are covered too (with tests).
+- Index schema bumped (caches rebuild automatically on first run).
+
 ## [0.8.0] — 2026-07-09
 
 ### Added
