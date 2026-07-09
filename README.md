@@ -49,7 +49,9 @@ cd your-project
 sens init
 ```
 
-`sens init` builds the index, installs a **skill** so Claude knows when to query Sens, and wires a **hook** that answers Claude's searches *before they run* — when the model is about to grep for a symbol, Sens returns it (and every use) directly, and a file read gets the outline injected first. Nothing else to start: just work normally and ask Claude naturally (*"any dead code? check with sens"*).
+`sens init` builds the index, installs a **skill** so Claude knows when to query Sens, wires a **hook** that answers Claude's searches *before they run* (when the model is about to grep for a symbol, Sens returns it and every use directly; a file read gets the outline injected first), and puts your **working rules** in front of the model at the start of every session. Nothing else to start: just work normally and ask Claude naturally (*"any dead code? check with sens"*).
+
+Using another agent? `sens init --agent codex` (or `copilot`, `cursor`, `all`) writes the same guide + rules into that agent's instructions file (`AGENTS.md`, `.github/copilot-instructions.md`, `.cursorrules`) so it drives the `sens` CLI too.
 
 <details>
 <summary><b>Prefer MCP?</b> (or a host that only speaks MCP)</summary>
@@ -94,7 +96,7 @@ The same set of operations, whether Claude runs them as `sens` commands (driven 
 
 ## Working rules
 
-Sens's MCP server also hands Claude a short set of **working rules** it follows when writing or changing code — reuse what exists instead of duplicating, keep code minimal but maintainable, and leave nothing orphaned — each tied to the tool that lets it *verify* the rule (`already_exists`/`find_symbol` before writing, `dead_code` before finishing, `who_uses` before a rename). They load automatically — bundled into the skill (installed by `sens init`) and sent as the MCP server's instructions; run `sens rules` to read them, or `sens rules --write` to drop a `SENS_RULES.md` you can reference from your `CLAUDE.md` / `AGENTS.md`.
+Sens's MCP server also hands Claude a short set of **working rules** it follows when writing or changing code — reuse what exists instead of duplicating, keep code minimal but maintainable, and leave nothing orphaned — each tied to the tool that lets it *verify* the rule (`already_exists`/`find_symbol` before writing, `dead_code` before finishing, `who_uses` before a rename). The rules are **composable modules** (search-first, minimal, no-orphans, optimization, plus opt-in error-handling and testing). `sens init` wires a `SessionStart` hook that injects the active modules at the start of every session, so they apply automatically. Enable/disable modules or add your own in `sens.config.json`, from the **dashboard's "Working rules" panel**, or see their state with `sens rules --list`. Run `sens rules` to print the active set, or `sens rules --write` to drop a `SENS_RULES.md` you can reference from your `CLAUDE.md` / `AGENTS.md`.
 
 ## Slash commands
 
@@ -114,7 +116,7 @@ Sens also registers prompts, so it shows up in Claude Code's `/` menu:
 You can also drive Sens yourself:
 
 ```bash
-npx sens-mcp init           # set up here: index + skill + PreToolUse hook
+npx sens-mcp init           # set up here (--agent codex|copilot|cursor|all for other agents)
 npx sens-mcp index          # build/update the index (cached by file mtime)
 npx sens-mcp map [subdir]   # compact project map
 npx sens-mcp find <name>    # where a symbol is defined
@@ -125,7 +127,7 @@ npx sens-mcp dead-code      # unused symbols (candidates)
 npx sens-mcp deps <file>    # what a file imports and what imports it
 npx sens-mcp report         # self-contained HTML report → .sens/report.html
 npx sens-mcp dashboard      # interactive web dashboard
-npx sens-mcp rules          # print the coding rules (--write to save SENS_RULES.md)
+npx sens-mcp rules          # print active rules (--list for module states, --write to save)
 npx sens-mcp skill          # print the Claude Code skill (--write to install it)
 npx sens-mcp usage          # which Sens tools the model has actually called
 ```

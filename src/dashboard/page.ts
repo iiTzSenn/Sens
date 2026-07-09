@@ -271,6 +271,33 @@ export function renderDashboardPage(): string {
   .kind { color: var(--muted); font-size: 11px; flex: none; }
   .ins-note { color: var(--muted); font-size: 12px; margin: 0 0 4px; }
   .cnum { color: var(--accent); font-size: 12px; flex: none; font-variant-numeric: tabular-nums; }
+  /* rules manager modal */
+  .modal { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(10,14,22,.55); backdrop-filter: blur(3px); }
+  .modal[hidden] { display: none; }
+  .modal-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 620px; max-width: 100%; max-height: 86vh; overflow-y: auto; padding: 18px 20px 20px; box-shadow: 0 24px 60px rgba(0,0,0,.35); }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .modal-head h2 { margin: 0; font-size: 17px; }
+  .modal-sub { color: var(--muted); font-size: 12.5px; margin: 4px 0 14px; }
+  .rule-row { border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; margin-bottom: 9px; background: var(--card); }
+  .rule-top { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .rule-name { font-weight: 600; }
+  .rule-id { color: var(--muted); font-size: 11px; font-family: ui-monospace, Consolas, monospace; }
+  .rule-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--tag-fg); background: var(--tag-bg); border-radius: 20px; padding: 1px 7px; }
+  .rule-actions { margin-inline-start: auto; display: flex; align-items: center; gap: 8px; }
+  .rule-body { color: var(--muted); font-size: 12px; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 0; overflow: hidden; transition: max-height .2s, margin .2s; }
+  .rule-row.open .rule-body { max-height: 420px; margin-top: 9px; }
+  .switch { width: 40px; height: 22px; border-radius: 20px; border: none; background: var(--border-strong); position: relative; cursor: pointer; flex: none; transition: background .15s; padding: 0; }
+  .switch::after { content: ''; position: absolute; top: 2px; inset-inline-start: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch.on { background: var(--accent); }
+  .switch.on::after { transform: translateX(18px); }
+  .rule-del { border: none; background: transparent; color: var(--muted); cursor: pointer; padding: 2px 6px; font-size: 16px; line-height: 1; }
+  .rule-del:hover { color: #e0533d; }
+  .rules-add { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; }
+  .rules-add h3 { margin: 0 0 8px; font-size: 13px; }
+  .rules-add-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .rules-add input, .rules-add textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--fg); font: inherit; box-sizing: border-box; }
+  .rules-add textarea { min-height: 70px; resize: vertical; font-size: 12.5px; font-family: ui-monospace, Consolas, monospace; }
+  .rules-add .btn-primary { margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -300,11 +327,35 @@ export function renderDashboardPage(): string {
         </button>
         <span id="freshBadge" class="status" data-i18n-title="freshChecking" title="Checking index freshness…"></span>
       </div>
+      <button id="btnRules" class="btn btn-ghost btn-icon" title="Working rules" aria-label="Working rules">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </button>
     </div>
   </header>
   <div id="toast" class="toast">
     <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
     <span class="msg" data-i18n="connected">Connected to Claude Code</span>
+  </div>
+  <div id="rulesModal" class="modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>Working rules</h2>
+        <button id="rulesClose" class="btn btn-ghost btn-icon" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <p class="modal-sub">Injected at the start of every Claude Code session. Turn modules on or off, or add your own.</p>
+      <div id="rulesList"></div>
+      <div class="rules-add">
+        <h3>Add a rule</h3>
+        <div class="rules-add-row">
+          <input id="ruleId" placeholder="id (e.g. security)" autocomplete="off">
+          <input id="ruleTitle" placeholder="Title" autocomplete="off">
+        </div>
+        <textarea id="ruleBody" placeholder="- Markdown body of the rule…"></textarea>
+        <button id="ruleSave" class="btn btn-primary">Add rule</button>
+      </div>
+    </div>
   </div>
   <div class="body">
     <div class="graphwrap">
@@ -576,7 +627,7 @@ export function renderDashboardPage(): string {
   var LAYOUTS = ['force','hierarchical','circular','grid'];
   var layout = (function(){ var s = storedLayout(); return LAYOUTS.indexOf(s) >= 0 ? s : 'force'; })();
 
-  function api(path, method){ return fetch(path, { method: method || 'GET' }).then(function(r){ return r.json(); }); }
+  function api(path, method, body){ return fetch(path, { method: method || 'GET', headers: body ? {'content-type':'application/json'} : {}, body: body ? JSON.stringify(body) : undefined }).then(function(r){ return r.json(); }); }
   function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
   function setText(id, v){ document.getElementById(id).textContent = v; }
   function base(p){ return p.split('/').pop(); }
@@ -1464,6 +1515,60 @@ export function renderDashboardPage(): string {
   }
   document.getElementById('btnConnect').addEventListener('click', function(){
     api('/api/connect','POST').then(function(){ return api('/api/data'); }).then(function(d){ data=d; renderSidebar(); if(d.connected) showToast(t('connected')); });
+  });
+
+  // rules manager: list modules with on/off switches, add/remove custom rules.
+  function ruleSwitch(r){
+    var sw = document.createElement('button');
+    sw.className = 'switch' + (r.active ? ' on' : '');
+    sw.setAttribute('role','switch');
+    sw.setAttribute('aria-checked', r.active ? 'true' : 'false');
+    sw.setAttribute('aria-label', r.title);
+    sw.addEventListener('click', function(e){ e.stopPropagation(); api('/api/rules/toggle','POST',{ id:r.id, active:!r.active }).then(renderRules); });
+    return sw;
+  }
+  function renderRules(d){
+    var list = (d && d.rules) || [];
+    var box = document.getElementById('rulesList');
+    box.innerHTML = '';
+    list.forEach(function(r){
+      var row = el('div','rule-row');
+      var top = el('div','rule-top');
+      top.appendChild(el('span','rule-name', r.title));
+      top.appendChild(el('span','rule-id', r.id));
+      if(r.custom) top.appendChild(el('span','rule-tag', 'custom'));
+      var actions = el('div','rule-actions');
+      if(r.custom){
+        var del = document.createElement('button');
+        del.className = 'rule-del'; del.title = 'Remove rule'; del.textContent = '×';
+        del.addEventListener('click', function(e){ e.stopPropagation(); api('/api/rules/remove','POST',{ id:r.id }).then(renderRules); });
+        actions.appendChild(del);
+      }
+      actions.appendChild(ruleSwitch(r));
+      top.appendChild(actions);
+      top.addEventListener('click', function(){ row.classList.toggle('open'); });
+      row.appendChild(top);
+      row.appendChild(el('div','rule-body', r.body));
+      box.appendChild(row);
+    });
+  }
+  function closeRules(){ document.getElementById('rulesModal').hidden = true; }
+  document.getElementById('btnRules').addEventListener('click', function(){
+    api('/api/rules').then(renderRules);
+    document.getElementById('rulesModal').hidden = false;
+  });
+  document.getElementById('rulesClose').addEventListener('click', closeRules);
+  document.getElementById('rulesModal').addEventListener('click', function(e){ if(e.target.id === 'rulesModal') closeRules(); });
+  window.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeRules(); });
+  document.getElementById('ruleSave').addEventListener('click', function(){
+    var id = document.getElementById('ruleId').value.trim();
+    var title = document.getElementById('ruleTitle').value.trim();
+    var body = document.getElementById('ruleBody').value.trim();
+    if(!id || !title || !body){ showToast('Fill in id, title and body'); return; }
+    api('/api/rules/custom','POST',{ id:id, title:title, body:body }).then(function(d){
+      document.getElementById('ruleId').value=''; document.getElementById('ruleTitle').value=''; document.getElementById('ruleBody').value='';
+      renderRules(d); showToast('Rule added');
+    });
   });
 
   // theme toggle: cycle stored preference between light and dark; changing it repaints

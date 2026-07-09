@@ -3,7 +3,14 @@ import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { createEngine } from "../core.js";
-import { loadConfig } from "../config.js";
+import {
+  loadConfig,
+  ruleModules,
+  setRuleState,
+  addCustomRule,
+  removeCustomRule,
+  saveRules,
+} from "../config.js";
 import { loadIndex, isFresh } from "../store/store.js";
 import type { ProjectIndex } from "../types.js";
 import type { QueryEngine } from "../query/engine.js";
@@ -64,6 +71,37 @@ function connect(root: string): void {
   writeFileSync(p, JSON.stringify(json, null, 2) + "\n", "utf8");
 }
 
+/** The rule modules with their resolved on/off state, for the dashboard's rules panel. */
+function rulesPayload(root: string) {
+  const config = loadConfig(root);
+  const customIds = new Set(config.rules.custom.map((m) => m.id));
+  return {
+    rules: ruleModules(config).map(({ module, active }) => ({
+      id: module.id,
+      title: module.title,
+      body: module.body,
+      active,
+      custom: customIds.has(module.id),
+    })),
+  };
+}
+
+/** Read and JSON-parse a request body; returns {} on any failure. */
+function readBody(req: import("node:http").IncomingMessage): Promise<Record<string, unknown>> {
+  return new Promise((resolve) => {
+    let data = "";
+    req.on("data", (c) => (data += c));
+    req.on("end", () => {
+      try {
+        resolve(data ? (JSON.parse(data) as Record<string, unknown>) : {});
+      } catch {
+        resolve({});
+      }
+    });
+    req.on("error", () => resolve({}));
+  });
+}
+
 function openBrowser(url: string): void {
   const win = process.platform === "win32";
   const cmd = win ? "cmd" : process.platform === "darwin" ? "open" : "xdg-open";
@@ -120,6 +158,40 @@ export async function startDashboard(
       } else if (req.method === "POST" && url === "/api/connect") {
         connect(root);
         json(res, { connected: true });
+      } else if (req.method === "GET" && url === "/api/rules") {
+        json(res, rulesPayload(root));
+      } else if (req.method === "POST" && url === "/api/rules/toggle") {
+        const body = await readBody(req);
+        if (typeof body.id === "string") {
+          saveRules(root, setRuleState(loadConfig(root), body.id, Boolean(body.active)));
+        }
+        json(res, rulesPayload(root));
+      } else if (req.method === "POST" && url === "/api/rules/custom") {
+        const body = await readBody(req);
+        if (
+          typeof body.id === "string" &&
+          typeof body.title === "string" &&
+          typeof body.body === "string" &&
+          body.id.trim() &&
+          body.title.trim() &&
+          body.body.trim()
+        ) {
+          saveRules(
+            root,
+            addCustomRule(loadConfig(root), {
+              id: body.id.trim(),
+              title: body.title.trim(),
+              body: body.body.trim(),
+            }),
+          );
+        }
+        json(res, rulesPayload(root));
+      } else if (req.method === "POST" && url === "/api/rules/remove") {
+        const body = await readBody(req);
+        if (typeof body.id === "string") {
+          saveRules(root, removeCustomRule(loadConfig(root), body.id));
+        }
+        json(res, rulesPayload(root));
       } else {
         res.writeHead(404);
         res.end("not found");

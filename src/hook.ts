@@ -19,11 +19,21 @@ import path from "node:path";
 import { parserForFile } from "./indexer/languages/parser.js";
 import { runQuery } from "./queries.js";
 import { rel } from "./paths.js";
+import { loadConfig, activeRules } from "./config.js";
+import { composeRules } from "./rules.js";
 
 interface HookPayload {
   session_id?: string;
+  hook_event_name?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
+}
+
+/** The rules document to inject at session start, or null if none are active. */
+export function sessionStartContext(root: string): string | null {
+  const rules = activeRules(loadConfig(root));
+  if (rules.length === 0) return null;
+  return composeRules(rules);
 }
 
 /** What the hook decided to do about a tool call. */
@@ -126,6 +136,25 @@ export async function runHook(): Promise<void> {
     payload = JSON.parse(readFileSync(0, "utf8")) as HookPayload;
   } catch {
     return; // not our shape / no stdin — never interfere with the tool call
+  }
+
+  // SessionStart: put the project's active working rules in front of the model
+  // at the very start of the session, no tool call required.
+  if (payload.hook_event_name === "SessionStart") {
+    let ctx: string | null = null;
+    try {
+      ctx = sessionStartContext(process.cwd());
+    } catch {
+      return;
+    }
+    if (ctx) {
+      process.stdout.write(
+        JSON.stringify({
+          hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: ctx },
+        }),
+      );
+    }
+    return;
   }
 
   const tool = payload.tool_name ?? "";

@@ -4,6 +4,23 @@ All notable changes to `sens-mcp` are documented here. This project follows
 [Semantic Versioning](https://semver.org/): `patch` = fix, `minor` = feature,
 `major` = breaking change.
 
+## [0.6.0] — 2026-07-09
+
+### Added
+- **Modular working rules** — the rules are now composable modules (search-first,
+  minimal, no-orphans, optimization, plus opt-in error-handling and testing). A project
+  enables/disables modules or adds its own in `sens.config.json`; `sens rules --list`
+  shows the state of each.
+- **Rules applied automatically at session start** — `sens init` now also wires a
+  `SessionStart` hook that injects the active rules at the start of every Claude Code
+  session, so they are in force without the model having to load anything.
+- **Multi-agent setup** — `sens init --agent codex|copilot|cursor|all` writes the sens
+  usage guide + active rules into that agent's instructions file (`AGENTS.md`,
+  `.github/copilot-instructions.md`, `.cursorrules`), between markers so re-running just
+  refreshes the block. `--agent claude` (default) still installs the skill + hooks.
+- **Dashboard rules manager** — a "Working rules" panel to view every module, toggle it
+  on or off, and add or remove your own rules, persisted to `sens.config.json`.
+
 ## [0.5.0] — 2026-07-08
 
 ### Added

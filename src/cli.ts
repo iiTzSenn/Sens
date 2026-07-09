@@ -6,7 +6,8 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { VERSION } from "./index.js";
 import { createEngine } from "./core.js";
 import { sensDir } from "./paths.js";
-import { AGENT_RULES } from "./rules.js";
+import { composeRules } from "./rules.js";
+import { loadConfig, activeRules, ruleModules } from "./config.js";
 import { readUsage, formatUsage } from "./usage.js";
 import { supportedLanguages } from "./indexer/languages/parser.js";
 import { runQuery } from "./queries.js";
@@ -145,17 +146,27 @@ program
 
 program
   .command("rules")
-  .description("Print the coding rules Sens gives the model (reuse over duplicate, no orphan code)")
+  .description("Print the working rules currently active for this project (reuse, minimal, no orphans, …)")
   .option("-w, --write [file]", "write the rules to a file instead of printing (default: SENS_RULES.md)")
-  .action((opts: { write?: string | boolean }) => {
+  .option("-l, --list", "list every rule module and whether it is on or off")
+  .action((opts: { write?: string | boolean; list?: boolean }) => {
+    const config = loadConfig(root);
+    if (opts.list) {
+      for (const { module, active } of ruleModules(config)) {
+        const tag = active ? pc.green("on ") : pc.dim("off");
+        console.log(`  [${tag}] ${module.id}  ${pc.dim(module.title)}`);
+      }
+      return;
+    }
+    const rules = composeRules(activeRules(config));
     if (opts.write) {
       const out = typeof opts.write === "string" ? opts.write : "SENS_RULES.md";
-      writeFileSync(out, AGENT_RULES + "\n", "utf8");
+      writeFileSync(out, rules + "\n", "utf8");
       console.log(
         `${pc.green("✓")} rules written to ${pc.cyan(out)} ${pc.dim("— reference it from your CLAUDE.md / AGENTS.md")}`,
       );
     } else {
-      console.log(AGENT_RULES);
+      console.log(rules);
     }
   });
 
@@ -187,23 +198,35 @@ program
 
 program
   .command("init")
-  .description("Set up sens here: build the index, install the skill, wire the PreToolUse hook")
-  .action(async () => {
+  .description("Set up sens here for an agent: index + rules, plus the skill/hooks on Claude Code")
+  .option("--agent <name>", "claude | codex | copilot | cursor | all", "claude")
+  .action(async (opts: { agent: string }) => {
     const { initProject } = await import("./init.js");
-    const r = await initProject(root);
-    console.log(`${pc.green("✓")} index built — ${r.indexedFiles} file(s)`);
-    console.log(`${pc.green("✓")} skill installed — ${pc.cyan(r.skillPath)}`);
-    if (r.hookWired === "skipped") {
-      console.log(
-        `${pc.yellow("⚠")} could not parse ${pc.cyan(r.settingsPath)} — add the PreToolUse hook manually`,
-      );
-    } else {
-      const verb = r.hookWired === "added" ? "wired into" : "already in";
-      console.log(`${pc.green("✓")} hook ${verb} ${pc.cyan(r.settingsPath)}`);
+    let results;
+    try {
+      results = await initProject(root, { agent: opts.agent });
+    } catch (err) {
+      console.error(pc.red(err instanceof Error ? err.message : String(err)));
+      process.exitCode = 1;
+      return;
     }
-    console.log(
-      pc.dim("\nsens must be on PATH (npm i -g sens-mcp) for the hook command to resolve."),
-    );
+    console.log(`${pc.green("✓")} index built — ${results[0].indexedFiles} file(s)`);
+    for (const r of results) {
+      if (r.agent === "claude") {
+        console.log(`${pc.green("✓")} skill installed — ${pc.cyan(r.skillPath ?? "")} ${pc.dim("[claude]")}`);
+        if (r.hookWired === "skipped") {
+          console.log(`${pc.yellow("⚠")} could not parse ${pc.cyan(r.settingsPath ?? "")} — add the hooks manually`);
+        } else {
+          const verb = r.hookWired === "added" ? "wired into" : "already in";
+          console.log(`${pc.green("✓")} hooks ${verb} ${pc.cyan(r.settingsPath ?? "")} ${pc.dim("[claude]")}`);
+        }
+      } else {
+        console.log(
+          `${pc.green("✓")} rules ${r.instructionsWritten} — ${pc.cyan(r.instructionsPath ?? "")} ${pc.dim(`[${r.agent}]`)}`,
+        );
+      }
+    }
+    console.log(pc.dim("\nsens must be on PATH (npm i -g sens-mcp) for agents to run its commands."));
   });
 
 program
