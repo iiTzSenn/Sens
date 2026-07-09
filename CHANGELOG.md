@@ -4,7 +4,7 @@ All notable changes to `sens-mcp` are documented here. This project follows
 [Semantic Versioning](https://semver.org/): `patch` = fix, `minor` = feature,
 `major` = breaking change.
 
-## [Unreleased]
+## [0.7.0] — 2026-07-09
 
 ### Added
 - **Shareable dashboard** — `sens dashboard` now prints Local / Network / Public URLs
