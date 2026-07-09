@@ -4,6 +4,7 @@ import path from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { VERSION } from "./index.js";
 import { createEngine } from "./core.js";
+import { analyzeDeadCode } from "./deadcode.js";
 import { sensDir } from "./paths.js";
 import { composeRules } from "./rules.js";
 import { loadConfig, activeRules, ruleModules } from "./config.js";
@@ -206,8 +207,9 @@ program
     ui.header(subdir ? `dead-code ${subdir}` : "dead-code");
     const { engine } = await getEngine();
     logUsage(root, "dead_code", { subdir });
-    const syms = engine.deadCode(subdir);
-    show(renderDeadCode(syms), suggest.deadCode(syms.length, syms[0]?.name));
+    const report = await analyzeDeadCode(root, engine, subdir);
+    const top = report.candidates[0]?.symbol.name;
+    show(renderDeadCode(report), suggest.deadCode(report.candidates.length + report.files.length, top));
   });
 
 program

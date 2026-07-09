@@ -1,7 +1,7 @@
 // Core data model for the Sens project index.
 
 /** Bump when the index shape or indexing logic changes, to invalidate caches. */
-export const INDEX_SCHEMA_VERSION = 5;
+export const INDEX_SCHEMA_VERSION = 6;
 
 export type SymbolKind =
   | "function"
@@ -27,6 +27,13 @@ export interface SymbolInfo {
   /** Compact one-line signature (no body). */
   signature: string;
   exported: boolean;
+  /**
+   * A runtime/framework entry point that no in-project code visibly calls but
+   * is still live — e.g. Go `func main`/`init`, a WASM/JNI export, a CLI/handler
+   * registered by convention. Treated as a reachability root, so it's never a
+   * dead-code candidate. Set by language extractors that know the convention.
+   */
+  entry?: boolean;
 }
 
 export interface Reference {

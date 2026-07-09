@@ -50,6 +50,15 @@ describe("query engine", () => {
     expect(dead).not.toContain("PI");
   });
 
+  it("ranks candidates by confidence tier", async () => {
+    const e = await engine();
+    const byName = new Map(e.deadCodeReport().candidates.map((c) => [c.symbol.name, c]));
+    // internal + unreferenced -> highest confidence.
+    expect(byName.get("unusedHelper")?.tier).toBe("high");
+    // exported -> could be public API, lowest confidence.
+    expect(byName.get("subtract")?.tier).toBe("low");
+  });
+
   it("treats exports in entry-point files as used", async () => {
     const e = await engine(["math.ts"]);
     const dead = e.deadCode().map((s) => s.name);
@@ -83,5 +92,32 @@ describe("query engine", () => {
     expect(deps.imports.some((f) => f.endsWith("math.ts"))).toBe(true);
     const reverse = e.fileDependencies("math.ts");
     expect(reverse.importedBy.some((f) => f.endsWith("app.ts"))).toBe(true);
+  });
+});
+
+describe("dead islands (reachability)", () => {
+  async function islandEngine(): Promise<QueryEngine> {
+    const index = await buildIndex(path.join(here, "fixtures", "island"));
+    return new QueryEngine(index);
+  }
+
+  it("flags a mutually-referencing cluster a zero-ref filter would miss", async () => {
+    const e = await islandEngine();
+    const ranked = new Map(e.deadCodeReport().candidates.map((c) => [c.symbol.name, c]));
+    // islandA/islandB each have a reference (from the other), so they are NOT
+    // zero-ref — yet the whole cluster is unreachable.
+    expect(ranked.get("islandA")?.tier).toBe("medium");
+    expect(ranked.get("islandB")?.tier).toBe("medium");
+    // deadExport is an unused export -> low confidence (might be public API).
+    expect(ranked.get("deadExport")?.tier).toBe("low");
+  });
+
+  it("keeps reachable symbols — and an export's private helper — out of the list", async () => {
+    const e = await islandEngine();
+    const dead = e.deadCode().map((s) => s.name);
+    expect(dead).not.toContain("entry"); // root: called at module scope
+    expect(dead).not.toContain("liveHelper"); // reached from entry
+    // reached only through deadExport, which might be called externally -> spared.
+    expect(dead).not.toContain("privateOfDeadExport");
   });
 });

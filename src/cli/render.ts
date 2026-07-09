@@ -12,6 +12,8 @@ import type {
   WhoUsesResult,
   FileDependencies,
   Neighborhood,
+  DeadCodeReport,
+  DeadCodeTier,
 } from "../query/engine.js";
 
 const I1 = INDENT;
@@ -121,25 +123,41 @@ export function renderWhoUses(
 }
 
 // ── dead-code ───────────────────────────────────────────────────────────────
-export function renderDeadCode(syms: SymbolInfo[]): string {
-  if (syms.length === 0)
+const DEAD_TIERS: { tier: DeadCodeTier; label: string }[] = [
+  { tier: "high", label: "alta confianza — interno, sin referencias" },
+  { tier: "medium", label: "media — isla muerta interna" },
+  { tier: "low", label: "baja — export/método; podría usarse fuera del índice" },
+];
+
+export function renderDeadCode(report: DeadCodeReport): string {
+  const { candidates, files } = report;
+  if (candidates.length === 0 && files.length === 0)
     return `${I1}${c.ok(sym.ok)} ${c.text("sin candidatos de código muerto")}`;
+
+  const deadFiles = new Set(files);
+  const total = `${candidates.length} candidato(s)${files.length ? ` + ${files.length} archivo(s)` : ""}`;
   const lines: string[] = [
-    `${I1}${c.warn(sym.warn)} ${c.text(`${syms.length} candidato(s)`)} ${c.meta("— sin referencias; verifica antes de borrar")}`,
-    "",
+    `${I1}${c.warn(sym.warn)} ${c.text(total)} ${c.meta("— inalcanzables; candidatos, no veredicto")}`,
   ];
-  let lastDir: string | null = null;
-  for (const s of syms) {
-    const dir = dirOf(s.file);
-    if (dir !== lastDir) {
-      if (lastDir !== null) lines.push("");
-      lines.push(I1 + c.meta(dir));
-      lastDir = dir;
+
+  if (files.length > 0) {
+    lines.push("", I1 + c.meta("archivos muertos completos — nadie los importa"));
+    for (const f of files) {
+      lines.push(I2 + `${c.meta(sym.empty)} ${c.text(f)} ${c.meta("borra el archivo")}`);
     }
-    const base = s.file.slice(dir === "./" ? 0 : dir.length);
-    const tag = s.exported ? ` ${c.meta("[exported]")}` : "";
-    const left = `${c.meta(sym.empty)} ${c.text(s.name)} ${c.meta(s.kind)}`;
-    lines.push(I2 + align(left, c.meta(`${base}:${s.line}`) + tag, rowWidth(2)));
+  }
+
+  const loose = candidates.filter((cd) => !deadFiles.has(cd.symbol.file));
+  for (const { tier, label } of DEAD_TIERS) {
+    const group = loose.filter((cd) => cd.tier === tier);
+    if (group.length === 0) continue;
+    lines.push("", I1 + c.meta(label));
+    for (const { symbol: s, reflectiveHit } of group) {
+      const tag = s.exported ? ` ${c.meta("[exported]")}` : "";
+      const left = `${c.meta(sym.empty)} ${c.text(s.name)} ${c.meta(s.kind)}`;
+      lines.push(I2 + align(left, c.meta(`${s.file}:${s.line}`) + tag, rowWidth(2)));
+      if (reflectiveHit) lines.push(I3 + c.warn(`${sym.warn} aparece en ${reflectiveHit} (¿uso reflexivo?)`));
+    }
   }
   return lines.join("\n");
 }

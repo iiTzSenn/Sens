@@ -6,6 +6,8 @@ import type {
   WhoUsesResult,
   FileDependencies,
   Neighborhood,
+  DeadCodeReport,
+  DeadCodeTier,
 } from "./query/engine.js";
 
 /** The declared name inside a symbol id (`file#name#line`). */
@@ -77,16 +79,40 @@ export function formatWhoUses(
   return lines.join("\n");
 }
 
-export function formatDeadCode(syms: SymbolInfo[]): string {
-  if (syms.length === 0) return "no dead-code candidates found";
+/** Tier headings, most-confident first. */
+const DEAD_TIERS: { tier: DeadCodeTier; label: string }[] = [
+  { tier: "high", label: "HIGH confidence — internal, unreferenced; safe to remove" },
+  { tier: "medium", label: "MEDIUM — internal dead island; glance at the reason, then remove" },
+  { tier: "low", label: "LOW — exported API or method (dynamic dispatch); verify before removing" },
+];
+
+export function formatDeadCode(report: DeadCodeReport): string {
+  const { candidates, files } = report;
+  if (candidates.length === 0 && files.length === 0)
+    return "no dead-code candidates found";
+
+  const deadFiles = new Set(files);
   const lines: string[] = [
-    `${syms.length} dead-code candidate(s) — unused; verify before deleting`,
-    "",
+    `${candidates.length} dead-code candidate(s)${files.length ? ` + ${files.length} dead file(s)` : ""} — unreachable from any entry point; candidates, not a verdict`,
   ];
-  for (const s of syms) {
-    lines.push(
-      `${s.file}:${s.line}  ${s.kind} ${s.name}${s.exported ? "  [exported]" : ""}`,
-    );
+
+  if (files.length > 0) {
+    lines.push("", `WHOLE DEAD FILES — nothing imports them, no live symbol (${files.length}):`);
+    for (const f of files) lines.push(`  ${f}  — delete the file`);
+  }
+
+  // Symbols inside a dead file are already covered by the file entry above.
+  const loose = candidates.filter((c) => !deadFiles.has(c.symbol.file));
+  for (const { tier, label } of DEAD_TIERS) {
+    const group = loose.filter((c) => c.tier === tier);
+    if (group.length === 0) continue;
+    lines.push("", `${label} (${group.length}):`);
+    for (const { symbol: s, reason, reflectiveHit } of group) {
+      const warn = reflectiveHit ? ` — ⚠ also appears in ${reflectiveHit} (possible reflective use)` : "";
+      lines.push(
+        `  ${s.file}:${s.line}  ${s.kind} ${s.name}${s.exported ? "  [exported]" : ""}  — ${reason}${warn}`,
+      );
+    }
   }
   return lines.join("\n");
 }

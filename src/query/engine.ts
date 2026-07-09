@@ -29,6 +29,30 @@ export interface Neighborhood {
   callees: SymbolInfo[];
 }
 
+/** How confident we are that a dead-code candidate is safe to remove. */
+export type DeadCodeTier = "high" | "medium" | "low";
+
+/** An unreachable symbol, with why it surfaced and how much to trust it. */
+export interface DeadCodeCandidate {
+  symbol: SymbolInfo;
+  tier: DeadCodeTier;
+  /** Plain-language explanation of the tier — what the model/user should check. */
+  reason: string;
+  /** A non-source file that mentions this name (set by the reflective scan) —
+   * a warning that it may be wired up dynamically, so don't blindly delete it. */
+  reflectiveHit?: string;
+}
+
+/** The dead-code picture for a scope: per-symbol candidates + whole dead files. */
+export interface DeadCodeReport {
+  candidates: DeadCodeCandidate[];
+  /** Files where every symbol is unreachable and nothing imports the file — the
+   * whole module is dead, so it's cleaner to delete the file than each symbol. */
+  files: string[];
+}
+
+const TIER_RANK: Record<DeadCodeTier, number> = { high: 0, medium: 1, low: 2 };
+
 /**
  * Answers the Sens queries over a built project index. All lookup structures
  * (name/file/id maps, the import adjacency and the symbol-level call graph) are
@@ -231,17 +255,136 @@ export class QueryEngine {
     };
   }
 
-  /** Unused symbols (candidates). Excludes methods, tests, entry-point exports. */
-  deadCode(subdir?: string): SymbolInfo[] {
-    const sub = subdir?.replace(/\\/g, "/");
-    return this.index.symbols.filter((s) => {
-      if (sub && !s.file.startsWith(sub)) return false;
-      if ((this.index.references[s.id]?.length ?? 0) > 0) return false;
-      if (s.kind === "method") return false;
-      if (isTestFile(s.file)) return false;
-      if (s.exported && this.entryPoints.has(s.file)) return false;
-      return true;
+  /**
+   * Mark-and-sweep over the call graph from a caller-supplied set of roots:
+   * seed the roots, then propagate along callee edges (if a live symbol's body
+   * runs, so do the symbols it calls). Unknown ids are ignored.
+   */
+  private mark(seedRoots: (seed: (id: string) => void) => void): Set<string> {
+    const live = new Set<string>();
+    const stack: string[] = [];
+    const seed = (id: string): void => {
+      if (this.byId.has(id) && !live.has(id)) {
+        live.add(id);
+        stack.push(id);
+      }
+    };
+    seedRoots(seed);
+    while (stack.length) {
+      const id = stack.pop() as string;
+      for (const callee of this.calleesOf.get(id) ?? []) seed(callee);
+    }
+    return live;
+  }
+
+  /**
+   * Two reachability views over the call graph:
+   *
+   * - `real`: reached from genuine program roots — the public API of
+   *   entry-point files, everything in test files, and any symbol used at
+   *   module/reflective scope (a reference with no enclosing `from`: a top-level
+   *   statement, a `string`-keyed lookup or a dynamic `import()`). An export
+   *   *not* in `real` is an unused export.
+   * - `live`: `real` plus every export treated as a potential external entry
+   *   point. Because we can't see callers outside the index, a helper reached
+   *   only through an (even unused) export is spared here. What falls outside
+   *   `live` is code reachable from nothing at all — a true internal dead island.
+   *
+   * Both are conservative: a `from`-less use always seeds a root, so neither can
+   * mark genuinely-live code as dead.
+   */
+  private reachableSymbols(): { real: Set<string>; live: Set<string> } {
+    const real = this.mark((seed) => {
+      for (const s of this.index.symbols) {
+        if (s.entry) seed(s.id); // runtime/framework entry point (Go main, …)
+        else if (s.exported && this.entryPoints.has(s.file)) seed(s.id);
+        else if (isTestFile(s.file)) seed(s.id);
+      }
+      for (const [id, refs] of Object.entries(this.index.references)) {
+        if (refs.some((r) => !r.from)) seed(id);
+      }
     });
+    const live = this.mark((seed) => {
+      real.forEach(seed);
+      for (const s of this.index.symbols) if (s.exported) seed(s.id);
+    });
+    return { real, live };
+  }
+
+  /**
+   * Dead-code candidates ranked by how safe they are to remove. Beyond a plain
+   * "zero references" filter this also finds dead islands — clusters that only
+   * reference each other yet are reachable from nothing. Excludes methods, tests
+   * and entry-point exports.
+   *
+   * - HIGH: internal symbol with no references anywhere.
+   * - MEDIUM: internal, reached only from other unreachable code (dead island).
+   * - LOW: an unused export — might be public API consumed outside the index, so
+   *   always needs a human check.
+   */
+  deadCodeReport(subdir?: string): DeadCodeReport {
+    const sub = subdir?.replace(/\\/g, "/");
+    const { real, live } = this.reachableSymbols();
+    const inScope = (file: string): boolean => !sub || file.startsWith(sub);
+
+    const candidates: DeadCodeCandidate[] = [];
+    for (const s of this.index.symbols) {
+      if (!inScope(s.file)) continue;
+      if (isTestFile(s.file)) continue;
+      if (s.exported && this.entryPoints.has(s.file)) continue;
+      const refs = this.index.references[s.id]?.length ?? 0;
+      if (s.kind === "method") {
+        // Methods resolve poorly under polymorphism/interfaces, so a "dead"
+        // method is the least certain signal — never above LOW.
+        if (live.has(s.id)) continue;
+        candidates.push({
+          symbol: s,
+          tier: "low",
+          reason: "method unreferenced statically — interfaces/dynamic dispatch may still call it; verify",
+        });
+      } else if (s.exported) {
+        if (real.has(s.id)) continue; // used somewhere in-project
+        candidates.push({
+          symbol: s,
+          tier: "low",
+          reason:
+            refs === 0
+              ? "exported but never referenced in-project — safe only if it isn't public API"
+              : "exported and reached only from other dead code — verify it isn't public API",
+        });
+      } else {
+        if (live.has(s.id)) continue; // reached from a root or via some export
+        candidates.push({
+          symbol: s,
+          tier: refs === 0 ? "high" : "medium",
+          reason:
+            refs === 0
+              ? "internal symbol with no references anywhere"
+              : "internal, reached only from other unreachable code (dead island)",
+        });
+      }
+    }
+    candidates.sort(
+      (a, b) =>
+        TIER_RANK[a.tier] - TIER_RANK[b.tier] || byFileLine(a.symbol, b.symbol),
+    );
+
+    // A whole module is dead when nothing imports it and none of its symbols is
+    // live even after exports are treated as roots (so no external surface).
+    const files: string[] = [];
+    for (const [file, syms] of this.byFile) {
+      if (!inScope(file) || isTestFile(file) || this.entryPoints.has(file)) continue;
+      if ((this.importsTo.get(file)?.size ?? 0) > 0) continue;
+      if (syms.length > 0 && syms.every((s) => !live.has(s.id))) files.push(file);
+    }
+    files.sort();
+
+    return { candidates, files };
+  }
+
+  /** Unused symbols (candidates), symbol-only view of {@link deadCodeReport}. */
+  deadCode(subdir?: string): SymbolInfo[] {
+    return this.deadCodeReport(subdir).candidates.map((c) => c.symbol);
   }
 }
 

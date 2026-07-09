@@ -183,6 +183,9 @@ export interface EmitSymbol {
   signature?: string;
   /** Name used for reference matching (defaults to the part after the last `.`). */
   simpleName?: string;
+  /** A runtime/framework entry point (see {@link SymbolInfo.entry}) — a live
+   * root even if nothing in-project visibly calls it. */
+  entry?: boolean;
 }
 
 export interface Emit {
@@ -241,16 +244,52 @@ function collectLeaves(node: Node, out: Node[]): void {
   for (const c of node.namedChildren) collectLeaves(c, out);
 }
 
+/** How the reference pass attributes a name match to declarations. */
+export interface TreeSitterOptions {
+  /**
+   * - `"name"` (default): a name match is a use of EVERY symbol with that name,
+   *   anywhere. Over-counts — conservative, but misses same-named dead code.
+   * - `"import"`: attribute only to same-named symbols the using file can see
+   *   (declared in it, or in a file it imports). Safe for languages whose
+   *   imports resolve to project files and that REQUIRE an import for cross-file
+   *   use (e.g. Python).
+   * - `"package"`: like `"import"`, plus same-directory files (one package /
+   *   compilation unit). For languages where same-package files see each other
+   *   without importing (Go/Java/C#/Kotlin).
+   *
+   * Both narrowing modes fall back to `"name"` for a token when no candidate is
+   * visible, so an unresolved import never turns a real use into a false dead
+   * hit. To stay safe in `"package"` mode with qualified access (`pkg.Name`),
+   * set {@link isQualifiedUse} so those tokens keep the broad attribution.
+   */
+  scope?: "name" | "import" | "package";
+  /**
+   * Given a matched leaf node, return true if it is the member half of a
+   * qualified access (e.g. the `Name` in `pkg.Name`) that explicitly targets
+   * another namespace. Such tokens are NOT narrowed by same-package visibility
+   * (they'd be misattributed to a same-named local symbol). Languages using
+   * `"package"` scope should provide this to stay false-positive-free.
+   */
+  isQualifiedUse?: (leaf: Node) => boolean;
+}
+
+/** Directory of a POSIX path ("" for a root-level file). */
+const dirOf = (file: string): string => {
+  const i = file.lastIndexOf("/");
+  return i === -1 ? "" : file.slice(0, i);
+};
+
 /**
  * Build an index contribution for one tree-sitter language: parse each file,
- * let `extract` emit symbols/imports, then resolve references by name (the best
- * a syntax-only parser can do for languages without whole-program type info).
+ * let `extract` emit symbols/imports, then resolve references (see
+ * {@link TreeSitterOptions.scope} for how name matches are attributed).
  */
 export async function buildTreeSitter(
   root: string,
   absFiles: string[],
   grammar: string,
   extract: Extract,
+  opts: TreeSitterOptions = {},
 ): Promise<IndexContribution> {
   const parser = await getParser(grammar);
 
@@ -259,6 +298,7 @@ export async function buildTreeSitter(
   const imports: ImportEdge[] = [];
   const references: Record<string, Reference[]> = {};
   const byName = new Map<string, string[]>();
+  const fileById = new Map<string, string>();
   // Declaration spans per file, so the reference pass can attribute each use to
   // its enclosing symbol (the caller).
   const rangesByFile = new Map<string, SymbolRange[]>();
@@ -295,8 +335,10 @@ export async function buildTreeSitter(
           line,
           signature: s.signature ?? headerSig(s.node),
           exported: s.exported,
+          ...(s.entry ? { entry: true } : {}),
         });
         references[id] = [];
+        fileById.set(id, file);
         const list = byName.get(simple);
         if (list) list.push(id);
         else byName.set(simple, [id]);
@@ -315,11 +357,29 @@ export async function buildTreeSitter(
     trees.push({ file, tree, root: rootNode, skip });
   }
 
-  // Reference pass: a leaf token matching a known symbol name is a use of every
-  // symbol with that name (name-based, cross-file). Over-counts rather than
-  // misses, which keeps dead-code candidates conservative.
+  // In a narrowing scope, precompute which project files each file imports, so a
+  // name match can be narrowed to the declarations the using file can see.
+  const narrowing = opts.scope === "import" || opts.scope === "package";
+  const usePackage = opts.scope === "package";
+  const importedFiles = new Map<string, Set<string>>();
+  if (narrowing) {
+    for (const edge of imports) {
+      if (!relSet.has(edge.to)) continue;
+      const set = importedFiles.get(edge.from);
+      if (set) set.add(edge.to);
+      else importedFiles.set(edge.from, new Set([edge.to]));
+    }
+  }
+
+  // Reference pass: a leaf token matching a known symbol name is a use of the
+  // matching declarations. In "name" scope that's every symbol with the name
+  // (over-counts, conservative); in "import" scope it's narrowed to the ones the
+  // file can see, falling back to all when it can see none (so an unresolved
+  // import never turns a real use into a false dead-code hit).
   for (const { file, tree, root: rootNode, skip } of trees) {
     const ranges = rangesByFile.get(file) ?? [];
+    const imported = importedFiles.get(file);
+    const fileDir = usePackage ? dirOf(file) : "";
     const leaves: Node[] = [];
     collectLeaves(rootNode, leaves);
     for (const leaf of leaves) {
@@ -333,6 +393,16 @@ export async function buildTreeSitter(
         if (inner) targets = byName.get(inner);
       }
       if (!targets) continue;
+      // Narrow to visible declarations, except a qualified `pkg.Name` access,
+      // which explicitly targets another namespace and must stay broad.
+      if (narrowing && !(usePackage && opts.isQualifiedUse?.(leaf))) {
+        const visible = targets.filter((id) => {
+          const f = fileById.get(id) as string;
+          if (f === file || (imported && imported.has(f))) return true;
+          return usePackage && dirOf(f) === fileDir;
+        });
+        if (visible.length) targets = visible;
+      }
       const line = leaf.startPosition.row + 1;
       const from = enclosingId(ranges, leaf.startIndex);
       for (const symId of targets) {

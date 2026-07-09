@@ -54,8 +54,12 @@ export const BUILTIN_RULES: RuleModule[] = [
     title: "Before you finish — leave nothing orphaned",
     default: true,
     body:
-      "- Run `dead_code` on the area you touched. It reports symbols with NO static references — a signal, not a verdict. For each one, confirm it is truly unused before removing it:\n" +
-      '  1. Grep the name as a string / property key (`"name"`, `\'name\'`, `["name"]`, `.name`) — reflective use.\n' +
+      "- Run `dead_code` on the area you touched. It reports code unreachable from any entry point (auto-detected from package.json) — dead islands, whole dead files, and per-symbol candidates — ranked by confidence. A signal, not a verdict:\n" +
+      "  - HIGH (internal, unreferenced): safe to remove after a quick sanity check.\n" +
+      "  - MEDIUM (internal dead island): read the reason, then remove the whole cluster together.\n" +
+      "  - LOW (exported API or method): could be consumed outside the index or via dynamic dispatch — verify before touching.\n" +
+      "  It already greps non-source files (JSON/config/templates) and flags any `⚠ reflective` hit; for those, and for anything you're unsure about, still confirm it's truly unused:\n" +
+      "  1. Check the flagged reflective file, and grep the name as a string / property key elsewhere.\n" +
       "  2. Grep for a dynamic `import()` / `require()` that targets its file.\n" +
       "  3. If the project auto-wires code (routes, DI, plugins, components, CLI commands), check those conventions.\n" +
       "  4. If it's an export meant for external consumers, keep it (mark it an entry point in `sens.config.json`).\n" +

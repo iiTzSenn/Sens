@@ -83,9 +83,12 @@ export async function startMcpServer(root: string): Promise<void> {
     "dead_code",
     {
       description:
-        "List unused symbols (candidates). Verify before deleting: this can't see dynamic usage " +
-        "(React.lazy/import(), string-based access, reflection) or framework auto-imports — grep the exact " +
-        "symbol name across the repo if unsure before removing it.",
+        "List code unreachable from any entry point (entry points auto-detected from package.json main/bin/exports), " +
+        "including dead islands (clusters that only reference each other) and whole dead files, ranked HIGH/MEDIUM/LOW " +
+        "by how safe they are to remove, each with a reason. References resolve tsconfig path aliases, JSX, types and " +
+        "re-export barrels. Candidates already grep non-source files (JSON/YAML/config/" +
+        "templates) and flag any name found there as a possible reflective use. Still a signal, not a verdict: it can't " +
+        "see all dynamic usage (React.lazy/import(), string-based access) — verify LOW (exported/method) ones before removing.",
       inputSchema: { subdir: z.string().optional() },
     },
     async ({ subdir }: { subdir?: string }) =>

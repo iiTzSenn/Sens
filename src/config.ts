@@ -29,6 +29,66 @@ const DEFAULT_ENTRY = [
   "**/index.jsx",
 ];
 
+/** JS/TS source extensions a package.json entry (a built `dist/*.js`) maps back to. */
+const SOURCE_EXTS = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
+
+/** Leading path segments of build output — stripped to map a target to its source. */
+const BUILD_DIRS = new Set(["dist", "build", "lib", "out", "es", "esm", "cjs", "umd", "types", "typings"]);
+
+/** Every string leaf under a package.json field like `exports` or `bin`. */
+function stringLeaves(v: unknown, out: string[]): void {
+  if (typeof v === "string") out.push(v);
+  else if (Array.isArray(v)) for (const x of v) stringLeaves(x, out);
+  else if (v && typeof v === "object") for (const x of Object.values(v)) stringLeaves(x, out);
+}
+
+/** The declared entry-point target paths of one parsed package.json. */
+function packageTargets(pkg: Record<string, unknown>): string[] {
+  const targets: string[] = [];
+  for (const field of ["main", "module", "types", "typings"]) stringLeaves(pkg[field], targets);
+  stringLeaves(pkg.bin, targets);
+  stringLeaves(pkg.exports, targets);
+  return targets;
+}
+
+/**
+ * Globs that match the *source* files behind every package's declared entry
+ * points (`main`, `module`, `bin`, `types`, `exports`). A published package
+ * points these at built artifacts (`dist/cli.js`); we strip the build dir +
+ * extension and glob the tail so `dist/mcp/server.js` matches `src/mcp/server.ts`.
+ * Every package.json in the tree is read (anchored to its own directory) so
+ * monorepo sub-packages are covered too. Treating these as entry points keeps a
+ * package's public API from being flagged as dead.
+ */
+async function packageEntryGlobs(root: string): Promise<string[]> {
+  const pkgFiles = await globby("**/package.json", {
+    cwd: root,
+    gitignore: true,
+    absolute: false,
+    ignore: ["**/node_modules/**", "**/dist/**", "**/.sens/**"],
+  });
+
+  const globs = new Set<string>();
+  for (const pkgRel of pkgFiles) {
+    let pkg: Record<string, unknown>;
+    try {
+      pkg = JSON.parse(readFileSync(path.join(root, pkgRel), "utf8")) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const dir = path.posix.dirname(pkgRel.split(path.sep).join("/"));
+    const prefix = dir === "." ? "" : `${dir}/`;
+    for (const target of packageTargets(pkg)) {
+      let segs = target.replace(/^\.\//, "").split("/").filter((s) => s && s !== ".");
+      while (segs.length > 1 && BUILD_DIRS.has(segs[0])) segs = segs.slice(1);
+      if (segs.length === 0) continue;
+      const tail = segs.join("/").replace(/\.[cm]?[jt]sx?$/, "");
+      globs.add(`${prefix}**/${tail}.{${SOURCE_EXTS.join(",")}}`);
+    }
+  }
+  return [...globs];
+}
+
 const emptyRules = (): RulesConfig => ({ enabled: [], disabled: [], custom: [] });
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
@@ -142,22 +202,38 @@ export async function entryPointFiles(
   root: string,
   config: SensConfig,
 ): Promise<Set<string>> {
-  const matched = await globby([...DEFAULT_ENTRY, ...config.entryPoints], {
-    cwd: root,
-    gitignore: true,
-    absolute: false,
-  });
+  const matched = await globby(
+    [...DEFAULT_ENTRY, ...(await packageEntryGlobs(root)), ...config.entryPoints],
+    { cwd: root, gitignore: true, absolute: false },
+  );
   return new Set(matched.map((m) => m.split(path.sep).join("/")));
 }
 
 /** Directory names that hold tests, fixtures, mocks or snapshots — code that
  * lives in the repo to support tests, not to ship, so its unused symbols are
  * not dead-code candidates. */
-const TEST_DIR = /(^|\/)(__tests__|__mocks__|__fixtures__|__snapshots__|tests?|specs?|fixtures|mocks|e2e)\//;
+const TEST_DIR = /(^|\/)(__tests__|__mocks__|__fixtures__|__snapshots__|tests?|specs?|fixtures|mocks|e2e|testdata)\//;
 
-/** True for test files (`*.test.ts`, `*.spec.ts`) and anything under a test,
+/** Filename conventions that mark a test file, across languages: JS/TS
+ * `foo.test.ts`; Go/Python/Ruby/Elixir `foo_test.go`; Python `test_foo.py`,
+ * `conftest.py`; Ruby `foo_spec.rb`; JVM/.NET `FooTest.kt`, `FooSpec.cs`
+ * (PascalCase so `latest.java` doesn't match). */
+const TEST_FILE = new RegExp(
+  "(" +
+    [
+      "\\.(test|spec)\\.[cm]?[jt]sx?", // foo.test.ts / foo.spec.jsx
+      "_test\\.(go|py|rb|exs?)", // foo_test.go
+      "_spec\\.rb", // foo_spec.rb
+      "(^|/)test_[^/]*\\.py", // test_foo.py
+      "(^|/)conftest\\.py", // conftest.py
+      "(Test|Tests|Spec)\\.(java|kt|kts|cs|scala)", // FooTest.kt / FooSpec.cs
+    ].join("|") +
+    ")$",
+);
+
+/** True for test files (by filename convention) and anything under a test,
  * fixture, mock or snapshot directory. Paths are matched in POSIX form. */
 export function isTestFile(file: string): boolean {
   const f = file.replace(/\\/g, "/");
-  return /\.(test|spec)\.[cm]?[jt]sx?$/.test(f) || TEST_DIR.test(f);
+  return TEST_FILE.test(f) || TEST_DIR.test(f);
 }

@@ -61,7 +61,17 @@ export function cFamilyExtract(root: Node, emit: Emit, ctx: Ctx, opts: CFamilyOp
       case "declaration": {
         const nameNode = fnNameNode(field(node, "declarator"));
         if (nameNode) {
-          emit.symbol({ name: nameNode.text, kind: "function", node, nameNode, exported: true });
+          // In C, a file-scope `static` function has internal linkage — it is
+          // NOT externally linkable, so mark it internal (this lets an unused
+          // one reach the HIGH dead-code tier). C++ keeps every definition
+          // exported: its extractor path is deliberately left untouched.
+          const exported = opts.cpp ? true : !isStatic(node);
+          // `int main(...)` is the program entry point — a live root that must
+          // never be flagged. C only; C++ `main` stays a plain export (still
+          // never HIGH, so no regression).
+          const entry =
+            !opts.cpp && node.type === "function_definition" && nameNode.text === "main";
+          emit.symbol({ name: nameNode.text, kind: "function", node, nameNode, exported, entry });
           return;
         }
         // A declaration may still wrap a record specifier (e.g. `struct S {...};`).
@@ -129,4 +139,13 @@ export function cFamilyExtract(root: Node, emit: Emit, ctx: Ctx, opts: CFamilyOp
 function findSuffix(relSet: Set<string>, rel: string): string | null {
   for (const r of relSet) if (r === rel || r.endsWith(`/${rel}`)) return r;
   return null;
+}
+
+/** True when a C declaration/definition carries the `static` storage class
+ * (file-scope internal linkage). Reads the `storage_class_specifier` token that
+ * tree-sitter attaches as a direct child of the declaration. */
+function isStatic(node: Node): boolean {
+  return node.children.some(
+    (c: Node) => c.type === "storage_class_specifier" && c.text === "static",
+  );
 }

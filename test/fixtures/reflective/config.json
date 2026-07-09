@@ -1,0 +1,6 @@
+{
+  "handlers": {
+    "onStart": "reflectiveHandler",
+    "onTick": "internalHook"
+  }
+}

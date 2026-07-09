@@ -6,6 +6,7 @@ import {
   field,
   named,
   allNamed,
+  descendants,
   type Node,
   type Emit,
   type Ctx,
@@ -13,6 +14,73 @@ import {
 
 /** Public by Python convention: not a `_leading_underscore` name. */
 const isPublic = (name: string): boolean => !name.startsWith("_");
+
+/**
+ * Decorator head names that are pure-language machinery, NOT external
+ * registration. A definition decorated only with these is still ordinary code
+ * whose liveness must be proven by an in-project reference — never an entry.
+ */
+const LANG_DECORATORS = new Set([
+  "staticmethod",
+  "classmethod",
+  "property",
+  "abstractmethod",
+  "abstractproperty",
+  "dataclass",
+  "functools",
+  "cached_property",
+  "override",
+  "final",
+]);
+
+/** Leftmost identifier of an attribute chain (`a.b.c` -> `a`) or a bare
+ * identifier; null for anything else. */
+function headIdentifier(node: Node): string | null {
+  let n: Node | undefined = node;
+  while (n && n.type === "attribute") n = field(n, "object");
+  return n && n.type === "identifier" ? n.text : null;
+}
+
+/**
+ * True if a `decorated_definition` carries a REGISTRATION decorator implying the
+ * symbol is invoked by a framework, not in-project (e.g. `@app.route(...)`,
+ * `@router.get(...)`, `@app.get`, `@celery.task`, `@pytest.fixture`,
+ * `@click.command()`). A decorator qualifies only when it is a call (`@x(...)`)
+ * or a dotted attribute (`@a.b`) whose head name is not a pure-language
+ * decorator ({@link LANG_DECORATORS}). Bare-name decorators (`@staticmethod`,
+ * `@property`, `@dataclass`) never qualify — narrowest safe rule. Marking a
+ * symbol `entry` only ever suppresses a dead-code hit, so over-inclusion here
+ * can never produce a false positive; the exclusions keep it from being noise.
+ */
+function hasRegistrationDecorator(decNode: Node): boolean {
+  for (const dec of allNamed(decNode, "decorator")) {
+    const expr = dec.namedChildren[0] as Node | undefined;
+    if (!expr) continue;
+    const isCall = expr.type === "call";
+    const target = isCall ? field(expr, "function") : expr;
+    if (!target) continue;
+    // Only a call or a dotted attribute signals external registration.
+    if (!isCall && target.type !== "attribute") continue;
+    const head = headIdentifier(target);
+    if (head && !LANG_DECORATORS.has(head)) return true;
+  }
+  return false;
+}
+
+/** Names listed in a module-level `__all__ = [...]` — the explicit public API,
+ * public even if `_`-prefixed. */
+function collectDunderAll(root: Node): Set<string> {
+  const out = new Set<string>();
+  for (const raw of root.namedChildren) {
+    if (raw.type !== "expression_statement") continue;
+    const assign = named(raw, "assignment");
+    const left = assign ? field(assign, "left") : undefined;
+    if (!left || left.type !== "identifier" || left.text !== "__all__") continue;
+    const right = field(assign, "right");
+    if (right) for (const sc of descendants(right, "string_content")) out.add(sc.text);
+  }
+  return out;
+}
 
 /** `def name(params) -> ret`, prefixed with `async ` when applicable. */
 function funcSig(node: Node, name: string): string {
@@ -111,19 +179,25 @@ function collectImport(node: Node, emit: Emit, ctx: Ctx): void {
 }
 
 function extract(root: Node, emit: Emit, ctx: Ctx): void {
+  const dunderAll = collectDunderAll(root);
+  const isExported = (name: string): boolean => isPublic(name) || dunderAll.has(name);
+
   for (const raw of root.namedChildren) {
     const node = defBody(raw);
+    // A top-level def/class carrying a framework-registration decorator is a
+    // live root: the framework calls it even if the project never does.
+    const entry = raw.type === "decorated_definition" && hasRegistrationDecorator(raw);
 
     if (node.type === "function_definition") {
       const nameNode = field(node, "name");
       if (!nameNode) continue;
       const name = nameNode.text;
-      emit.symbol({ name, kind: "function", node, nameNode, exported: isPublic(name), signature: funcSig(node, name) });
+      emit.symbol({ name, kind: "function", node, nameNode, exported: isExported(name), entry, signature: funcSig(node, name) });
     } else if (node.type === "class_definition") {
       const nameNode = field(node, "name");
       if (!nameNode) continue;
       const cname = nameNode.text;
-      emit.symbol({ name: cname, kind: "class", node, nameNode, exported: isPublic(cname), signature: classSig(node, cname) });
+      emit.symbol({ name: cname, kind: "class", node, nameNode, exported: isExported(cname), entry, signature: classSig(node, cname) });
       const body = field(node, "body");
       for (const mraw of body ? body.namedChildren : []) {
         const m = defBody(mraw);
@@ -139,7 +213,7 @@ function extract(root: Node, emit: Emit, ctx: Ctx): void {
       if (!left || left.type !== "identifier") continue;
       const name = left.text;
       const kind: SymbolKind = /^[A-Z0-9_]+$/.test(name) ? "const" : "var";
-      emit.symbol({ name, kind, node: left, nameNode: left, exported: isPublic(name), signature: name });
+      emit.symbol({ name, kind, node: left, nameNode: left, exported: isExported(name), signature: name });
     } else if (node.type === "import_statement" || node.type === "import_from_statement") {
       collectImport(node, emit, ctx);
     }
@@ -149,5 +223,8 @@ function extract(root: Node, emit: Emit, ctx: Ctx): void {
 export const pythonParser: LanguageParser = {
   name: "python",
   extensions: ["py", "pyi"],
-  build: (root, files) => buildTreeSitter(root, files, "python", extract),
+  // Python requires an explicit import to use another module's symbol, and its
+  // imports resolve to project files — so references can be import-scoped for
+  // real cross-file precision instead of name-only matching.
+  build: (root, files) => buildTreeSitter(root, files, "python", extract, { scope: "import" }),
 };

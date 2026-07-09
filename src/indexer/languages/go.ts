@@ -2,6 +2,7 @@ import type { LanguageParser } from "./parser.js";
 import {
   buildTreeSitter,
   field,
+  named,
   allNamed,
   descendants,
   firstDescendant,
@@ -15,13 +16,25 @@ const isExported = (name: string): boolean => /^[A-Z]/.test(name);
 
 const unquote = (s: string): string => s.replace(/^[`"]|[`"]$/g, "");
 
+/** The `package` name of a source file (`package main` -> "main"), or undefined. */
+function packageName(root: Node): string | undefined {
+  const clause = named(root, "package_clause");
+  return clause ? firstDescendant(clause, "package_identifier")?.text : undefined;
+}
+
 function extract(root: Node, emit: Emit, ctx: Ctx): void {
+  const pkg = packageName(root);
   for (const node of root.namedChildren) {
     switch (node.type) {
       case "function_declaration": {
         const nameNode = field(node, "name");
         if (!nameNode) break;
-        emit.symbol({ name: nameNode.text, kind: "function", node, nameNode, exported: isExported(nameNode.text) });
+        const fname = nameNode.text;
+        // Runtime entry points Go invokes itself, with no visible in-project
+        // caller: `main` in `package main`, and any `init`. Marking them entry
+        // keeps them out of the dead-code report (they'd otherwise be HIGH).
+        const entry = fname === "init" || (fname === "main" && pkg === "main");
+        emit.symbol({ name: fname, kind: "function", node, nameNode, exported: isExported(fname), entry });
         break;
       }
       case "method_declaration": {
@@ -65,8 +78,25 @@ function extract(root: Node, emit: Emit, ctx: Ctx): void {
   }
 }
 
+/** The member half of a qualified access `pkg.Name` — the `field` child of a
+ * selector_expression. These target another namespace, so they must keep the
+ * broad ("name") attribution and not be narrowed to a same-named local symbol. */
+function isQualifiedUse(leaf: Node): boolean {
+  const parent = leaf.parent;
+  return (
+    parent?.type === "selector_expression" &&
+    field(parent, "field")?.startIndex === leaf.startIndex
+  );
+}
+
 export const goParser: LanguageParser = {
   name: "go",
   extensions: ["go"],
-  build: (root, files) => buildTreeSitter(root, files, "go", extract),
+  // Package scope: files in the same directory (package) see each other without
+  // imports, so an unqualified name narrows to the local package — letting a
+  // same-named func in another package be flagged when only one is used. A
+  // qualified `pkg.Name` use stays broad (isQualifiedUse) so it never gets
+  // misattributed to a same-named local symbol, which would be a false positive.
+  build: (root, files) =>
+    buildTreeSitter(root, files, "go", extract, { scope: "package", isQualifiedUse }),
 };

@@ -11,6 +11,7 @@
 
 import { createEngine } from "./core.js";
 import { logUsage } from "./usage.js";
+import { analyzeDeadCode } from "./deadcode.js";
 import type { QueryEngine } from "./query/engine.js";
 import {
   formatMap,
@@ -37,7 +38,11 @@ export interface QueryArgs {
 
 export type QueryName = keyof QueryArgs;
 
-type Runner<K extends QueryName> = (engine: QueryEngine, args: QueryArgs[K]) => string;
+type Runner<K extends QueryName> = (
+  engine: QueryEngine,
+  args: QueryArgs[K],
+  root: string,
+) => string | Promise<string>;
 
 /** Maps each query to the engine call + formatter it runs. */
 const runners: { [K in QueryName]: Runner<K> } = {
@@ -46,7 +51,7 @@ const runners: { [K in QueryName]: Runner<K> } = {
   who_uses: (e, a) => formatWhoUses(e.whoUses(a.name), { full: a.full }),
   file_outline: (e, a) => formatSymbols(e.fileOutline(a.file)),
   already_exists: (e, a) => formatSymbols(e.alreadyExists(a.query)),
-  dead_code: (e, a) => formatDeadCode(e.deadCode(a.subdir)),
+  dead_code: (e, a, root) => analyzeDeadCode(root, e, a.subdir).then(formatDeadCode),
   file_dependencies: (e, a) => formatFileDependencies(e.fileDependencies(a.file)),
   explain_symbol: (e, a) => formatExplain(e.explain(a.name)),
   symbol_path: (e, a) => formatPath(e.path(a.from, a.to), a.from, a.to),
@@ -63,5 +68,5 @@ export async function runQuery<K extends QueryName>(
 ): Promise<string> {
   logUsage(root, name, args as Record<string, unknown>);
   const { engine } = await createEngine(root);
-  return (runners[name] as Runner<K>)(engine, args);
+  return (runners[name] as Runner<K>)(engine, args, root);
 }

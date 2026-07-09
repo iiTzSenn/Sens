@@ -1,0 +1,4 @@
+{
+  "name": "@mono/foo",
+  "main": "dist/api.js"
+}

@@ -1,4 +1,5 @@
-import { statSync } from "node:fs";
+import { statSync, existsSync } from "node:fs";
+import path from "node:path";
 import type {
   FunctionDeclaration,
   MethodDeclaration,
@@ -37,11 +38,27 @@ function varSig(v: VariableDeclaration, kind: string): string {
 async function build(root: string, absFiles: string[]): Promise<IndexContribution> {
   const { Project, Node, SyntaxKind } = await import("ts-morph");
 
-  const project = new Project({
+  // Load the project's tsconfig/jsconfig (if any) so its `paths`/`baseUrl` are
+  // honored — otherwise alias imports like `@/utils` don't resolve and the code
+  // they pull in looks dead. We keep `skipAddingFilesFromTsConfig` and add files
+  // ourselves; our compilerOptions override just allowJs/checkJs on top.
+  const configPath = ["tsconfig.json", "jsconfig.json"]
+    .map((f) => path.join(root, f))
+    .find((p) => existsSync(p));
+
+  const options = {
     useInMemoryFileSystem: false,
     skipAddingFilesFromTsConfig: true,
     compilerOptions: { allowJs: true, checkJs: false },
-  });
+  } as const;
+
+  let project;
+  try {
+    project = configPath ? new Project({ ...options, tsConfigFilePath: configPath }) : new Project(options);
+  } catch {
+    // A malformed tsconfig must never break indexing — fall back to no config.
+    project = new Project(options);
+  }
   for (const f of absFiles) project.addSourceFileAtPath(f);
 
   const symbols: SymbolInfo[] = [];
