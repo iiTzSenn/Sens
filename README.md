@@ -16,6 +16,22 @@
   Fewer tokens, cleaner context, and a heads-up when code already exists or is dead.
 </p>
 
+<p align="center">
+  <sub><b>WORKS WITH</b></sub>
+</p>
+<p align="center">
+  <img src="docs/agents/claude.svg" alt="Claude Code" title="Claude Code" height="46">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="docs/agents/codex.svg" alt="Codex" title="Codex" height="46">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="docs/agents/copilot.svg" alt="GitHub Copilot" title="GitHub Copilot" height="46">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="docs/agents/cursor.svg" alt="Cursor" title="Cursor" height="46">
+</p>
+<p align="center">
+  <sub>Claude&nbsp;Code&nbsp;&nbsp;·&nbsp;&nbsp;Codex&nbsp;&nbsp;·&nbsp;&nbsp;GitHub&nbsp;Copilot&nbsp;&nbsp;·&nbsp;&nbsp;Cursor</sub>
+</p>
+
 ---
 
 ## Why Sens?
@@ -120,7 +136,9 @@ npx sens-mcp init           # set up here (--agent codex|copilot|cursor|all for 
 npx sens-mcp index          # build/update the index (cached by file mtime)
 npx sens-mcp map [subdir]   # compact project map
 npx sens-mcp find <name>    # where a symbol is defined
-npx sens-mcp who <name>     # where a symbol is used
+npx sens-mcp who <name>     # where a symbol is used (--full for every call site)
+npx sens-mcp explain <name> # a symbol's callers and callees (call graph)
+npx sens-mcp path <a> <b>   # shortest chain of calls between two symbols
 npx sens-mcp outline <file> # a file's signatures, no bodies
 npx sens-mcp exists <kw...> # does something like this already exist?
 npx sens-mcp dead-code      # unused symbols (candidates)
@@ -134,6 +152,8 @@ npx sens-mcp usage          # which Sens tools the model has actually called
 
 > Installed globally (`npm i -g sens-mcp`) the command is just `sens <command>`.
 
+Every command shares one modern look — a braille spinner while indexing, a consistent `sens › <command>` header, and color that *means* something (green ok, red error, yellow warning, gray for paths/counts/timings). Errors stay a single clear line; add `--verbose` for the full stack trace. This styling is **terminal-only**: what the model reads over the MCP server or the hook stays plain text, so nothing here bloats its context.
+
 ## Dashboard
 
 `sens dashboard` starts a local web UI (default `http://localhost:4319`):
@@ -141,11 +161,16 @@ npx sens-mcp usage          # which Sens tools the model has actually called
 - an **interactive graph** of your project — files as nodes, imports as edges (drag, click a node to see its symbols);
 - live **stats** and a clickable **dead-code** list;
 - a symbol **search**;
+- a **Working rules** panel to toggle rule modules on/off and add your own;
 - a one-click **Connect to Claude Code** (writes `.mcp.json`) and a **Rebuild index** button.
 
 ```bash
 npx sens-mcp dashboard --root . --port 4319   # --no-open to skip opening the browser
+npx sens-mcp dashboard --host                 # also expose on your LAN (prints a Network URL + QR)
+npx sens-mcp dashboard --tunnel               # also get a public URL via cloudflared/ngrok if installed
 ```
+
+> `--host` / `--tunnel` are opt-in and guarded by an access token in the printed link, because the dashboard can **write** your project's config. By default it binds to `localhost` only.
 
 <p align="center">
   <img src="docs/dashboard_light.webp" alt="Sens dashboard — project dependency graph (light theme)" width="90%">

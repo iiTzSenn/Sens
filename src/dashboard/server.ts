@@ -16,6 +16,17 @@ import type { ProjectIndex } from "../types.js";
 import type { QueryEngine } from "../query/engine.js";
 import { renderDashboardPage } from "./page.js";
 import { buildGraph, serializeGraph, isExportFormat } from "./graph-export.js";
+import * as ui from "../cli/ui.js";
+import qrcode from "qrcode-terminal";
+import { lanIps, makeToken, readCookie, terminalLink } from "./expose.js";
+import { startTunnel, type Tunnel } from "./tunnel.js";
+
+/** Official install pages, linked when no tunnel tool is found. */
+const TUNNEL_DOCS: Record<string, string> = {
+  cloudflared:
+    "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
+  ngrok: "https://ngrok.com/download",
+};
 
 function buildData(root: string, index: ProjectIndex, engine: QueryEngine) {
   const dead = engine.deadCode();
@@ -115,9 +126,15 @@ function openBrowser(url: string): void {
 
 export async function startDashboard(
   root: string,
-  opts: { port?: number; open?: boolean } = {},
+  opts: { port?: number; open?: boolean; host?: boolean; tunnel?: boolean } = {},
 ): Promise<void> {
   const port = opts.port ?? 4319;
+  // Exposure is opt-in: the dashboard writes files, so by default it binds to
+  // localhost only. `--host`/`--tunnel` bind to every interface behind a token.
+  const exposed = Boolean(opts.host || opts.tunnel);
+  // Only --host opens the LAN; a tunnel reaches us over localhost, so it stays 127.0.0.1.
+  const bindHost = opts.host ? "0.0.0.0" : "127.0.0.1";
+  const token = exposed ? makeToken() : null;
   const json = (res: import("node:http").ServerResponse, body: unknown) => {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify(body));
@@ -126,6 +143,16 @@ export async function startDashboard(
   const server = createServer(async (req, res) => {
     try {
       const url = (req.url ?? "/").split("?")[0];
+      // Token gate (only when exposed): accept a `?token=` on first load, then a cookie.
+      if (token) {
+        const q = new URL(req.url ?? "/", "http://x").searchParams.get("token");
+        if (readCookie(req.headers.cookie, "sens_token") !== token && q !== token) {
+          res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+          res.end("Sens dashboard: missing or invalid access token — open the link shown in the terminal.");
+          return;
+        }
+        if (q === token) res.setHeader("set-cookie", `sens_token=${token}; Path=/; HttpOnly; SameSite=Strict`);
+      }
       if (req.method === "GET" && (url === "/" || url === "/index.html")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(renderDashboardPage());
@@ -202,9 +229,64 @@ export async function startDashboard(
     }
   });
 
-  await new Promise<void>((resolve) => server.listen(port, resolve));
-  const urlStr = `http://localhost:${port}`;
-  console.log(`Sens dashboard running at ${urlStr}`);
-  console.log("Press Ctrl+C to stop.");
-  if (opts.open) openBrowser(urlStr);
+  await new Promise<void>((resolve) => server.listen(port, bindHost, resolve));
+
+  const suffix = token ? `/?token=${token}` : "";
+  const localUrl = `http://localhost:${port}${suffix}`;
+  const ips = opts.host ? lanIps() : [];
+
+  const url = (label: string, value: string): void =>
+    ui.print(`${ui.INDENT}${ui.c.brand(ui.sym.child)} ${label.padEnd(9)}${ui.c.brand(value)}`);
+
+  ui.header("dashboard");
+  ui.blank();
+  url("Local", localUrl);
+  if (opts.host) {
+    if (ips.length === 0) ui.detail("Network: no external IPv4 address found");
+    for (const ip of ips) url("Network", `http://${ip}:${port}${suffix}`);
+  }
+
+  let tunnel: Tunnel | null = null;
+  if (opts.tunnel) {
+    const sp = ui.spinner("Abriendo túnel público…");
+    tunnel = await startTunnel(port);
+    if (tunnel) {
+      sp.stop();
+      url("Public", `${tunnel.url}${suffix}`);
+      ui.detail(`vía ${tunnel.provider}`);
+    } else {
+      sp.stop();
+      const how = Object.entries(TUNNEL_DOCS)
+        .map(([name, link]) => terminalLink(ui.c.brand(name), link))
+        .join(ui.c.meta("  ·  "));
+      ui.warn("Túnel no disponible — no se encontró cloudflared ni ngrok");
+      ui.detail(`Cómo instalar: ${how}`);
+    }
+  }
+
+  const shareUrl = tunnel
+    ? `${tunnel.url}${suffix}`
+    : ips.length > 0
+      ? `http://${ips[0]}:${port}${suffix}`
+      : null;
+  if (shareUrl) {
+    ui.section("Escanea para abrir en otro dispositivo");
+    ui.blank();
+    qrcode.generate(shareUrl, { small: true });
+  }
+  if (exposed) {
+    ui.blank();
+    ui.warn("Cualquiera con el enlace del token puede ver Y modificar la config de sens de este proyecto.");
+  }
+  ui.blank();
+  ui.detail("Ctrl+C para detener.");
+  ui.blank();
+
+  if (tunnel) {
+    process.on("SIGINT", () => {
+      tunnel?.stop();
+      process.exit(0);
+    });
+  }
+  if (opts.open) openBrowser(localUrl);
 }

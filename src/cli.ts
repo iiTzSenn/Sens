@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import pc from "picocolors";
 import path from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { VERSION } from "./index.js";
@@ -8,10 +7,19 @@ import { createEngine } from "./core.js";
 import { sensDir } from "./paths.js";
 import { composeRules } from "./rules.js";
 import { loadConfig, activeRules, ruleModules } from "./config.js";
-import { readUsage, formatUsage } from "./usage.js";
+import { readUsage, formatUsage, logUsage } from "./usage.js";
 import { supportedLanguages } from "./indexer/languages/parser.js";
-import { runQuery } from "./queries.js";
 import { SKILL_MD, SKILL_NAME } from "./skill.js";
+import * as ui from "./cli/ui.js";
+import {
+  renderMap,
+  renderSymbols,
+  renderWhoUses,
+  renderDeadCode,
+  renderExplain,
+  renderPath,
+  renderFileDependencies,
+} from "./cli/render.js";
 
 const root = process.cwd();
 const program = new Command();
@@ -21,27 +29,66 @@ program
   .description(
     "A project index for Claude Code — query your codebase instead of reading it all.",
   )
+  .option("--verbose", "show full error stack traces on failure")
   .version(VERSION);
+
+/**
+ * Build (or reuse) the engine with a live spinner. When `announce` is set the
+ * spinner resolves into a persistent "index ready" line (for `map`/`index`);
+ * otherwise it clears silently so a quick lookup stays clean.
+ */
+async function getEngine(announce = false): ReturnType<typeof createEngine> {
+  const sp = ui.spinner("Indexando proyecto…");
+  const start = Date.now();
+  let res: Awaited<ReturnType<typeof createEngine>>;
+  try {
+    res = await createEngine(root);
+  } catch (err) {
+    sp.fail("No se pudo indexar el proyecto");
+    throw err;
+  }
+  if (announce) {
+    const ms = Date.now() - start;
+    const label = res.fromCache ? "Índice en caché" : "Índice construido";
+    sp.succeed(
+      `${label}  ${ui.c.meta(`${ui.sym.branch} ${res.index.files.length} archivos · ${res.index.symbols.length} símbolos · ${ms}ms`)}`,
+    );
+  } else {
+    sp.stop();
+  }
+  return res;
+}
+
+/** Render a query body between a header and trailing blank line. */
+function show(body: string): void {
+  ui.blank();
+  ui.print(body);
+  ui.blank();
+}
 
 program
   .command("index")
   .description("Build or update the project index")
   .option("-f, --force", "rebuild even if the cache looks fresh")
   .action(async (opts: { force?: boolean }) => {
+    ui.header("index");
+    const sp = ui.spinner(opts.force ? "Reconstruyendo el índice…" : "Indexando proyecto…");
     const start = Date.now();
-    const { index, fromCache } = await createEngine(root, { force: opts.force });
+    let built: Awaited<ReturnType<typeof createEngine>>;
+    try {
+      built = await createEngine(root, { force: opts.force });
+    } catch (err) {
+      sp.fail("No se pudo indexar el proyecto");
+      throw err;
+    }
     const ms = Date.now() - start;
-    console.log(
-      `${pc.green("✓")} ${fromCache ? "cache is fresh" : "index rebuilt"} — ` +
-        `${index.files.length} files, ${index.symbols.length} symbols ${pc.dim(`(${ms}ms)`)}`,
+    const { index, fromCache } = built;
+    sp.succeed(
+      `${fromCache ? "El índice ya estaba al día" : "Índice reconstruido"}  ${ui.c.meta(`${ui.sym.branch} ${index.files.length} archivos · ${index.symbols.length} símbolos · ${ms}ms`)}`,
     );
     if (index.files.length === 0) {
-      console.log(
-        pc.yellow(
-          `⚠ No source files found to index. Sens indexes: ${supportedLanguages()}.\n` +
-            "  If this project uses another language, it isn't supported yet.",
-        ),
-      );
+      ui.warn("No se encontraron archivos para indexar.");
+      ui.detail(`Sens indexa: ${supportedLanguages()}. Si este proyecto usa otro lenguaje, aún no está soportado.`);
     }
   });
 
@@ -50,7 +97,24 @@ program
   .argument("[subdir]", "limit to a subdirectory")
   .description("Print a compact map of the project")
   .action(async (subdir?: string) => {
-    console.log(await runQuery(root, "project_map", { subdir }));
+    ui.header(subdir ? `map ${subdir}` : "map");
+    const { engine } = await getEngine(true);
+    logUsage(root, "project_map", { subdir });
+    const entries = engine.map(subdir);
+    show(renderMap(entries));
+
+    const dirs = new Set(
+      entries.map((e) => (e.file.includes("/") ? e.file.slice(0, e.file.lastIndexOf("/")) : ".")),
+    ).size;
+    const symbols = entries.reduce((n, e) => n + e.exported.length + e.internalCount, 0);
+    ui.box(
+      [
+        `${ui.c.text(String(entries.length))} archivos ${ui.c.meta("·")} ${ui.c.text(String(symbols))} símbolos ${ui.c.meta("·")} ${ui.c.text(String(dirs))} carpetas`,
+        `${ui.c.meta(ui.sym.arrow)} ${ui.c.brand("sens find <name>")}  ${ui.c.meta("localizar un símbolo")}`,
+        `${ui.c.meta(ui.sym.arrow)} ${ui.c.brand("sens who <name>")}   ${ui.c.meta("ver quién lo usa")}`,
+      ],
+      { title: "Resumen" },
+    );
   });
 
 program
@@ -58,7 +122,10 @@ program
   .argument("<name>", "symbol name")
   .description("Find where a symbol is defined")
   .action(async (name: string) => {
-    console.log(await runQuery(root, "find_symbol", { name }));
+    ui.header(`find ${name}`);
+    const { engine } = await getEngine();
+    logUsage(root, "find_symbol", { name });
+    show(renderSymbols(engine.findSymbol(name), `Sin coincidencias para “${name}”.`));
   });
 
 program
@@ -67,7 +134,10 @@ program
   .description("List where a symbol is used")
   .option("--full", "list every call site instead of a partial summary for heavily-used symbols")
   .action(async (name: string, opts: { full?: boolean }) => {
-    console.log(await runQuery(root, "who_uses", { name, full: opts.full }));
+    ui.header(`who ${name}`);
+    const { engine } = await getEngine();
+    logUsage(root, "who_uses", { name, full: opts.full });
+    show(renderWhoUses(engine.whoUses(name), { full: opts.full }));
   });
 
 program
@@ -75,7 +145,10 @@ program
   .argument("<name>", "symbol name")
   .description("Show a symbol's callers and callees (call graph neighborhood)")
   .action(async (name: string) => {
-    console.log(await runQuery(root, "explain_symbol", { name }));
+    ui.header(`explain ${name}`);
+    const { engine } = await getEngine();
+    logUsage(root, "explain_symbol", { name });
+    show(renderExplain(engine.explain(name)));
   });
 
 program
@@ -84,7 +157,10 @@ program
   .argument("<to>", "target symbol name")
   .description("Shortest chain of calls/references connecting two symbols")
   .action(async (from: string, to: string) => {
-    console.log(await runQuery(root, "symbol_path", { from, to }));
+    ui.header(`path ${from} → ${to}`);
+    const { engine } = await getEngine();
+    logUsage(root, "symbol_path", { from, to });
+    show(renderPath(engine.path(from, to), from, to));
   });
 
 program
@@ -92,7 +168,10 @@ program
   .argument("<file>", "file path")
   .description("Print a file's signatures, without its bodies")
   .action(async (file: string) => {
-    console.log(await runQuery(root, "file_outline", { file }));
+    ui.header(`outline ${file}`);
+    const { engine } = await getEngine();
+    logUsage(root, "file_outline", { file });
+    show(renderSymbols(engine.fileOutline(file), `Sin símbolos en “${file}”.`));
   });
 
 program
@@ -100,7 +179,11 @@ program
   .argument("<keywords...>", "keywords describing the functionality")
   .description("Check whether something matching these keywords already exists")
   .action(async (keywords: string[]) => {
-    console.log(await runQuery(root, "already_exists", { query: keywords.join(" ") }));
+    const query = keywords.join(" ");
+    ui.header(`exists ${query}`);
+    const { engine } = await getEngine();
+    logUsage(root, "already_exists", { query });
+    show(renderSymbols(engine.alreadyExists(query), `Nada coincide con “${query}” — parece nuevo.`));
   });
 
 program
@@ -108,8 +191,10 @@ program
   .argument("[subdir]", "limit to a subdirectory")
   .description("List unused symbols/exports (candidates)")
   .action(async (subdir?: string) => {
-    const out = await runQuery(root, "dead_code", { subdir });
-    console.log(out.startsWith("no dead-code") ? pc.green(out) : pc.yellow(out));
+    ui.header(subdir ? `dead-code ${subdir}` : "dead-code");
+    const { engine } = await getEngine();
+    logUsage(root, "dead_code", { subdir });
+    show(renderDeadCode(engine.deadCode(subdir)));
   });
 
 program
@@ -117,7 +202,10 @@ program
   .argument("<file>", "file path")
   .description("List a file's imports and importers (import graph)")
   .action(async (file: string) => {
-    console.log(await runQuery(root, "file_dependencies", { file }));
+    ui.header(`deps ${file}`);
+    const { engine } = await getEngine();
+    logUsage(root, "file_dependencies", { file });
+    show(renderFileDependencies(engine.fileDependencies(file)));
   });
 
 program
@@ -125,12 +213,21 @@ program
   .description("Generate a static, self-contained HTML report")
   .option("-o, --out <path>", "output file path")
   .action(async (opts: { out?: string }) => {
-    const { engine, index } = await createEngine(root);
-    const { renderReport } = await import("./report/html.js");
-    const out = opts.out ?? path.join(sensDir(root), "report.html");
-    mkdirSync(path.dirname(out), { recursive: true });
-    writeFileSync(out, renderReport(index, engine), "utf8");
-    console.log(`${pc.green("✓")} report written to ${pc.cyan(out)}`);
+    ui.header("report");
+    const sp = ui.spinner("Generando el reporte HTML…");
+    let out: string;
+    try {
+      const { engine, index } = await createEngine(root);
+      const { renderReport } = await import("./report/html.js");
+      out = opts.out ?? path.join(sensDir(root), "report.html");
+      mkdirSync(path.dirname(out), { recursive: true });
+      writeFileSync(out, renderReport(index, engine), "utf8");
+    } catch (err) {
+      sp.fail("No se pudo generar el reporte");
+      throw err;
+    }
+    sp.succeed("Reporte generado");
+    ui.detail(out);
   });
 
 program
@@ -139,9 +236,16 @@ program
   .option("-p, --port <port>", "port to listen on", "4319")
   .option("-r, --root <dir>", "project directory to inspect", ".")
   .option("--no-open", "do not open the browser automatically")
-  .action(async (opts: { port: string; root: string; open: boolean }) => {
+  .option("--host", "expose on your local network (0.0.0.0), behind an access token")
+  .option("--tunnel", "also create a public URL via cloudflared or ngrok (if installed)")
+  .action(async (opts: { port: string; root: string; open: boolean; host?: boolean; tunnel?: boolean }) => {
     const { startDashboard } = await import("./dashboard/server.js");
-    await startDashboard(path.resolve(opts.root), { port: Number(opts.port), open: opts.open });
+    await startDashboard(path.resolve(opts.root), {
+      port: Number(opts.port),
+      open: opts.open,
+      host: opts.host,
+      tunnel: opts.tunnel,
+    });
   });
 
 program
@@ -152,21 +256,26 @@ program
   .action((opts: { write?: string | boolean; list?: boolean }) => {
     const config = loadConfig(root);
     if (opts.list) {
+      ui.header("rules --list");
+      ui.blank();
       for (const { module, active } of ruleModules(config)) {
-        const tag = active ? pc.green("on ") : pc.dim("off");
-        console.log(`  [${tag}] ${module.id}  ${pc.dim(module.title)}`);
+        const bullet = active ? ui.c.brand(ui.sym.file) : ui.c.meta(ui.sym.empty);
+        const id = module.id.padEnd(18);
+        const tag = active ? ui.c.brand("on ") : ui.c.meta("off");
+        ui.print(`${ui.INDENT}${bullet} ${(active ? ui.c.text : ui.c.meta)(id)} ${tag}  ${ui.c.meta(module.title)}`);
       }
+      ui.blank();
       return;
     }
     const rules = composeRules(activeRules(config));
     if (opts.write) {
       const out = typeof opts.write === "string" ? opts.write : "SENS_RULES.md";
       writeFileSync(out, rules + "\n", "utf8");
-      console.log(
-        `${pc.green("✓")} rules written to ${pc.cyan(out)} ${pc.dim("— reference it from your CLAUDE.md / AGENTS.md")}`,
-      );
+      ui.header("rules");
+      ui.success("Reglas escritas");
+      ui.detail(`${out} — referéncialas desde tu CLAUDE.md / AGENTS.md`);
     } else {
-      console.log(rules);
+      ui.print(rules);
     }
   });
 
@@ -181,11 +290,11 @@ program
       mkdirSync(dir, { recursive: true });
       const out = path.join(dir, "SKILL.md");
       writeFileSync(out, SKILL_MD, "utf8");
-      console.log(
-        `${pc.green("✓")} skill written to ${pc.cyan(out)} ${pc.dim("— Claude Code loads it on demand")}`,
-      );
+      ui.header("skill");
+      ui.success("Skill instalada");
+      ui.detail(`${out} — Claude Code la carga bajo demanda`);
     } else {
-      console.log(SKILL_MD);
+      ui.print(SKILL_MD);
     }
   });
 
@@ -193,7 +302,10 @@ program
   .command("usage")
   .description("Show which Sens tools the model has actually called (from the MCP usage log)")
   .action(() => {
-    console.log(formatUsage(readUsage(root)));
+    ui.header("usage");
+    ui.blank();
+    ui.print(formatUsage(readUsage(root)));
+    ui.blank();
   });
 
 program
@@ -201,32 +313,32 @@ program
   .description("Set up sens here for an agent: index + rules, plus the skill/hooks on Claude Code")
   .option("--agent <name>", "claude | codex | copilot | cursor | all", "claude")
   .action(async (opts: { agent: string }) => {
+    ui.header(`init ${opts.agent}`);
     const { initProject } = await import("./init.js");
-    let results;
+    const sp = ui.spinner("Indexando y preparando el agente…");
+    let results: Awaited<ReturnType<typeof initProject>>;
     try {
       results = await initProject(root, { agent: opts.agent });
     } catch (err) {
-      console.error(pc.red(err instanceof Error ? err.message : String(err)));
-      process.exitCode = 1;
-      return;
+      sp.fail("No se pudo inicializar sens");
+      throw err;
     }
-    console.log(`${pc.green("✓")} index built — ${results[0].indexedFiles} file(s)`);
+    sp.succeed(`Índice construido  ${ui.c.meta(`${ui.sym.branch} ${results[0].indexedFiles} archivo(s)`)}`);
     for (const r of results) {
       if (r.agent === "claude") {
-        console.log(`${pc.green("✓")} skill installed — ${pc.cyan(r.skillPath ?? "")} ${pc.dim("[claude]")}`);
+        ui.success(`Skill instalada  ${ui.c.meta(`${ui.sym.branch} ${r.skillPath ?? ""} [claude]`)}`);
         if (r.hookWired === "skipped") {
-          console.log(`${pc.yellow("⚠")} could not parse ${pc.cyan(r.settingsPath ?? "")} — add the hooks manually`);
+          ui.warn(`No se pudo leer ${r.settingsPath ?? ""} — añade los hooks a mano`);
         } else {
-          const verb = r.hookWired === "added" ? "wired into" : "already in";
-          console.log(`${pc.green("✓")} hooks ${verb} ${pc.cyan(r.settingsPath ?? "")} ${pc.dim("[claude]")}`);
+          const verb = r.hookWired === "added" ? "conectados en" : "ya estaban en";
+          ui.success(`Hooks ${verb}  ${ui.c.meta(`${ui.sym.branch} ${r.settingsPath ?? ""} [claude]`)}`);
         }
       } else {
-        console.log(
-          `${pc.green("✓")} rules ${r.instructionsWritten} — ${pc.cyan(r.instructionsPath ?? "")} ${pc.dim(`[${r.agent}]`)}`,
-        );
+        ui.success(`Reglas ${r.instructionsWritten}  ${ui.c.meta(`${ui.sym.branch} ${r.instructionsPath ?? ""} [${r.agent}]`)}`);
       }
     }
-    console.log(pc.dim("\nsens must be on PATH (npm i -g sens-mcp) for agents to run its commands."));
+    ui.blank();
+    ui.detail("sens debe estar en el PATH (npm i -g sens-mcp) para que los agentes puedan invocarlo.");
   });
 
 program
@@ -248,6 +360,12 @@ program
   });
 
 program.parseAsync().catch((err) => {
-  console.error(err instanceof Error ? err.message : String(err));
+  const message = err instanceof Error ? err.message : String(err);
+  ui.error(message);
+  if (program.opts().verbose && err instanceof Error && err.stack) {
+    console.error(ui.c.meta(err.stack));
+  } else {
+    ui.detail("vuelve a ejecutar con --verbose para ver el stack completo");
+  }
   process.exit(1);
 });

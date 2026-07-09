@@ -4,6 +4,29 @@ All notable changes to `sens-mcp` are documented here. This project follows
 [Semantic Versioning](https://semver.org/): `patch` = fix, `minor` = feature,
 `major` = breaking change.
 
+## [Unreleased]
+
+### Added
+- **Shareable dashboard** — `sens dashboard` now prints Local / Network / Public URLs
+  (Vite-style) with a scannable **QR code**. `--host` exposes it on your LAN; `--tunnel`
+  creates a public URL via cloudflared or ngrok if either is installed — and when
+  neither is found, prints a "How to install" line with clickable links to their
+  official pages. Both are opt-in and guarded by an access token in the link, since the
+  dashboard can write your config; by default it stays bound to `localhost`.
+
+### Changed
+- **Redesigned terminal UI** — every command now shares one modern look, modeled on
+  Claude Code / gh / Vercel CLIs: a consistent `sens › <command>` header, a braille
+  spinner with live status while indexing (resolving to `✓`/`✗` in place), 2-space
+  hierarchy with meaningful glyphs (`● ○ › → ⎿`), thin `─` separators, rounded summary
+  boxes, and color that carries meaning (green ok, red error, yellow warning, gray for
+  paths/counts/timings) around a single brand accent. Errors are now a single clear line
+  with an optional hint — no raw stack traces unless you pass `--verbose`. All output is
+  centralized in one module (`src/cli/ui.ts`) so the commands stay visually identical.
+  Crucially, this styling is **terminal-only**: the MCP server and the answering hook
+  still return plain text, so nothing here changes (or bloats) what the model reads.
+  Internally, `picocolors` was replaced by `chalk` + `ora` + `boxen`.
+
 ## [0.6.0] — 2026-07-09
 
 ### Added
