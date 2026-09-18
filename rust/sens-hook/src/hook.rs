@@ -1,12 +1,3 @@
-//! The PreToolUse decision, mirroring src/hook.ts.
-//!
-//! Same rules, same wording, same JSON — the model must not be able to tell
-//! which implementation answered:
-//!  - Grep for a symbol sens knows -> deny the grep, return every use.
-//!  - Grep for anything else -> let it run, just mention sens (once per session).
-//!  - Read of an indexed source file -> inject the outline as context.
-//!  - Glob -> mention that map/deps orient faster.
-
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -26,7 +17,7 @@ pub struct HookPayload {
 pub struct Action {
     pub deny: bool,
     pub message: String,
-    /// Generic reminders fire at most once per session per tool.
+
     pub once: bool,
 }
 
@@ -34,7 +25,6 @@ pub const GREP_NUDGE: &str = "sens is indexed for this project. Before grepping,
 
 pub const GLOB_NUDGE: &str = "sens is indexed for this project. `sens map [subdir]` gives a compact map (files + exported symbols) to orient faster than globbing, and `sens deps <file>` finds a file's related files.";
 
-/// A bare symbol name (what a symbol-hunting grep looks like), not a regex.
 fn is_identifier(s: &str) -> bool {
     let mut chars = s.chars();
     match chars.next() {
@@ -44,8 +34,6 @@ fn is_identifier(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
 }
 
-/// Extensions the TypeScript indexer claims — used only to decide whether a
-/// Read is worth outlining. Mirrors PARSERS in indexer/languages/parser.ts.
 const INDEXED_EXTENSIONS: [&str; 19] = [
     "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "py", "go", "rs", "java", "cs", "c",
     "cpp", "php", "rb", "kt", "h",
@@ -104,7 +92,6 @@ pub fn decide(engine: &Engine, root: &str, payload: &HookPayload) -> Option<Acti
     }
 }
 
-/// Claude Code passes an absolute path; the index stores root-relative POSIX.
 fn relative_to(root: &str, path: &str) -> String {
     let norm = |s: &str| s.replace(std::path::MAIN_SEPARATOR, "/");
     let (root, path) = (norm(root), norm(path));
@@ -151,7 +138,7 @@ mod tests {
     #[test]
     fn makes_an_absolute_path_relative_to_the_project() {
         assert_eq!(relative_to("P:/proj", "P:/proj/src/a.ts"), "src/a.ts");
-        // Already relative, or outside the project: left as-is rather than guessed.
+
         assert_eq!(relative_to("P:/proj", "src/a.ts"), "src/a.ts");
         assert_eq!(relative_to("P:/proj", "Q:/other/a.ts"), "Q:/other/a.ts");
     }
@@ -167,7 +154,6 @@ mod tests {
         assert!(hint.contains(r#""additionalContext":"hi""#));
         assert!(!hint.contains("permissionDecision"));
 
-        // Claude Code keys off this; both shapes must carry it.
         assert!(deny.contains(r#""hookEventName":"PreToolUse""#));
         assert!(hint.contains(r#""hookEventName":"PreToolUse""#));
     }

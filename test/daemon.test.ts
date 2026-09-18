@@ -7,15 +7,8 @@ import { queryViaDaemon, hookViaDaemon, daemonRunning } from "../src/daemon/clie
 import { socketPath } from "../src/daemon/protocol";
 import { runHookPayload } from "../src/hook";
 
-/**
- * The daemon's contract is that it is never required. Everything here checks
- * one of two things: that it gives the *same* answer as the in-process path,
- * or that its absence degrades to null rather than to an error.
- */
-
 let root: string;
 let stop: (() => Promise<void>) | null = null;
-
 beforeEach(() => {
   root = mkdtempSync(path.join(tmpdir(), "sens-daemon-"));
   mkdirSync(path.join(root, "src"), { recursive: true });
@@ -78,16 +71,14 @@ describe("daemon", () => {
 
   it("stays silent, not erroneous, for a query it does not know", async () => {
     await serve();
-    // `ok:false` reaches the client as null, so the caller falls back locally.
+
     expect(await queryViaDaemon(root, "no_such_query" as never, {} as never)).toBeNull();
   });
 
   it("serves a file edit made after it started", async () => {
-    // The daemon holds a warm engine, so this is the case that would go stale
-    // if it ever skipped the freshness check.
+
     await serve();
     expect(await queryViaDaemon(root, "find_symbol", { name: "gamma" })).not.toContain("gamma");
-
     writeFileSync(path.join(root, "src", "b.ts"), "export function gamma() { return 3; }\n");
     expect(await queryViaDaemon(root, "find_symbol", { name: "gamma" })).toContain("gamma");
   });

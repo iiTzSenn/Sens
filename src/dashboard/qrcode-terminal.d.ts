@@ -1,4 +1,3 @@
-// Minimal ambient types for qrcode-terminal (ships no types of its own).
 declare module "qrcode-terminal" {
   export function generate(
     input: string,

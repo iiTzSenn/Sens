@@ -48,7 +48,6 @@ describe("i18n dictionary", () => {
     const js = i18nClientScript();
     expect(js).toContain("var LANGS=");
     expect(js).toContain("var I18N=");
-    // valid, self-contained JS (no template-literal / script-closing hazards)
     expect(js).not.toContain("</script>");
     expect(js).not.toContain("`");
   });

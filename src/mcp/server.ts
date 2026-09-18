@@ -7,19 +7,11 @@ import { runQuery } from "../queries.js";
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 
-/**
- * Start the Sens MCP server over stdio.
- *
- * Every tool just forwards to `runQuery`, the shared path used by the CLI and the
- * PreToolUse hook too — so the index cache, usage logging and output formatting
- * are identical no matter which transport asked.
- */
 export async function startMcpServer(root: string): Promise<void> {
   const server = new McpServer(
     { name: "sens", version: VERSION },
     { instructions: AGENT_RULES },
   );
-
   server.registerTool(
     "project_map",
     {
@@ -128,8 +120,6 @@ export async function startMcpServer(root: string): Promise<void> {
       text(await runQuery(root, "symbol_path", { from, to })),
   );
 
-  // Prompts show up as typeable slash commands in Claude Code (tools do not).
-  // Each one just asks Claude to run the matching Sens tool.
   server.registerPrompt(
     "map",
     { title: "Sens: project map", description: "Get a compact map of the project via Sens." },

@@ -21,7 +21,6 @@ import qrcode from "qrcode-terminal";
 import { lanIps, makeToken, readCookie, terminalLink } from "./expose.js";
 import { startTunnel, type Tunnel } from "./tunnel.js";
 
-/** Official install pages, linked when no tunnel tool is found. */
 const TUNNEL_DOCS: Record<string, string> = {
   cloudflared:
     "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
@@ -82,7 +81,6 @@ function connect(root: string): void {
   writeFileSync(p, JSON.stringify(json, null, 2) + "\n", "utf8");
 }
 
-/** The rule modules with their resolved on/off state, for the dashboard's rules panel. */
 function rulesPayload(root: string) {
   const config = loadConfig(root);
   const customIds = new Set(config.rules.custom.map((m) => m.id));
@@ -97,7 +95,6 @@ function rulesPayload(root: string) {
   };
 }
 
-/** Read and JSON-parse a request body; returns {} on any failure. */
 function readBody(req: import("node:http").IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
     let data = "";
@@ -120,7 +117,6 @@ function openBrowser(url: string): void {
   try {
     spawn(cmd, args, { stdio: "ignore", detached: true }).unref();
   } catch {
-    /* opening the browser is best-effort */
   }
 }
 
@@ -129,10 +125,7 @@ export async function startDashboard(
   opts: { port?: number; open?: boolean; host?: boolean; tunnel?: boolean } = {},
 ): Promise<void> {
   const port = opts.port ?? 4319;
-  // Exposure is opt-in: the dashboard writes files, so by default it binds to
-  // localhost only. `--host`/`--tunnel` bind to every interface behind a token.
   const exposed = Boolean(opts.host || opts.tunnel);
-  // Only --host opens the LAN; a tunnel reaches us over localhost, so it stays 127.0.0.1.
   const bindHost = opts.host ? "0.0.0.0" : "127.0.0.1";
   const token = exposed ? makeToken() : null;
   const json = (res: import("node:http").ServerResponse, body: unknown) => {
@@ -143,7 +136,6 @@ export async function startDashboard(
   const server = createServer(async (req, res) => {
     try {
       const url = (req.url ?? "/").split("?")[0];
-      // Token gate (only when exposed): accept a `?token=` on first load, then a cookie.
       if (token) {
         const q = new URL(req.url ?? "/", "http://x").searchParams.get("token");
         if (readCookie(req.headers.cookie, "sens_token") !== token && q !== token) {

@@ -51,7 +51,6 @@ describe("hook actionFor", () => {
   it("injects a file outline before reading a source file (absolute path)", async () => {
     const root = tmpProject();
     try {
-      // Claude Code passes an absolute path — the index is keyed root-relative.
       const a = await actionFor(root, "Read", { file_path: path.join(root, "math.ts") });
       expect(a?.deny).toBe(false);
       expect(a?.message).toContain("add");

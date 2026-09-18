@@ -1,18 +1,3 @@
-// PreToolUse hook: when the model is about to Read / Grep / Glob, answer with
-// sens *before* the expensive call runs.
-//
-//  - Grep for a symbol sens knows  -> deny the grep and return `who_uses` (the
-//    definition + every call site). sens replaces grep for the common case.
-//  - Grep for anything else (regex, a string, an unknown name) -> let it run,
-//    just remind that sens exists.
-//  - Read of an indexed source file -> inject the file's outline (signatures
-//    only) as context; the read still proceeds, but often it isn't needed.
-//  - Glob -> remind that `project_map` / `file_dependencies` orient faster.
-//
-// Best-effort and non-blocking by default: any failure, or an unrecognized
-// payload, emits nothing and lets the tool proceed untouched. Wired from a
-// project's .claude/settings.json PreToolUse hook; see `sens hook` in the CLI.
-
 import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -29,21 +14,15 @@ interface HookPayload {
   tool_input?: Record<string, unknown>;
 }
 
-/** The rules document to inject at session start, or null if none are active. */
 export function sessionStartContext(root: string): string | null {
   const rules = activeRules(loadConfig(root));
   if (rules.length === 0) return null;
   return composeRules(rules);
 }
 
-/** What the hook decided to do about a tool call. */
 interface HookAction {
-  /** Deny the tool call (substitute it) instead of just adding context. */
   deny: boolean;
-  /** Text handed to the model — the sens answer, or a reminder. */
   message: string;
-  /** Generic reminder: fire at most once per session per tool, to avoid spam.
-   * Specific answers (a real outline / usage list) fire every time. */
   once?: boolean;
 }
 
@@ -55,10 +34,8 @@ const GLOB_NUDGE =
   "sens is indexed for this project. `sens map [subdir]` gives a compact map (files + exported symbols) to orient faster than globbing, " +
   "and `sens deps <file>` finds a file's related files.";
 
-/** A bare symbol name (what a symbol-hunting grep looks like), not a regex. */
 const isIdentifier = (s: string): boolean => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(s);
 
-/** Decide what to do for a tool call, running a sens query when it can answer. */
 export async function actionFor(
   root: string,
   tool: string,
@@ -82,8 +59,8 @@ export async function actionFor(
     }
     case "Read": {
       const raw = typeof input.file_path === "string" ? input.file_path : "";
-      if (!raw || !parserForFile(raw)) return null; // not a source file sens indexes
-      // Claude Code passes an absolute path; the index matches root-relative POSIX.
+      if (!raw || !parserForFile(raw)) return null;
+
       const file = path.isAbsolute(raw) ? rel(root, raw) : raw;
       const outline = await runQuery(root, "file_outline", { file });
       if (outline.startsWith("no matches")) return null;
@@ -101,8 +78,6 @@ export async function actionFor(
   }
 }
 
-/** True if this session was already reminded for `tool` (and records it if not),
- * so generic reminders fire at most once per session per tool. */
 function alreadyNudged(sessionId: string, tool: string): boolean {
   const safe = sessionId.replace(/[^\w.-]+/g, "-");
   const marker = path.join(tmpdir(), `sens-hook-${safe}-${tool}`);
@@ -110,12 +85,11 @@ function alreadyNudged(sessionId: string, tool: string): boolean {
   try {
     writeFileSync(marker, "");
   } catch {
-    /* best effort: if we can't record it, we may remind again — harmless */
+
   }
   return false;
 }
 
-/** The hook's decision as PreToolUse JSON. */
 function render(action: HookAction): string {
   const hookSpecificOutput: Record<string, unknown> = {
     hookEventName: "PreToolUse",
@@ -129,24 +103,14 @@ function render(action: HookAction): string {
   return JSON.stringify({ hookSpecificOutput });
 }
 
-/**
- * Answer a raw PreToolUse payload, returning what should go to stdout ("" for
- * "say nothing and let the tool run").
- *
- * Split out from {@link runHook} so the daemon can run exactly this — the same
- * logic, with the engine already warm — on behalf of a slim client process.
- * See `hook-client.ts`.
- */
 export async function runHookPayload(root: string, raw: string): Promise<string> {
   let payload: HookPayload;
   try {
     payload = JSON.parse(raw) as HookPayload;
   } catch {
-    return ""; // not our shape — never interfere with the tool call
+    return "";
   }
 
-  // SessionStart: put the project's active working rules in front of the model
-  // at the very start of the session, no tool call required.
   if (payload.hook_event_name === "SessionStart") {
     let ctx: string | null = null;
     try {
@@ -166,10 +130,9 @@ export async function runHookPayload(root: string, raw: string): Promise<string>
   try {
     action = await actionFor(root, tool, payload.tool_input ?? {});
   } catch {
-    return ""; // a sens failure must never break the tool call
+    return "";
   }
   if (!action) return "";
   if (action.once && alreadyNudged(payload.session_id ?? "nosession", tool)) return "";
   return render(action);
 }
-

@@ -17,8 +17,6 @@ const byName = (cands: DeadCodeCandidate[], name: string): DeadCodeCandidate | u
   cands.find((c) => c.symbol.name === name);
 
 describe("php dead-code accuracy", () => {
-  // (a) An unused top-level function IS flagged. Top-level funcs are `exported`
-  // (globally accessible), so the strongest tier they can reach is LOW.
   it("flags an unused top-level function at LOW", async () => {
     const c = byName(await candidates(), "neverCalled");
     expect(c).toBeDefined();
@@ -27,7 +25,6 @@ describe("php dead-code accuracy", () => {
     expect(c?.symbol.kind).toBe("function");
   });
 
-  // Precision win: a genuinely-unused private method still surfaces (as LOW).
   it("flags an unused private method at LOW", async () => {
     const c = byName(await candidates(), "User.unusedSecret");
     expect(c).toBeDefined();
@@ -35,15 +32,14 @@ describe("php dead-code accuracy", () => {
     expect(c?.symbol.kind).toBe("method");
   });
 
-  // NO FALSE POSITIVES — every one of these is used somewhere and must not be flagged.
   it("never flags a class instantiated with `new`", async () => {
     expect(byName(await candidates(), "User")).toBeUndefined();
   });
 
   it("never flags a class used via `extends` / `implements`", async () => {
     const cands = await candidates();
-    expect(byName(cands, "Person")).toBeUndefined(); // extended by User
-    expect(byName(cands, "Named")).toBeUndefined(); // implemented by User
+    expect(byName(cands, "Person")).toBeUndefined();
+    expect(byName(cands, "Named")).toBeUndefined();
   });
 
   it("never flags a method called via `$obj->method()`", async () => {
@@ -56,9 +52,9 @@ describe("php dead-code accuracy", () => {
 
   it("never flags a static method called via `Class::method()`", async () => {
     const cands = await candidates();
-    expect(byName(cands, "Registry")).toBeUndefined(); // class referenced
-    expect(byName(cands, "Registry.register")).toBeUndefined(); // static call
-    expect(byName(cands, "Registry.log")).toBeUndefined(); // self::log()
+    expect(byName(cands, "Registry")).toBeUndefined();
+    expect(byName(cands, "Registry.register")).toBeUndefined();
+    expect(byName(cands, "Registry.log")).toBeUndefined();
   });
 
   it("never flags a used top-level function", async () => {

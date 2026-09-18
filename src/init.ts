@@ -1,13 +1,3 @@
-// `sens init [--agent <name>]` — set sens up in a project for a given agent.
-//
-//  - claude  → build index, install the skill, wire the PreToolUse + SessionStart
-//              hooks into `.claude/settings.json` (merging, never clobbering).
-//  - codex / copilot / cursor → build index, write the sens usage guide + the
-//              project's active rules into that agent's instructions file
-//              (AGENTS.md / .github/copilot-instructions.md / .cursorrules), between
-//              markers so re-running just refreshes the block.
-//  - all     → every agent above.
-
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { createEngine } from "./core.js";
@@ -15,17 +5,8 @@ import { loadConfig, activeRules } from "./config.js";
 import { composeRules } from "./rules.js";
 import { SKILL_MD, SKILL_NAME, sensInstructions } from "./skill.js";
 
-/**
- * Command Claude Code runs for the hooks. Assumes sens is on PATH (global
- * install). `sens-hook` is a dedicated executable rather than `sens hook`: it
- * runs once per model tool call, and going through the CLI bundle costs ~100ms
- * of module loading before any hook logic runs. Both forms work.
- */
 const HOOK_COMMAND = "sens-hook";
-/** Tools the PreToolUse hook intercepts. */
 const HOOK_MATCHER = "Read|Grep|Glob";
-
-/** Agents whose setup is just an instructions file (they drive the CLI from it). */
 const FILE_AGENTS: Record<string, { label: string; file: string }> = {
   codex: { label: "Codex", file: "AGENTS.md" },
   copilot: { label: "GitHub Copilot", file: path.join(".github", "copilot-instructions.md") },
@@ -48,23 +29,21 @@ interface Settings {
 export interface InitResult {
   agent: string;
   indexedFiles: number;
-  // claude
+
   skillPath?: string;
   settingsPath?: string;
   hookWired?: "added" | "already" | "skipped";
-  // file agents
+
   instructionsPath?: string;
   instructionsWritten?: "created" | "updated";
 }
 
-/** Which agents a `--agent` value maps to. */
 function resolveTargets(agent: string): string[] {
   if (agent === "all") return ["claude", ...Object.keys(FILE_AGENTS)];
   if (agent === "claude" || agent in FILE_AGENTS) return [agent];
   throw new Error(`unknown agent "${agent}" — use one of: claude, codex, copilot, cursor, all`);
 }
 
-/** True if some entry in this event's list already runs the sens hook. */
 function hasSensHook(entries: HookEntry[]): boolean {
   return entries.some(
     (entry) =>
@@ -72,14 +51,12 @@ function hasSensHook(entries: HookEntry[]): boolean {
       entry.hooks.some(
         (h) =>
           typeof h.command === "string" &&
-          // Either spelling counts as wired, so re-running init never
-          // duplicates a hook set up by an older version.
+
           (h.command.includes("sens-hook") || h.command.includes("sens hook")),
       ),
   );
 }
 
-/** Add the sens hook to one event's list if absent; returns whether it was added. */
 function addSensHook(hooks: Record<string, HookEntry[]>, event: string, matcher?: string): boolean {
   const entries = (hooks[event] = hooks[event] ?? []);
   if (hasSensHook(entries)) return false;
@@ -89,14 +66,13 @@ function addSensHook(hooks: Record<string, HookEntry[]>, event: string, matcher?
   return true;
 }
 
-/** Merge the sens hooks (PreToolUse + SessionStart) into settings.json, untouched otherwise. */
 function wireHook(settingsPath: string): InitResult["hookWired"] {
   let settings: Settings = {};
   if (existsSync(settingsPath)) {
     try {
       settings = JSON.parse(readFileSync(settingsPath, "utf8")) as Settings;
     } catch {
-      return "skipped"; // unparseable — never risk clobbering the user's settings
+      return "skipped";
     }
   } else {
     mkdirSync(path.dirname(settingsPath), { recursive: true });
@@ -115,7 +91,6 @@ const MARK_START = "<!-- sens:start -->";
 const MARK_END = "<!-- sens:end -->";
 const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Write the sens block into an instructions file, replacing a prior block if present. */
 function writeInstructions(file: string, body: string): "created" | "updated" {
   const block = `${MARK_START}\n${body}\n${MARK_END}`;
   if (existsSync(file)) {
@@ -133,7 +108,6 @@ function writeInstructions(file: string, body: string): "created" | "updated" {
   return "created";
 }
 
-/** Claude Code setup: skill + hooks. */
 function initClaude(root: string, indexedFiles: number): InitResult {
   const skillDir = path.join(root, ".claude", "skills", SKILL_NAME);
   mkdirSync(skillDir, { recursive: true });
@@ -144,14 +118,12 @@ function initClaude(root: string, indexedFiles: number): InitResult {
   return { agent: "claude", indexedFiles, skillPath, settingsPath, hookWired: wireHook(settingsPath) };
 }
 
-/** File-agent setup: write the guide + active rules into the agent's instructions file. */
 function initFileAgent(root: string, id: string, indexedFiles: number): InitResult {
   const body = sensInstructions(composeRules(activeRules(loadConfig(root))));
   const file = path.join(root, FILE_AGENTS[id].file);
   return { agent: id, indexedFiles, instructionsPath: file, instructionsWritten: writeInstructions(file, body) };
 }
 
-/** Install sens into a project for one or more agents. Builds the index once. */
 export async function initProject(root: string, opts: { agent?: string } = {}): Promise<InitResult[]> {
   const targets = resolveTargets(opts.agent ?? "claude");
   const { index } = await createEngine(root, { force: true });

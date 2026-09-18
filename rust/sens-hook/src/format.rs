@@ -1,21 +1,12 @@
-//! Plain-text rendering, byte-for-byte identical to src/format.ts.
-//!
-//! This text is what the model reads, so a difference here is a behaviour
-//! change even when the underlying data is right. `rust/sens-hook/tests` diffs
-//! the output against the TypeScript implementation on real payloads.
-
 use std::collections::HashMap;
 
 use crate::index::SymbolInfo;
 use crate::query::WhoUses;
 
-/// The declared name inside a symbol id (`file#name#line`).
 fn symbol_name(id: &str) -> &str {
     id.split('#').nth(1).unwrap_or(id)
 }
 
-/// Above this many call sites, listing every file:line wastes tokens; group by
-/// file instead. Mirrors MAX_INLINE_REFS / MAX_GROUPED_FILES in format.ts.
 const MAX_INLINE_REFS: usize = 30;
 const MAX_GROUPED_FILES: usize = 10;
 
@@ -62,8 +53,6 @@ pub fn format_who_uses(results: &[WhoUses], full: bool) -> String {
             continue;
         }
 
-        // Insertion-ordered counting, so files with equal counts keep the order
-        // JavaScript's Map iteration gives them (first use wins).
         let mut counts: HashMap<&str, usize> = HashMap::new();
         let mut order: Vec<&str> = Vec::new();
         for reference in &r.references {
@@ -72,7 +61,7 @@ pub fn format_who_uses(results: &[WhoUses], full: bool) -> String {
                 order.push(file);
             }
         }
-        // Array.prototype.sort is stable, so equal counts keep insertion order.
+
         let mut sorted: Vec<(&str, usize)> = order.iter().map(|f| (*f, counts[f])).collect();
         sorted.sort_by(|a, b| b.1.cmp(&a.1));
 
@@ -162,7 +151,7 @@ mod tests {
         assert!(out.contains("PARTIAL SUMMARY (not the full list)"));
         assert!(out.contains("a.ts  (30x)"));
         assert!(out.contains("b.ts  (10x)"));
-        // The warning matters: a truncated view must not read as complete.
+
         assert!(out.contains("full:true"));
     }
 
@@ -172,6 +161,6 @@ mod tests {
         let refs: Vec<Reference> = (0..40).map(|i| reference("a.ts", i, None)).collect();
         let out = format_who_uses(&[WhoUses { symbol: &s, references: refs }], true);
         assert!(!out.contains("PARTIAL SUMMARY"));
-        assert_eq!(out.lines().count(), 41); // heading + one per use
+        assert_eq!(out.lines().count(), 41);
     }
 }

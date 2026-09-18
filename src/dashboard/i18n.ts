@@ -1,15 +1,9 @@
-// UI translations for the dashboard. Kept isolated from page.ts so the (large)
-// dictionary stays out of the markup and can be validated by a test that every
-// locale carries exactly the same keys as English. `i18nClientScript()` serializes
-// LANGS + MESSAGES into a JS block that page.ts injects into the client script.
-
 export interface Lang {
   code: string;
-  name: string; // shown in the picker, written in its own script
+  name: string;
   rtl?: boolean;
 }
 
-// Order = order in the language menu. English first, then by rough reach.
 export const LANGS: Lang[] = [
   { code: "en", name: "English" },
   { code: "es", name: "Español" },
@@ -1343,7 +1337,6 @@ export const MESSAGES: Record<string, Messages> = {
   },
 };
 
-// Serialize the dictionary into a JS block for the client script in page.ts.
 export function i18nClientScript(): string {
   return `var LANGS=${JSON.stringify(LANGS)};var I18N=${JSON.stringify(MESSAGES)};`;
 }

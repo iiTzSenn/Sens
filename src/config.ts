@@ -3,22 +3,15 @@ import path from "node:path";
 import { globby } from "globby";
 import { BUILTIN_RULES, type RuleModule } from "./rules.js";
 
-/** Per-project rule selection: toggles over the built-ins plus custom modules. */
 export interface RulesConfig {
-  /** Built-in ids to force on (turns on a default-off module). */
   enabled: string[];
-  /** Ids to force off (turns off a default-on or custom module). */
   disabled: string[];
-  /** Project-authored rule modules (default on unless listed in `disabled`). */
   custom: RuleModule[];
 }
 
 export interface SensConfig {
-  /** Extra ignore globs for indexing. */
   ignore: string[];
-  /** Globs of files whose exports are public API (never flagged as dead). */
   entryPoints: string[];
-  /** Rule selection injected at session start. */
   rules: RulesConfig;
 }
 
@@ -29,20 +22,16 @@ const DEFAULT_ENTRY = [
   "**/index.jsx",
 ];
 
-/** JS/TS source extensions a package.json entry (a built `dist/*.js`) maps back to. */
 const SOURCE_EXTS = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
 
-/** Leading path segments of build output — stripped to map a target to its source. */
 const BUILD_DIRS = new Set(["dist", "build", "lib", "out", "es", "esm", "cjs", "umd", "types", "typings"]);
 
-/** Every string leaf under a package.json field like `exports` or `bin`. */
 function stringLeaves(v: unknown, out: string[]): void {
   if (typeof v === "string") out.push(v);
   else if (Array.isArray(v)) for (const x of v) stringLeaves(x, out);
   else if (v && typeof v === "object") for (const x of Object.values(v)) stringLeaves(x, out);
 }
 
-/** The declared entry-point target paths of one parsed package.json. */
 function packageTargets(pkg: Record<string, unknown>): string[] {
   const targets: string[] = [];
   for (const field of ["main", "module", "types", "typings"]) stringLeaves(pkg[field], targets);
@@ -51,15 +40,6 @@ function packageTargets(pkg: Record<string, unknown>): string[] {
   return targets;
 }
 
-/**
- * Globs that match the *source* files behind every package's declared entry
- * points (`main`, `module`, `bin`, `types`, `exports`). A published package
- * points these at built artifacts (`dist/cli.js`); we strip the build dir +
- * extension and glob the tail so `dist/mcp/server.js` matches `src/mcp/server.ts`.
- * Every package.json in the tree is read (anchored to its own directory) so
- * monorepo sub-packages are covered too. Treating these as entry points keeps a
- * package's public API from being flagged as dead.
- */
 async function packageEntryGlobs(root: string): Promise<string[]> {
   const pkgFiles = await globby("**/package.json", {
     cwd: root,
@@ -67,7 +47,6 @@ async function packageEntryGlobs(root: string): Promise<string[]> {
     absolute: false,
     ignore: ["**/node_modules/**", "**/dist/**", "**/.sens/**"],
   });
-
   const globs = new Set<string>();
   for (const pkgRel of pkgFiles) {
     let pkg: Record<string, unknown>;
@@ -93,7 +72,6 @@ const emptyRules = (): RulesConfig => ({ enabled: [], disabled: [], custom: [] }
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 
-/** Validate the `rules` block: drop anything that isn't well-formed. */
 function parseRules(raw: unknown): RulesConfig {
   if (!raw || typeof raw !== "object") return emptyRules();
   const r = raw as Record<string, unknown>;
@@ -126,7 +104,6 @@ export function loadConfig(root: string): SensConfig {
   }
 }
 
-/** Every known rule module (built-in + custom) with its resolved on/off state. */
 export function ruleModules(config: SensConfig): { module: RuleModule; active: boolean }[] {
   const enabled = new Set(config.rules.enabled);
   const disabled = new Set(config.rules.disabled);
@@ -141,15 +118,12 @@ export function ruleModules(config: SensConfig): { module: RuleModule; active: b
   });
 }
 
-/** The rule modules currently in force for this project. */
 export function activeRules(config: SensConfig): RuleModule[] {
   return ruleModules(config)
     .filter((r) => r.active)
     .map((r) => r.module);
 }
 
-/** Return a rules config with `id` toggled to `active`, recording only the deviation
- * from the module's default so the config stays minimal. */
 export function setRuleState(config: SensConfig, id: string, active: boolean): RulesConfig {
   const enabled = new Set(config.rules.enabled);
   const disabled = new Set(config.rules.disabled);
@@ -162,7 +136,6 @@ export function setRuleState(config: SensConfig, id: string, active: boolean): R
   return { enabled: [...enabled], disabled: [...disabled], custom: config.rules.custom };
 }
 
-/** Return a rules config with a custom module added (or replaced by id). */
 export function addCustomRule(
   config: SensConfig,
   module: { id: string; title: string; body: string },
@@ -173,7 +146,6 @@ export function addCustomRule(
   return { ...config.rules, custom };
 }
 
-/** Return a rules config with the custom module `id` (and any toggle of it) removed. */
 export function removeCustomRule(config: SensConfig, id: string): RulesConfig {
   return {
     enabled: config.rules.enabled.filter((x) => x !== id),
@@ -182,7 +154,6 @@ export function removeCustomRule(config: SensConfig, id: string): RulesConfig {
   };
 }
 
-/** Persist the rules block to sens.config.json, preserving other config keys. */
 export function saveRules(root: string, rules: RulesConfig): void {
   const p = path.join(root, "sens.config.json");
   let raw: Record<string, unknown> = {};
@@ -197,7 +168,6 @@ export function saveRules(root: string, rules: RulesConfig): void {
   writeFileSync(p, JSON.stringify(raw, null, 2) + "\n", "utf8");
 }
 
-/** Files whose exports count as a public API (default + configured). */
 export async function entryPointFiles(
   root: string,
   config: SensConfig,
@@ -209,30 +179,20 @@ export async function entryPointFiles(
   return new Set(matched.map((m) => m.split(path.sep).join("/")));
 }
 
-/** Directory names that hold tests, fixtures, mocks or snapshots — code that
- * lives in the repo to support tests, not to ship, so its unused symbols are
- * not dead-code candidates. */
 const TEST_DIR = /(^|\/)(__tests__|__mocks__|__fixtures__|__snapshots__|tests?|specs?|fixtures|mocks|e2e|testdata)\//;
 
-/** Filename conventions that mark a test file, across languages: JS/TS
- * `foo.test.ts`; Go/Python/Ruby/Elixir `foo_test.go`; Python `test_foo.py`,
- * `conftest.py`; Ruby `foo_spec.rb`; JVM/.NET `FooTest.kt`, `FooSpec.cs`
- * (PascalCase so `latest.java` doesn't match). */
 const TEST_FILE = new RegExp(
   "(" +
     [
-      "\\.(test|spec)\\.[cm]?[jt]sx?", // foo.test.ts / foo.spec.jsx
-      "_test\\.(go|py|rb|exs?)", // foo_test.go
-      "_spec\\.rb", // foo_spec.rb
-      "(^|/)test_[^/]*\\.py", // test_foo.py
-      "(^|/)conftest\\.py", // conftest.py
-      "(Test|Tests|Spec)\\.(java|kt|kts|cs|scala)", // FooTest.kt / FooSpec.cs
+      "\\.(test|spec)\\.[cm]?[jt]sx?",
+      "_test\\.(go|py|rb|exs?)",
+      "_spec\\.rb",
+      "(^|/)test_[^/]*\\.py",
+      "(^|/)conftest\\.py",
+      "(Test|Tests|Spec)\\.(java|kt|kts|cs|scala)",
     ].join("|") +
     ")$",
 );
-
-/** True for test files (by filename convention) and anything under a test,
- * fixture, mock or snapshot directory. Paths are matched in POSIX form. */
 export function isTestFile(file: string): boolean {
   const f = file.replace(/\\/g, "/");
   return TEST_FILE.test(f) || TEST_DIR.test(f);

@@ -1,10 +1,3 @@
-// The resident query process: holds the parsed index and its engine in memory
-// and answers queries over a local socket.
-//
-// It is a cache, not an authority. Every request still goes through `runQuery`,
-// so the freshness check runs exactly as it would in a one-shot CLI call — a
-// daemon can serve a fast answer, never a stale one.
-
 import { createServer, type Socket, type Server } from "node:net";
 import { unlinkSync } from "node:fs";
 import { runQuery, type QueryArgs, type QueryName } from "../queries.js";
@@ -19,22 +12,14 @@ import {
   type DaemonResponse,
 } from "./protocol.js";
 
-/** Remove a socket file left behind by a daemon that died without cleaning up. */
 function clearStaleSocket(addr: string): void {
-  if (process.platform === "win32") return; // named pipes vanish with the process
+  if (process.platform === "win32") return;
   try {
     unlinkSync(addr);
   } catch {
-    // Nothing there, which is the normal case.
   }
 }
 
-/**
- * Serve queries for `root` until idle for IDLE_TIMEOUT_MS.
- *
- * Resolves once the socket is listening; the returned `close` is for tests and
- * for `sens daemon --stop` running in-process.
- */
 export async function startDaemon(
   root: string,
 ): Promise<{ address: string; close: () => Promise<void> }> {
@@ -51,7 +36,7 @@ export async function startDaemon(
         clearStaleSocket(address);
         resolve();
       });
-      // A client holding an idle connection must not keep us alive.
+
       server.unref();
     });
 
@@ -74,14 +59,12 @@ export async function startDaemon(
         return;
       }
       if (req.query === HOOK) {
-        // The slim hook client ships us the raw payload; we run the same logic
-        // it would have run, with the engine already warm.
+
         const text = await runHookPayload(root, String(req.args.raw ?? ""));
         socket.write(JSON.stringify({ id, ok: true, text }) + "\n");
         return;
       }
-      // `root` is fixed at startup and never taken from the request: a daemon
-      // answers for its own project only, so a client cannot point it elsewhere.
+
       const text = await runQuery(
         root,
         req.query as QueryName,
@@ -112,7 +95,7 @@ export async function startDaemon(
         if (line.trim()) void handle(line, socket);
       }
     });
-    // A client that dies mid-request must not take the daemon with it.
+
     socket.on("error", () => socket.destroy());
   });
 
@@ -124,12 +107,10 @@ export async function startDaemon(
     });
   });
 
-  // Warm the engine now, so the first real request is already fast.
   try {
     await createEngine(root);
   } catch {
-    // A project that cannot be indexed yet still gets a daemon; the error
-    // surfaces on the request that asks for something.
+
   }
 
   touch();

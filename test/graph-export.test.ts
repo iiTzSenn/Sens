@@ -24,12 +24,12 @@ const index: ProjectIndex = {
   references: {},
   imports: [
     { from: "src/b.ts", to: "src/a.ts", names: ["foo"] },
-    { from: "src/b.ts", to: "src/a.ts", names: ["bar"] }, // duplicate edge — should collapse
-    { from: "src/a.ts", to: "external-lib", names: ["x"] }, // non-file target — dropped
-    { from: "src/a.ts", to: "src/a.ts", names: ["self"] }, // self import — dropped
+    { from: "src/b.ts", to: "src/a.ts", names: ["bar"] },
+    { from: "src/a.ts", to: "external-lib", names: ["x"] },
+    { from: "src/a.ts", to: "src/a.ts", names: ["self"] },
   ],
 };
-const dead = [index.symbols[1]]; // `bar` is the dead symbol
+const dead = [index.symbols[1]];
 
 describe("buildGraph", () => {
   const g = buildGraph(index, dead);
@@ -48,7 +48,6 @@ describe("buildGraph", () => {
   });
 });
 
-// A graph whose ids/labels carry characters that each format must escape.
 const special: GraphData = {
   nodes: [
     { id: "a&b.ts", label: "a&b.ts", symbols: 1, exported: 1, dead: 0 },
@@ -79,7 +78,7 @@ describe("serializeGraph", () => {
     expect((b.match(/<edge /g) ?? []).length).toBe(1);
     expect(b).toContain("a&amp;b.ts");
     expect(b).toContain("q&quot;x.ts");
-    expect(b).not.toMatch(/id="a&b\.ts"/); // raw ampersand must not survive
+    expect(b).not.toMatch(/id="a&b\.ts"/);
   });
 
   it("GraphML: directed graph with typed node attributes", () => {
@@ -95,7 +94,7 @@ describe("serializeGraph", () => {
     const b = serializeGraph("dot", special, "proj").body;
     expect(b).toContain("digraph sens {");
     expect(b).toContain('"a&b.ts" -> ');
-    expect(b).toContain('"q\\"x.ts"'); // inner quote escaped for Graphviz
+    expect(b).toContain('"q\\"x.ts"');
   });
 
   it("JSON: round-trips nodes/links and carries the project name", () => {
@@ -109,7 +108,7 @@ describe("serializeGraph", () => {
     const b = serializeGraph("csv", special, "proj").body.split("\n");
     expect(b[0]).toBe("Source,Target,Type");
     expect(b).toHaveLength(2);
-    expect(b[1]).toBe('a&b.ts,"q""x.ts",Directed'); // quote-containing field is CSV-quoted
+    expect(b[1]).toBe('a&b.ts,"q""x.ts",Directed');
   });
 
   it("CSV: quotes fields containing commas", () => {

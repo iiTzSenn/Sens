@@ -41,7 +41,6 @@ describe("sens init", () => {
       await initProject(root);
       const [second] = await initProject(root);
       expect(second.hookWired).toBe("already");
-      // one entry per event (PreToolUse + SessionStart), stable across runs
       const occurrences = settingsOf(root).split("sens-hook").length - 1;
       expect(occurrences).toBe(2);
     } finally {
@@ -63,17 +62,14 @@ describe("sens init", () => {
       const [r] = await initProject(root);
       expect(r.hookWired).toBe("added");
       const s = settingsOf(root);
-      expect(s).toContain("echo hi"); // pre-existing hook preserved
-      expect(s).toContain("sens-hook"); // ours appended
+      expect(s).toContain("echo hi");
+      expect(s).toContain("sens-hook");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
   it("leaves a hook wired by an older version alone", async () => {
-    // Older versions wrote `sens hook` (the CLI subcommand). It still works, so
-    // re-running init must recognise it rather than adding a second hook that
-    // would answer every tool call twice.
     const root = tmpProject();
     try {
       mkdirSync(path.join(root, ".claude"), { recursive: true });
@@ -104,7 +100,7 @@ describe("sens init", () => {
       writeFileSync(path.join(root, ".claude", "settings.json"), "{ not json", "utf8");
       const [r] = await initProject(root);
       expect(r.hookWired).toBe("skipped");
-      expect(settingsOf(root)).toBe("{ not json"); // left untouched
+      expect(settingsOf(root)).toBe("{ not json");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -119,14 +115,14 @@ describe("sens init", () => {
       const file = path.join(root, "AGENTS.md");
       const body = readFileSync(file, "utf8");
       expect(body).toContain("<!-- sens:start -->");
-      expect(body).toContain("sens find <name>"); // usage guide
-      expect(body).toContain("Working rules"); // active rules injected
-      expect(existsSync(path.join(root, ".claude"))).toBe(false); // no Claude wiring
+      expect(body).toContain("sens find <name>");
+      expect(body).toContain("Working rules");
+      expect(existsSync(path.join(root, ".claude"))).toBe(false);
 
       const [second] = await initProject(root, { agent: "codex" });
       expect(second.instructionsWritten).toBe("updated");
       const blocks = readFileSync(file, "utf8").split("<!-- sens:start -->").length - 1;
-      expect(blocks).toBe(1); // refreshed in place, not duplicated
+      expect(blocks).toBe(1);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -138,8 +134,8 @@ describe("sens init", () => {
       writeFileSync(path.join(root, "AGENTS.md"), "# My project rules\n\nBe nice.\n", "utf8");
       await initProject(root, { agent: "codex" });
       const body = readFileSync(path.join(root, "AGENTS.md"), "utf8");
-      expect(body).toContain("Be nice."); // pre-existing content kept
-      expect(body).toContain("<!-- sens:start -->"); // block appended
+      expect(body).toContain("Be nice.");
+      expect(body).toContain("<!-- sens:start -->");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

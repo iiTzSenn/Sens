@@ -1,8 +1,3 @@
-// Serializes the project dependency graph into standard graph-exchange formats so it can
-// be opened in external tools: GEXF (Gephi), GraphML (Gephi/yEd/Cytoscape), DOT (Graphviz),
-// JSON (D3/Cytoscape.js) and a CSV edge list (Gephi/Excel). Everything here is pure — no I/O —
-// so the serializers are unit-tested directly and stay reusable (e.g. a future CLI command).
-
 import type { ProjectIndex, SymbolInfo } from "../types.js";
 
 export interface GraphNode {
@@ -21,9 +16,6 @@ export interface GraphData {
   links: GraphLink[];
 }
 
-// The flat file-level dependency graph: one node per indexed file (with symbol / export /
-// dead-code counts) and one edge per import that lands on another indexed file. Takes the
-// dead-code list as an argument so callers that already computed it don't pay for it twice.
 export function buildGraph(index: ProjectIndex, dead: SymbolInfo[]): GraphData {
   const deadByFile = new Map<string, number>();
   for (const d of dead) deadByFile.set(d.file, (deadByFile.get(d.file) ?? 0) + 1);
@@ -75,10 +67,8 @@ const xmlEscape = (s: string): string =>
     c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&apos;",
   );
 
-// Graphviz quoted-id / label: escape backslash and double-quote.
 const dotEscape = (s: string): string => s.replace(/["\\]/g, "\\$&");
 
-// RFC-4180: quote fields containing comma, quote or newline; double the inner quotes.
 const csvField = (s: string): string =>
   /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 
@@ -159,8 +149,6 @@ function toJSON(graph: GraphData, project: string): string {
   return JSON.stringify({ project, nodes: graph.nodes, links: graph.links }, null, 2);
 }
 
-// Gephi-importable directed edge list. Isolated nodes (no edges) don't appear here — the
-// richer formats above carry every node with its attributes.
 function toCSV(graph: GraphData): string {
   const out: string[] = ["Source,Target,Type"];
   for (const l of graph.links) {

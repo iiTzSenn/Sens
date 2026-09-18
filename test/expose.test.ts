@@ -30,7 +30,7 @@ describe("expose helpers", () => {
     const link = terminalLink("ngrok", "https://ngrok.com/download");
     expect(link).toContain("https://ngrok.com/download");
     expect(link).toContain("ngrok");
-    expect(link).toContain("]8;;"); // OSC 8 marker
+    expect(link).toContain("]8;;");
   });
   it("lists LAN IPs as strings without throwing", () => {
     const ips = lanIps();

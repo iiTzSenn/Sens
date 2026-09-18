@@ -35,11 +35,6 @@ program
   .option("--verbose", "show full error stack traces on failure")
   .version(VERSION);
 
-/**
- * Build (or reuse) the engine with a live spinner. When `announce` is set the
- * spinner resolves into a persistent "index ready" line (for `map`/`index`);
- * otherwise it clears silently so a quick lookup stays clean.
- */
 async function getEngine(announce = false): ReturnType<typeof createEngine> {
   const sp = ui.spinner("Indexando proyecto…");
   const start = Date.now();
@@ -62,7 +57,6 @@ async function getEngine(announce = false): ReturnType<typeof createEngine> {
   return res;
 }
 
-/** Render a query body plus optional dynamic suggestions, padded with blanks. */
 function show(body: string, block?: Block): void {
   ui.blank();
   ui.print(body);
@@ -370,13 +364,10 @@ program
     "PreToolUse hook: nudge the model toward sens tools before it reads/greps (reads hook JSON from stdin)",
   )
   .action(async () => {
-    // Same slim path `sens-hook` takes, so an install wired to `sens hook` by
-    // an older version still gets the daemon. It has already paid for loading
-    // the CLI bundle by this point, but not for the index and the engine.
+
     const { runHookClient } = await import("./hook-client.js");
     await runHookClient();
   });
-
 program
   .command("daemon")
   .description(
@@ -407,11 +398,10 @@ program
       return;
     }
     if (opts.serve) {
-      // Background mode: no banner, no stdout — it is detached from a terminal.
+
       await startDaemon(root);
       return;
     }
-
     ui.header("daemon");
     const { address } = await startDaemon(root);
     ui.success("Daemon en marcha. Ctrl-C para pararlo.");

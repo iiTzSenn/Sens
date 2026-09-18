@@ -1,35 +1,17 @@
-/**
- * The working rules Sens hands to the model, as composable modules.
- *
- * Each module is a small, titled block tied to something the model can *verify*
- * with a Sens query. They compose into one rules document: the default-on modules
- * form `AGENT_RULES` (sent as the MCP server's instructions and embedded in the
- * skill), and a project can enable/disable modules or add its own via
- * `sens.config.json` — the `SessionStart` hook then injects whatever is active at
- * the start of every session. `sens rules` prints the active set.
- */
-
-/** One composable rule. */
 export interface RuleModule {
-  /** Stable id used to enable/disable it in config. */
   id: string;
-  /** Heading shown in the rendered rules. */
   title: string;
-  /** Markdown body under the heading. */
   body: string;
-  /** Whether it is on out of the box (custom modules default to on). */
+
   default: boolean;
 }
-
 const HEADER =
   "# Working rules — follow these whenever you write or change code in this project\n\n" +
   "Sens indexes this project so you can *verify* these rules instead of guessing. Use it; don't skip the checks.";
-
 const PRINCIPLE =
   "## The principle\n" +
   "Minimal, non-duplicated, fully-wired code that is maintainable and scalable. Reuse > add. Delete > keep.";
 
-/** Built-in rule modules, in render order. */
 export const BUILTIN_RULES: RuleModule[] = [
   {
     id: "search-first",
@@ -95,15 +77,9 @@ export const BUILTIN_RULES: RuleModule[] = [
   },
 ];
 
-/** Render a set of rule modules into one document (header + modules + principle). */
 export function composeRules(modules: RuleModule[]): string {
   const parts = [HEADER, ...modules.map((m) => `## ${m.title}\n${m.body}`), PRINCIPLE];
   return parts.join("\n\n");
 }
 
-/**
- * The default rules document — the default-on modules, composed. Config-independent
- * so the MCP server instructions and the shipped skill always carry a sensible set;
- * per-project enable/disable only affects the `SessionStart` hook and `sens rules`.
- */
 export const AGENT_RULES = composeRules(BUILTIN_RULES.filter((m) => m.default));

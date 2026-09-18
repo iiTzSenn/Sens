@@ -12,13 +12,11 @@ function readAllChars(index: ProjectIndex): number {
     try {
       total += statSync(path.join(index.root, f.path)).size;
     } catch {
-      /* file may have been removed since indexing */
     }
   }
   return total;
 }
 
-/** Render a self-contained HTML report (no external assets). */
 export function renderReport(index: ProjectIndex, engine: QueryEngine): string {
   const projectName = path.basename(index.root) || "project";
   const map = engine.map();

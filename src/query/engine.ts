@@ -14,63 +14,44 @@ export interface MapEntry {
 
 export interface FileDependencies {
   file: string;
-  /** Files this file imports (internal, resolved). */
   imports: string[];
-  /** Files that import this file (internal, resolved). */
   importedBy: string[];
 }
 
-/** A symbol and its immediate neighbors in the call/reference graph. */
 export interface Neighborhood {
   symbol: SymbolInfo;
-  /** Declared symbols whose body references this one. */
   callers: SymbolInfo[];
-  /** Declared symbols this one references from its own body. */
   callees: SymbolInfo[];
 }
 
-/** How confident we are that a dead-code candidate is safe to remove. */
 export type DeadCodeTier = "high" | "medium" | "low";
 
-/** An unreachable symbol, with why it surfaced and how much to trust it. */
 export interface DeadCodeCandidate {
   symbol: SymbolInfo;
   tier: DeadCodeTier;
-  /** Plain-language explanation of the tier — what the model/user should check. */
   reason: string;
-  /** A non-source file that mentions this name (set by the reflective scan) —
-   * a warning that it may be wired up dynamically, so don't blindly delete it. */
   reflectiveHit?: string;
 }
 
-/** The dead-code picture for a scope: per-symbol candidates + whole dead files. */
 export interface DeadCodeReport {
   candidates: DeadCodeCandidate[];
-  /** Files where every symbol is unreachable and nothing imports the file — the
-   * whole module is dead, so it's cleaner to delete the file than each symbol. */
+
   files: string[];
 }
 
 const TIER_RANK: Record<DeadCodeTier, number> = { high: 0, medium: 1, low: 2 };
 
-/**
- * Answers the Sens queries over a built project index. All lookup structures
- * (name/file/id maps, the import adjacency and the symbol-level call graph) are
- * built once in the constructor, so repeated queries are O(1)/O(neighbors)
- * instead of scanning every symbol per call.
- */
 export class QueryEngine {
   private readonly byId = new Map<string, SymbolInfo>();
   private readonly byNameLower = new Map<string, SymbolInfo[]>();
-  /** Keyed by full name and by the part after the last `.`, for who_uses/explain. */
   private readonly byNameOrSuffix = new Map<string, SymbolInfo[]>();
   private readonly byFile = new Map<string, SymbolInfo[]>();
   private readonly fileSet: Set<string>;
   private readonly importsFrom = new Map<string, Set<string>>();
   private readonly importsTo = new Map<string, Set<string>>();
-  /** symbolId -> symbols it references (call graph, directed). */
+
   private readonly calleesOf = new Map<string, Set<string>>();
-  /** symbolId -> symbols that reference it. */
+
   private readonly callersOf = new Map<string, Set<string>>();
 
   constructor(
@@ -94,8 +75,6 @@ export class QueryEngine {
       add(this.importsTo, imp.to, imp.from);
     }
 
-    // Symbol-level call graph: a reference with a `from` is an edge
-    // caller -> referenced symbol.
     for (const [targetId, refs] of Object.entries(index.references)) {
       for (const ref of refs) {
         if (!ref.from || ref.from === targetId) continue;
@@ -105,17 +84,14 @@ export class QueryEngine {
     }
   }
 
-  /** Exact (case-insensitive) symbol lookup. */
   findSymbol(name: string): SymbolInfo[] {
     return this.byNameLower.get(name.toLowerCase()) ?? [];
   }
 
-  /** Symbols matching `name` bare or as `Class.method`. */
   private resolve(name: string): SymbolInfo[] {
     return this.byNameOrSuffix.get(name) ?? [];
   }
 
-  /** Usage sites for every symbol matching `name` (bare or `Class.method`). */
   whoUses(name: string): WhoUsesResult[] {
     return this.resolve(name).map((s) => ({
       symbol: s,
@@ -123,11 +99,6 @@ export class QueryEngine {
     }));
   }
 
-  /**
-   * A symbol's neighbors in the call graph: what references it (callers) and
-   * what it references (callees). Lets a caller pull just the relevant slice of
-   * the codebase instead of reading whole files.
-   */
   explain(name: string): Neighborhood[] {
     return this.resolve(name).map((s) => ({
       symbol: s,
@@ -135,7 +106,6 @@ export class QueryEngine {
       callees: this.neighbors(this.calleesOf.get(s.id)),
     }));
   }
-
   private neighbors(ids: Set<string> | undefined): SymbolInfo[] {
     if (!ids) return [];
     const out: SymbolInfo[] = [];
@@ -146,11 +116,6 @@ export class QueryEngine {
     return out.sort(byFileLine);
   }
 
-  /**
-   * Shortest connection between any symbol named `a` and any named `b` over the
-   * (undirected) call graph — "how does X reach Y". Returns the chain of symbols
-   * from an `a` to a `b`, or null if they are not connected.
-   */
   path(a: string, b: string): SymbolInfo[] | null {
     const sources = this.resolve(a);
     const targets = new Set(this.resolve(b).map((s) => s.id));
@@ -163,7 +128,6 @@ export class QueryEngine {
       prev.set(s.id, null);
       queue.push(s.id);
     }
-
     for (let i = 0; i < queue.length; i++) {
       const id = queue[i];
       if (targets.has(id)) return this.rebuild(prev, id);
@@ -188,7 +152,6 @@ export class QueryEngine {
     return ids.map((id) => this.byId.get(id)).filter((s): s is SymbolInfo => !!s);
   }
 
-  /** Symbols declared in a file (matched by suffix), ordered by line. */
   fileOutline(file: string): SymbolInfo[] {
     const norm = file.replace(/\\/g, "/");
     const exact = this.byFile.get(norm);
@@ -196,7 +159,6 @@ export class QueryEngine {
     return [...syms].sort((a, b) => a.line - b.line);
   }
 
-  /** Rank existing symbols against keywords, to encourage reuse over dup. */
   alreadyExists(query: string, limit = 15): SymbolInfo[] {
     const keywords = query.toLowerCase().split(/\s+/).filter(Boolean);
     if (keywords.length === 0) return [];
@@ -224,7 +186,6 @@ export class QueryEngine {
     return score;
   }
 
-  /** Compact per-file map (exported symbols + internal count). */
   map(subdir?: string): MapEntry[] {
     const sub = subdir?.replace(/\\/g, "/");
     const entries: MapEntry[] = [];
@@ -238,11 +199,6 @@ export class QueryEngine {
     return entries.sort((a, b) => a.file.localeCompare(b.file));
   }
 
-  /**
-   * A file's neighbors in the (precomputed) import graph: what it imports
-   * and what imports it. Lets a caller jump straight to related files
-   * instead of grepping or reading the whole project.
-   */
   fileDependencies(file: string): FileDependencies {
     const norm = file.replace(/\\/g, "/");
     const target =
@@ -255,11 +211,6 @@ export class QueryEngine {
     };
   }
 
-  /**
-   * Mark-and-sweep over the call graph from a caller-supplied set of roots:
-   * seed the roots, then propagate along callee edges (if a live symbol's body
-   * runs, so do the symbols it calls). Unknown ids are ignored.
-   */
   private mark(seedRoots: (seed: (id: string) => void) => void): Set<string> {
     const live = new Set<string>();
     const stack: string[] = [];
@@ -277,26 +228,10 @@ export class QueryEngine {
     return live;
   }
 
-  /**
-   * Two reachability views over the call graph:
-   *
-   * - `real`: reached from genuine program roots — the public API of
-   *   entry-point files, everything in test files, and any symbol used at
-   *   module/reflective scope (a reference with no enclosing `from`: a top-level
-   *   statement, a `string`-keyed lookup or a dynamic `import()`). An export
-   *   *not* in `real` is an unused export.
-   * - `live`: `real` plus every export treated as a potential external entry
-   *   point. Because we can't see callers outside the index, a helper reached
-   *   only through an (even unused) export is spared here. What falls outside
-   *   `live` is code reachable from nothing at all — a true internal dead island.
-   *
-   * Both are conservative: a `from`-less use always seeds a root, so neither can
-   * mark genuinely-live code as dead.
-   */
   private reachableSymbols(): { real: Set<string>; live: Set<string> } {
     const real = this.mark((seed) => {
       for (const s of this.index.symbols) {
-        if (s.entry) seed(s.id); // runtime/framework entry point (Go main, …)
+        if (s.entry) seed(s.id);
         else if (s.exported && this.entryPoints.has(s.file)) seed(s.id);
         else if (isTestFile(s.file)) seed(s.id);
       }
@@ -311,22 +246,10 @@ export class QueryEngine {
     return { real, live };
   }
 
-  /**
-   * Dead-code candidates ranked by how safe they are to remove. Beyond a plain
-   * "zero references" filter this also finds dead islands — clusters that only
-   * reference each other yet are reachable from nothing. Excludes methods, tests
-   * and entry-point exports.
-   *
-   * - HIGH: internal symbol with no references anywhere.
-   * - MEDIUM: internal, reached only from other unreachable code (dead island).
-   * - LOW: an unused export — might be public API consumed outside the index, so
-   *   always needs a human check.
-   */
   deadCodeReport(subdir?: string): DeadCodeReport {
     const sub = subdir?.replace(/\\/g, "/");
     const { real, live } = this.reachableSymbols();
     const inScope = (file: string): boolean => !sub || file.startsWith(sub);
-
     const candidates: DeadCodeCandidate[] = [];
     for (const s of this.index.symbols) {
       if (!inScope(s.file)) continue;
@@ -334,8 +257,6 @@ export class QueryEngine {
       if (s.exported && this.entryPoints.has(s.file)) continue;
       const refs = this.index.references[s.id]?.length ?? 0;
       if (s.kind === "method") {
-        // Methods resolve poorly under polymorphism/interfaces, so a "dead"
-        // method is the least certain signal — never above LOW.
         if (live.has(s.id)) continue;
         candidates.push({
           symbol: s,
@@ -343,7 +264,7 @@ export class QueryEngine {
           reason: "method unreferenced statically — interfaces/dynamic dispatch may still call it; verify",
         });
       } else if (s.exported) {
-        if (real.has(s.id)) continue; // used somewhere in-project
+        if (real.has(s.id)) continue;
         candidates.push({
           symbol: s,
           tier: "low",
@@ -353,7 +274,7 @@ export class QueryEngine {
               : "exported and reached only from other dead code — verify it isn't public API",
         });
       } else {
-        if (live.has(s.id)) continue; // reached from a root or via some export
+        if (live.has(s.id)) continue;
         candidates.push({
           symbol: s,
           tier: refs === 0 ? "high" : "medium",
@@ -369,8 +290,6 @@ export class QueryEngine {
         TIER_RANK[a.tier] - TIER_RANK[b.tier] || byFileLine(a.symbol, b.symbol),
     );
 
-    // A whole module is dead when nothing imports it and none of its symbols is
-    // live even after exports are treated as roots (so no external surface).
     const files: string[] = [];
     for (const [file, syms] of this.byFile) {
       if (!inScope(file) || isTestFile(file) || this.entryPoints.has(file)) continue;
@@ -382,7 +301,6 @@ export class QueryEngine {
     return { candidates, files };
   }
 
-  /** Unused symbols (candidates), symbol-only view of {@link deadCodeReport}. */
   deadCode(subdir?: string): SymbolInfo[] {
     return this.deadCodeReport(subdir).candidates.map((c) => c.symbol);
   }

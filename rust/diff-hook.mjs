@@ -1,10 +1,3 @@
-// Differential test: the Rust hook vs the Node hook, on the same payloads.
-//
-// The model cannot tell which implementation answered, so "identical output"
-// is the whole acceptance criterion. Anything the Rust side declines to answer
-// must fall through to Node, which is a pass, not a difference — but it is
-// reported, because a binary that always declines would otherwise look perfect.
-
 import { execFileSync } from "node:child_process";
 import { readdirSync, existsSync } from "node:fs";
 import path from "node:path";
@@ -29,7 +22,6 @@ const run = (cmd, args, input) => {
   }
 };
 
-/** Payloads covering every branch the hook can take. */
 const payloads = [];
 const srcFiles = readdirSync(path.join(root, "src")).filter((f) => f.endsWith(".ts"));
 

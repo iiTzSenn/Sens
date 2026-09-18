@@ -3,5 +3,4 @@ export async function boot() {
   return lazyThing();
 }
 
-// reflective access by name (e.g. a registry keyed by string)
 export const REGISTRY = ["registered"];

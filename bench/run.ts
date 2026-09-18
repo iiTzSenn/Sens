@@ -1,7 +1,3 @@
-// Reproducible benchmark suite backing the README's "Does it actually help?"
-// table. Run with `npm run bench`. Every number here is measured live —
-// nothing is hardcoded or estimated.
-
 import path from "node:path";
 import { readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -85,9 +81,6 @@ async function benchDeadCodeAccuracy() {
     },
     {
       fixture: shorthandFixture,
-      // alpha/beta are only referenced via `{ alpha, beta }` object shorthand.
-      // `registry` itself is never imported anywhere in this isolated fixture,
-      // so it's legitimately a dead-code candidate (see test/shorthand.test.ts).
       usedNotDead: ["alpha", "beta"],
       expectedDead: ["registry"],
     },
@@ -123,8 +116,6 @@ async function benchDuplicationDetection() {
   console.log("\n## 4. Duplication caught before writing\n");
   const index = await buildIndex(sampleFixture);
   const engine = new QueryEngine(index);
-  // Simulates: "I'm about to write a `subtract` helper" — already_exists
-  // should surface the one that's already there before it gets duplicated.
   const results = engine.alreadyExists("subtract two numbers");
   const found = results.some((s) => s.name === "subtract");
   console.log(`  query: "subtract two numbers"`);

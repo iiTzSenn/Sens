@@ -21,17 +21,6 @@ const DEFAULT_IGNORE = [
   "**/venv/**",
 ];
 
-/**
- * The paths whose mtime reveals that files were *added* or *removed*: every
- * non-ignored directory, plus every `.gitignore` (editing one can un-ignore a
- * directory that already exists, which no directory mtime would show).
- *
- * Listing directories costs a fraction of listing every source file, and it is
- * what lets the freshness check skip the full glob on the hot path — see
- * `store/meta.ts`. Stat failures are dropped: a path that cannot be stat-ed
- * now is simply not watched, and the next structural change is caught by its
- * parent directory.
- */
 export async function resolveWatched(
   root: string,
   ignore: string[] = [],
@@ -49,7 +38,7 @@ export async function resolveWatched(
 
   const watched: WatchedPath[] = [];
   for (const p of ["", ...dirs, ...ignoreFiles]) {
-    // "" is the root itself: a new top-level file bumps its mtime.
+
     const clean = p.replace(/\/$/, "");
     try {
       watched.push({
@@ -57,13 +46,12 @@ export async function resolveWatched(
         mtimeMs: statSync(path.join(root, clean)).mtimeMs,
       });
     } catch {
-      // Vanished between listing and stat — ignore (see doc comment).
+
     }
   }
   return watched.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** Resolve the set of source files under `root` (respecting .gitignore). */
 export async function resolveFiles(
   root: string,
   ignore: string[] = [],
@@ -77,17 +65,12 @@ export async function resolveFiles(
   return files.sort();
 }
 
-/**
- * Build a serializable project index by dispatching each source file to the
- * language parser that owns it, then merging every parser's contribution.
- */
 export async function buildIndex(
   root: string,
   opts: { ignore?: string[] } = {},
 ): Promise<ProjectIndex> {
   const absFiles = await resolveFiles(root, opts.ignore);
 
-  // Group files by the parser that claims their extension.
   const byParser = new Map<string, string[]>();
   for (const f of absFiles) {
     const parser = parserForFile(f);
@@ -105,8 +88,7 @@ export async function buildIndex(
       contributions.push(await parser.build(root, files));
     }
   } finally {
-    // Release tree-sitter grammars once indexing is done (frees the emscripten
-    // heap; the WASM modules themselves stay compiled until the process ends).
+
     await disposeParsers();
   }
 

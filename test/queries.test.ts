@@ -9,7 +9,6 @@ import { readUsage } from "../src/usage";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sample = path.join(here, "fixtures", "sample");
 
-/** A throwaway copy of the sample fixture (runQuery writes a `.sens` cache). */
 function tmpProject(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), "sens-queries-"));
   cpSync(sample, dir, { recursive: true });

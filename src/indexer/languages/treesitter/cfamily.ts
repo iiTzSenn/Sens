@@ -8,8 +8,6 @@ import {
 
 const NAME_TYPES = new Set(["identifier", "field_identifier", "type_identifier"]);
 
-/** The identifier naming a function, following the `declarator` field down
- * through pointer/reference/parenthesized declarators (never into parameters). */
 function fnNameNode(declarator: Node | undefined): Node | undefined {
   if (!declarator) return undefined;
   const fd = declarator.type === "function_declarator" ? declarator : firstDescendant(declarator, "function_declarator");
@@ -17,7 +15,7 @@ function fnNameNode(declarator: Node | undefined): Node | undefined {
   let d: Node | undefined = field(fd, "declarator");
   while (d && !NAME_TYPES.has(d.type)) {
     if (d.type === "qualified_identifier") {
-      // `Ns::name` (out-of-class definition) — take the final identifier.
+
       return firstDescendant(d, "field_identifier") ?? firstDescendant(d, "identifier") ?? d;
     }
     const next = field(d, "declarator");
@@ -27,7 +25,6 @@ function fnNameNode(declarator: Node | undefined): Node | undefined {
   return d && NAME_TYPES.has(d.type) ? d : undefined;
 }
 
-/** Emit a named struct/union/enum, returning its name (or null if anonymous). */
 function emitRecord(spec: Node, emit: Emit): string | null {
   const nameNode = field(spec, "name");
   if (!nameNode || !field(spec, "body")) return null;
@@ -36,7 +33,6 @@ function emitRecord(spec: Node, emit: Emit): string | null {
   return nameNode.text;
 }
 
-/** Methods declared inside a C++ class/struct body. */
 function emitMembers(body: Node, cname: string, emit: Emit): void {
   for (const m of body.namedChildren) {
     if (m.type === "function_definition" || m.type === "declaration" || m.type === "field_declaration") {
@@ -49,11 +45,10 @@ function emitMembers(body: Node, cname: string, emit: Emit): void {
 }
 
 export interface CFamilyOptions {
-  /** Handle C++-only constructs: namespaces, classes and their methods. */
+
   cpp: boolean;
 }
 
-/** Shared C / C++ extractor. */
 export function cFamilyExtract(root: Node, emit: Emit, ctx: Ctx, opts: CFamilyOptions): void {
   const handle = (node: Node): void => {
     switch (node.type) {
@@ -61,20 +56,15 @@ export function cFamilyExtract(root: Node, emit: Emit, ctx: Ctx, opts: CFamilyOp
       case "declaration": {
         const nameNode = fnNameNode(field(node, "declarator"));
         if (nameNode) {
-          // In C, a file-scope `static` function has internal linkage — it is
-          // NOT externally linkable, so mark it internal (this lets an unused
-          // one reach the HIGH dead-code tier). C++ keeps every definition
-          // exported: its extractor path is deliberately left untouched.
+
           const exported = opts.cpp ? true : !isStatic(node);
-          // `int main(...)` is the program entry point — a live root that must
-          // never be flagged. C only; C++ `main` stays a plain export (still
-          // never HIGH, so no regression).
+
           const entry =
             !opts.cpp && node.type === "function_definition" && nameNode.text === "main";
           emit.symbol({ name: nameNode.text, kind: "function", node, nameNode, exported, entry });
           return;
         }
-        // A declaration may still wrap a record specifier (e.g. `struct S {...};`).
+
         for (const spec of ["struct_specifier", "union_specifier", "enum_specifier"]) {
           const s = firstDescendant(node, spec);
           if (s) emitRecord(s, emit);
@@ -141,9 +131,6 @@ function findSuffix(relSet: Set<string>, rel: string): string | null {
   return null;
 }
 
-/** True when a C declaration/definition carries the `static` storage class
- * (file-scope internal linkage). Reads the `storage_class_specifier` token that
- * tree-sitter attaches as a direct child of the declaration. */
 function isStatic(node: Node): boolean {
   return node.children.some(
     (c: Node) => c.type === "storage_class_specifier" && c.text === "static",

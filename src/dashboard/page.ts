@@ -1,7 +1,3 @@
-// The dashboard is a single self-contained page served by the local server.
-// The client JS uses plain string concatenation (no template literals) so this
-// whole document can live inside one TS template literal safely.
-
 import { i18nClientScript } from "./i18n.js";
 
 export function renderDashboardPage(): string {
@@ -14,9 +10,7 @@ export function renderDashboardPage(): string {
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiB2aWV3Qm94PSIwIDAgNDggNDgiIHJvbGU9ImltZyIgYXJpYS1sYWJlbD0ic2VucyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjN2FhMmZmIi8+PHN0b3Agb2Zmc2V0PSIuNTUiIHN0b3AtY29sb3I9IiM0ZjdjZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM1NTY2ZmYiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHJ4PSIxMiIgZmlsbD0idXJsKCNnKSIvPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDI0IDI0KSBzY2FsZSgxLjIpIHRyYW5zbGF0ZSgtMjQgLTI0KSI+PGcgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjEuOSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBvcGFjaXR5PSIuNTUiPjxsaW5lIHgxPSIyMyIgeTE9IjIzIiB4Mj0iMTIiIHkyPSIxNCIvPjxsaW5lIHgxPSIyMyIgeTE9IjIzIiB4Mj0iMzYiIHkyPSIxMiIvPjxsaW5lIHgxPSIyMyIgeTE9IjIzIiB4Mj0iMzciIHkyPSIzMiIvPjxsaW5lIHgxPSIyMyIgeTE9IjIzIiB4Mj0iMTQiIHkyPSIzNiIvPjxsaW5lIHgxPSIzNiIgeTE9IjEyIiB4Mj0iMzciIHkyPSIzMiIvPjwvZz48ZyBmaWxsPSIjZmZmIj48Y2lyY2xlIGN4PSIyMyIgY3k9IjIzIiByPSI1Ii8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxNCIgcj0iMi43Ii8+PGNpcmNsZSBjeD0iMzYiIGN5PSIxMiIgcj0iMy40Ii8+PGNpcmNsZSBjeD0iMzciIGN5PSIzMiIgcj0iMyIvPjxjaXJjbGUgY3g9IjE0IiBjeT0iMzYiIHI9IjIuNSIvPjwvZz48L2c+PC9zdmc+">
 <style>
   * { box-sizing: border-box; }
-  /* All theme colors live in CSS variables so light and dark stay in sync from one
-     source of truth. Defaults below are the light theme; the dark values are applied
-     either automatically (prefers-color-scheme) or explicitly via [data-theme]. */
+
   :root {
     color-scheme: light dark;
     --accent: #4f7cff; --accent-hover: #3d6bf0;
@@ -53,8 +47,7 @@ export function renderDashboardPage(): string {
     --ok: #22c55e; --ok-glow: rgba(34,197,94,.7);
     --stale: #ef4444; --stale-glow: rgba(239,68,68,.65);
   }
-  /* Shared dark palette — applied when the OS asks for dark (unless the user forced
-     light) and when the user explicitly picks dark via the toggle. */
+
   :root[data-theme="dark"], :root:not([data-theme]) {}
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -152,18 +145,15 @@ export function renderDashboardPage(): string {
   @keyframes spin { to { transform: rotate(360deg); } }
   .btn-icon { width: 34px; height: 34px; padding: 0; gap: 0; justify-content: center; }
   .btn-icon svg { width: 17px; height: 17px; }
-  /* theme toggle: the incoming sun/moon spins in with a springy overshoot on click */
+
   #btnTheme svg { transform-origin: center; }
   #btnTheme svg.theme-spin { animation: theme-swap .5s cubic-bezier(.34,1.5,.5,1); }
   @keyframes theme-swap { 0% { transform: rotate(-140deg) scale(.2); opacity: 0; } 55% { opacity: 1; } 100% { transform: rotate(0) scale(1); opacity: 1; } }
-  /* language button: the globe does a half turn (180°) with a little mid-spin bulge.
-     No transform transition here — otherwise the .25s revert from 180°→0° reads, on a
-     point-symmetric globe, as the spin continuing all the way round to a full turn. */
+
   #btnLang svg { transform-origin: center; transition: none; }
   #btnLang svg.globe-spin { animation: globe-spin .55s cubic-bezier(.4,0,.2,1); }
   @keyframes globe-spin { 0% { transform: rotate(0) scale(1); } 50% { transform: rotate(90deg) scale(1.16); } 100% { transform: rotate(180deg) scale(1); } }
-  /* soft, quick cross-fade of the whole UI during a light/dark switch — the class is
-     only present for the ~300ms of the toggle, so hovers and load stay instant. */
+
   :root.theming, :root.theming * { transition: background-color .3s ease, border-color .3s ease, color .3s ease, fill .3s ease, box-shadow .3s ease !important; }
   @media (prefers-reduced-motion: reduce) {
     #btnTheme svg.theme-spin, #btnLang svg.globe-spin { animation: none; }
@@ -183,7 +173,6 @@ export function renderDashboardPage(): string {
   .conn > .btn { -webkit-mask-image: radial-gradient(circle 9px at calc(100% - 3px) 3px, transparent 98%, #000 100%); mask-image: radial-gradient(circle 9px at calc(100% - 3px) 3px, transparent 98%, #000 100%); }
   .conn .status { position: absolute; top: -3px; right: -3px; margin: 0; z-index: 2; }
 
-  /* Shared popover menu (language, export, layout) — one style, three uses. */
   .menuwrap { position: relative; display: inline-flex; }
   .menu { position: absolute; top: calc(100% + 6px); inset-inline-end: 0; min-width: 190px; max-height: 340px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 5px; box-shadow: 0 12px 34px var(--toast-shadow); z-index: 60; scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
   .menu[hidden] { display: none; }
@@ -195,7 +184,7 @@ export function renderDashboardPage(): string {
   .menuitem .chk { flex: none; width: 14px; height: 14px; opacity: 0; }
   .menuitem.active .chk { opacity: 1; }
   .menuext { color: var(--muted); font-size: 11px; font-weight: 400; }
-  /* three-dot (⋮) control anchored inside the graph canvas, top-right */
+
   .cmenu { position: absolute; inset-inline-end: 14px; top: 12px; z-index: 25; }
   .cmenu-btn { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 9px; border: 1px solid var(--border); background: var(--overlay-bg); color: var(--ghost-fg); cursor: pointer; backdrop-filter: saturate(1.3) blur(8px); box-shadow: 0 1px 3px rgba(20,30,60,.10); }
   .cmenu-btn:hover { background: var(--btn-hover); border-color: var(--border-strong); }
@@ -204,7 +193,7 @@ export function renderDashboardPage(): string {
   .cmenu .menu { min-width: 214px; }
   .menu-head { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 9px 10px 4px; user-select: none; }
   .menuitem + .menu-head { border-top: 1px solid var(--border); margin-top: 5px; }
-  /* smooth, springy feedback on the toolbar / canvas icons */
+
   .btn-icon svg, .cmenu-btn svg { transition: transform .25s cubic-bezier(.34,1.45,.5,1); }
   .btn-icon:hover svg, .cmenu-btn:hover svg { transform: scale(1.16); }
   .btn-icon:active svg, .cmenu-btn:active svg { transform: scale(.92); }
@@ -259,7 +248,7 @@ export function renderDashboardPage(): string {
   .sig { padding: 4px 0; border-bottom: 1px solid var(--sig-border); overflow-wrap: anywhere; }
   .tag { background: var(--tag-bg); color: var(--tag-fg); border-radius: 5px; padding: 1px 6px; font-size: 11px; margin-inline-start: 6px; }
   .tag.dead { background: rgba(224,83,61,.15); color: #e0533d; }
-  /* file-inspector + insights blocks inside the panel */
+
   .psub { display: flex; align-items: center; gap: 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 15px 0 4px; }
   .psub .ar { color: var(--accent); font-size: 12px; }
   .psub .cnt { margin-inline-start: auto; color: var(--tag-fg); background: var(--tag-bg); border-radius: 20px; padding: 0 7px; font-size: 10px; line-height: 16px; }
@@ -271,7 +260,7 @@ export function renderDashboardPage(): string {
   .kind { color: var(--muted); font-size: 11px; flex: none; }
   .ins-note { color: var(--muted); font-size: 12px; margin: 0 0 4px; }
   .cnum { color: var(--accent); font-size: 12px; flex: none; font-variant-numeric: tabular-nums; }
-  /* rules manager modal */
+
   .modal { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(10,14,22,.55); backdrop-filter: blur(3px); }
   .modal[hidden] { display: none; }
   .modal-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 620px; max-width: 100%; max-height: 86vh; overflow-y: auto; padding: 18px 20px 20px; box-shadow: 0 24px 60px rgba(0,0,0,.35); }
@@ -399,7 +388,6 @@ export function renderDashboardPage(): string {
 </div>
 <script>
 (function(){
-  // ---- i18n: LANGS + I18N dictionary are injected here from src/dashboard/i18n.ts ----
   ${i18nClientScript()}
   var LANG_KEY = 'sens-lang';
   function detectLang(){
@@ -412,18 +400,14 @@ export function renderDashboardPage(): string {
   function curLang(){ var s = storedLang(); return s && I18N[s] ? s : detectLang(); }
   var lang = curLang();
   function isRtl(code){ for(var i=0;i<LANGS.length;i++){ if(LANGS[i].code === code) return !!LANGS[i].rtl; } return false; }
-  // t: current-locale string with English fallback so partial translations never break.
   function t(key){ var m = I18N[lang] || I18N.en; var v = m[key]; if(v == null) v = I18N.en[key]; return v == null ? key : v; }
   function tp(key, vals){ return t(key).replace(/\\{(\\w+)\\}/g, function(_, k){ return vals[k] != null ? vals[k] : '{' + k + '}'; }); }
 
-  // ---- theme: follows the system by default, overridable with the toolbar toggle ----
   var THEME_KEY = 'sens-theme';
   var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
   function systemDark(){ return mq ? mq.matches : false; }
   function storedTheme(){ try { return localStorage.getItem(THEME_KEY); } catch(e){ return null; } }
   function resolvedDark(){ var t = storedTheme(); return t === 'light' || t === 'dark' ? t === 'dark' : systemDark(); }
-  // The canvas graph is drawn imperatively, so its colors can't come from CSS — we
-  // mirror the same theme decision here. Link colors are kept legible on both grounds.
   function palette(dark){
     return dark
       ? { bg:'#0f1116', link:'rgba(180,190,208,0.22)', linkHot:'#6f9bff', label:'#aeb6c2', blue:'#6f9bff', gray:'#69707d', dead:'#e0705d', ext:'#b49ad6', ring:'#e9edf3', dim:0.26 }
@@ -453,7 +437,6 @@ export function renderDashboardPage(): string {
     ensureRunning();
   }
 
-  // ---- language: applies the chosen locale to every user-facing string ----
   function applyStatic(){
     var i, els;
     els = document.querySelectorAll('[data-i18n]');
@@ -485,8 +468,6 @@ export function renderDashboardPage(): string {
     });
   }
 
-  // Export menu: each item downloads the full file graph in one exchange format. Node
-  // attributes (symbols/exports/dead) ride along in every format except the CSV edge list.
   var EXPORTS = [
     { fmt:'gexf', name:'Gephi', ext:'.gexf' },
     { fmt:'graphml', name:'GraphML', ext:'.graphml' },
@@ -499,7 +480,6 @@ export function renderDashboardPage(): string {
     a.href = '/api/export?format=' + encodeURIComponent(fmt);
     a.download = ''; document.body.appendChild(a); a.click(); a.remove();
   }
-  // Layout ("shape") options for the network type: force (the Gephi/ForceAtlas default) + static.
   var LAYOUT_ITEMS = [
     { id:'force', key:'layoutForce', hint:'ForceAtlas' },
     { id:'hierarchical', key:'layoutHierarchical', hint:'' },
@@ -512,14 +492,13 @@ export function renderDashboardPage(): string {
     layout = name;
     try { localStorage.setItem(LAYOUT_KEY, name); } catch(e){}
     buildCanvasMenu();
-    // the layout only governs the node-link type; other types have their own geometry
     if(data && gtype === 'node-link'){ layoutNodes(); fitView(true); ensureRunning(); }
   }
 
   var GTYPE_KEY = 'sens-gtype';
   var GTYPES = ['node-link','matrix','chord','arc','treemap','sunburst','sankey','bundling'];
   var gtype = (function(){ try { var s = localStorage.getItem(GTYPE_KEY); return GTYPES.indexOf(s) >= 0 ? s : 'node-link'; } catch(e){ return 'node-link'; } })();
-  var bbox = null;  // world-space bounds the active view wants framed (null → derive from node positions)
+  var bbox = null;
   var GTYPE_ITEMS = [
     { id:'node-link', name:'Network' }, { id:'matrix', name:'Matrix' },
     { id:'chord', name:'Chord' }, { id:'arc', name:'Arc' },
@@ -535,8 +514,6 @@ export function renderDashboardPage(): string {
     if(data){ selected = null; hoverNode = null; applyView(); fitView(true); ensureRunning(); }
   }
 
-  // The in-canvas ⋮ menu gathers the three graph controls (type · shape · export) into one
-  // panel, so the top bar stays clean. Rebuilt on language / type / layout change.
   function menuHead(txt){ return el('div', 'menu-head', txt); }
   function buildCanvasMenu(){
     var host = document.getElementById('canvasMenu'); if(!host) return; host.innerHTML = '';
@@ -573,7 +550,7 @@ export function renderDashboardPage(): string {
     document.documentElement.setAttribute('dir', isRtl(lang) ? 'rtl' : 'ltr');
     document.title = t('docTitle');
     applyStatic();
-    applyTheme();                 // refresh the theme button label in the new language
+    applyTheme();
     if(lastFresh != null) setFreshBadge(lastFresh);
     buildLangMenu();
     buildCanvasMenu();
@@ -583,10 +560,8 @@ export function renderDashboardPage(): string {
     try { localStorage.setItem(LANG_KEY, code); } catch(e){}
     closeMenus();
     applyLang();
-    spinGlobe();   // little confirmation spin after picking a language
+    spinGlobe();
   }
-  // Three popovers (language, export, layout) share one open/close controller: opening one
-  // closes the others, and an outside click or Escape closes them all.
   var MENUS = [['langMenu','btnLang'], ['canvasMenu','btnCanvasMenu']];
   function setMenuOpen(menuId, btnId, open){
     var m = document.getElementById(menuId); if(!m) return;
@@ -603,7 +578,7 @@ export function renderDashboardPage(): string {
   function spinGlobe(){
     var btn = document.getElementById('btnLang'), svg = btn && btn.firstElementChild; if(!svg) return;
     svg.classList.remove('globe-spin');
-    void btn.offsetWidth;   // reflow on the button — SVG elements have no offsetWidth, so reading the svg's never forced one and the spin only ran once
+    void btn.offsetWidth;
     svg.classList.add('globe-spin');
   }
 
@@ -611,17 +586,15 @@ export function renderDashboardPage(): string {
   var ctx = canvas.getContext('2d');
   var dpr = window.devicePixelRatio || 1;
   var data = null, nodes = [], links = [], byId = {}, neigh = {};
-  var rawNodes = [], rawLinks = [], curPath = '';  // hierarchical folder navigation state
+  var rawNodes = [], rawLinks = [], curPath = '';
   var selected = null, hoverNode = null, dragging = null, raf = 0;
-  var lastFresh = null;   // remembered freshness state so its tooltip re-localizes on language change
-  var themingT = 0;       // timer that clears the theme cross-fade window
+  var lastFresh = null;
+  var themingT = 0;
   var alpha = 0;
   var view = { w: 0, h: 0 };
-  // screen = world * k + (x,y)
   var tf = { k: 1, x: 0, y: 0 };
   var target = { k: 1, x: 0, y: 0 };
 
-  // ---- graph layout: force (ForceAtlas-style, the Gephi default) or a static arrangement ----
   var LAYOUT_KEY = 'sens-layout';
   function storedLayout(){ try { return localStorage.getItem(LAYOUT_KEY); } catch(e){ return null; } }
   var LAYOUTS = ['force','hierarchical','circular','grid'];
@@ -634,9 +607,6 @@ export function renderDashboardPage(): string {
   function clamp(v, lo, hi){ return v < lo ? lo : (v > hi ? hi : v); }
   function toWorld(t, sx, sy){ return { x:(sx - t.x)/t.k, y:(sy - t.y)/t.k }; }
 
-  // ---- hierarchical aggregation (folder map with file drill-down) ----
-  // The API returns a flat file graph; we aggregate it on the client so a large project
-  // opens as a readable folder map (~dozens of nodes) instead of a 700-node hairball.
   function levelGroups(prefix){
     var groups = {}, order = [], plen = prefix.length;
     for(var i=0;i<rawNodes.length;i++){
@@ -659,13 +629,9 @@ export function renderDashboardPage(): string {
     var rest = path.slice(prefix.length), slash = rest.indexOf('/');
     return slash === -1 ? path : prefix + rest.slice(0, slash) + '/';
   }
-  // A dependency that leaves the current level is collapsed to the segment where its
-  // path diverges from curPath — so an outward edge lands on one compact "external"
-  // reference node (e.g. the sibling folder over in "a/") instead of vanishing. This is
-  // what keeps every drilled-in view showing how its items connect, not just dots.
   function externalId(path){
-    var cur = curPath.split('/'); cur.pop();       // dir segments of curPath
-    var p = path.split('/');                        // last item is the filename
+    var cur = curPath.split('/'); cur.pop();
+    var p = path.split('/');
     var m = 0;
     while(m < cur.length && m < p.length - 1 && cur[m] === p[m]) m++;
     var seg = p[m], isFolder = m < p.length - 1;
@@ -708,7 +674,6 @@ export function renderDashboardPage(): string {
     }
     return { order:order, links:agg };
   }
-  // deepest directory prefix shared by every file — so we skip past a lone top "src/" wrapper.
   function commonDir(){
     if(!rawNodes.length) return '';
     var parts = rawNodes[0].id.split('/'); parts.pop();
@@ -726,8 +691,6 @@ export function renderDashboardPage(): string {
     buildFileGraph();
     buildDeadSet();
   }
-  // Project-wide file dependency maps (independent of the current drill level): what each
-  // file imports (fan-out) and what imports it (fan-in). Drives the file inspector + insights.
   var fOut = {}, fIn = {};
   function buildFileGraph(){
     fOut = {}; fIn = {};
@@ -737,7 +700,6 @@ export function renderDashboardPage(): string {
       if(fIn[l.target]) fIn[l.target].push(l.source);
     });
   }
-  // Symbols flagged as dead, keyed by file+line, so a symbol row can wear a "dead" badge.
   var deadAt = {};
   function buildDeadSet(){
     deadAt = {};
@@ -801,8 +763,6 @@ export function renderDashboardPage(): string {
     fitView(false);
   }
 
-  // Position/geometry for the active graph type: node-link runs a physics layout, every other
-  // type computes closed-form geometry and pins the frame (alpha 0, no physics).
   function applyView(){
     bbox = null;
     var d = VIEWS[gtype];
@@ -810,9 +770,6 @@ export function renderDashboardPage(): string {
     else layoutNodes();
   }
 
-  // Position every node according to the active layout. The force layout pre-settles with a
-  // cooling schedule (stable even for large graphs); the static layouts are O(n) closed-form
-  // placements — cheap no matter how huge the graph is — and pin nodes so physics stays off.
   function layoutNodes(){
     if(!nodes.length) return;
     if(layout === 'hierarchical') hierLayout();
@@ -826,7 +783,6 @@ export function renderDashboardPage(): string {
       var a = (i / Math.max(1, n)) * PI2;
       nd.x = Math.cos(a) * R; nd.y = Math.sin(a) * R; nd.vx = 0; nd.vy = 0; nd.fixed = false;
     });
-    // Constant high alpha diverges/oscillates at scale, so cool it down over the pre-settle.
     alpha = 1;
     for(var s = 0; s < 300; s++){ physics(); alpha *= 0.985; }
     alpha = 0.06;
@@ -848,8 +804,6 @@ export function renderDashboardPage(): string {
     });
     alpha = 0;
   }
-  // Layered top-down by dependency depth: an importer sits above the files it imports.
-  // Longest-path levels via relaxation, capped so an import cycle can't loop forever.
   function hierLayout(){
     var level = {}, i;
     nodes.forEach(function(nd){ level[nd.id] = 0; });
@@ -898,8 +852,6 @@ export function renderDashboardPage(): string {
       n.vx+=(0-n.x)*GRAV; n.vy+=(0-n.y)*GRAV;
       n.vx*=DAMP; n.vy*=DAMP;
       if(n!==dragging && !n.fixed){
-        // Cap the per-step displacement so a close-range repulsion spike can't blow
-        // the layout up at scale — constant-alpha Euler is otherwise unstable for large N.
         var sx=n.vx*alpha, sy=n.vy*alpha, sm=sx*sx+sy*sy;
         if(sm > 900){ var sc=30/Math.sqrt(sm); sx*=sc; sy*=sc; }
         n.x+=sx; n.y+=sy;
@@ -918,9 +870,8 @@ export function renderDashboardPage(): string {
     return false;
   }
 
-  var interacting = false;   // true while the view is panning/zooming/simulating — drives the fast (label-less) draw pass
+  var interacting = false;
   function loop(){
-    // Physics only drives the node-link force layout; every other type is closed-form geometry.
     var forceOn = gtype === 'node-link' && layout === 'force';
     var hot = forceOn && (alpha > 0.02 || dragging);
     if(hot){ physics(); if(!dragging) alpha *= 0.985; }
@@ -945,8 +896,6 @@ export function renderDashboardPage(): string {
     }
   }
 
-  // Every graph type draws in the same world space (so pan/zoom/fit are shared); draw()
-  // just clears, applies the transform, and dispatches to the active type's renderer.
   function draw(){
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,view.w,view.h);
@@ -954,9 +903,6 @@ export function renderDashboardPage(): string {
     var d = VIEWS[gtype]; (d && d.draw ? d.draw : drawNodeLink)();
   }
 
-  // Visible world rectangle (screen viewport mapped back to world space), padded so nodes
-  // straddling the edge still draw. Everything outside is skipped — the big win at scale,
-  // since a zoomed-in view has almost all nodes off-screen.
   function viewBounds(pad){
     var ik = 1/tf.k, p = (pad||0) * ik;
     return { x0:(0-tf.x)*ik - p, y0:(0-tf.y)*ik - p, x1:(view.w-tf.x)*ik + p, y1:(view.h-tf.y)*ik + p };
@@ -966,11 +912,9 @@ export function renderDashboardPage(): string {
     var nb = focus ? neigh[focus.id] : null;
     var lw = 1/tf.k;
     var vb = viewBounds(60);
-    var labels = !interacting;   // labels are the costliest per-node op — skip them while moving
-    var shownLabels = 0, LABEL_CAP = 140;   // and cap them so a dense still view stays cheap
+    var labels = !interacting;
+    var shownLabels = 0, LABEL_CAP = 140;
 
-    // links — thin and restrained; the focused node's edges are emphasised. Cull any whose
-    // bounding box misses the viewport (keeps edges that cross it, drops the rest).
     for(var i=0;i<links.length;i++){
       var a=byId[links[i].source], b=byId[links[i].target]; if(!a||!b) continue;
       if(Math.max(a.x,b.x)<vb.x0 || Math.min(a.x,b.x)>vb.x1 || Math.max(a.y,b.y)<vb.y0 || Math.min(a.y,b.y)>vb.y1) continue;
@@ -978,23 +922,21 @@ export function renderDashboardPage(): string {
       ctx.globalAlpha = focus ? (touch ? 1 : 0.35) : 1;
       ctx.strokeStyle = touch ? PAL.linkHot : PAL.link;
       ctx.lineWidth = (touch ? 1.6 : Math.min(0.8 + Math.log((links[i].weight||1) + 1) * 0.5, 3)) * lw;
-      var dash = links[i].ext && !interacting;   // dashes are cheap-per-link but add up; solid while moving
+      var dash = links[i].ext && !interacting;
       if(dash){ ctx.setLineDash([4*lw, 3*lw]); }
       ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
       if(dash){ ctx.setLineDash([]); }
     }
     ctx.globalAlpha = 1;
 
-    // nodes — circles for files, rounded squares for folders; flat fills + cutout ring
     ctx.textAlign='center'; ctx.textBaseline='alphabetic';
     ctx.font = (11/tf.k) + 'px ui-sans-serif, system-ui, sans-serif';
     for(var k=0;k<nodes.length;k++){
       var n=nodes[k], r=radius(n);
-      if(n.x+r<vb.x0 || n.x-r>vb.x1 || n.y+r<vb.y0 || n.y-r>vb.y1) continue;   // off-screen: skip
+      if(n.x+r<vb.x0 || n.x-r>vb.x1 || n.y+r<vb.y0 || n.y-r>vb.y1) continue;
       var active = !focus || n===focus || (nb && nb[n.id]);
       ctx.globalAlpha = active ? 1 : PAL.dim;
       nodeShape(n, r);
-      // external reference nodes read as "elsewhere": softer fill + a dashed outline
       if(n.external){
         ctx.globalAlpha = active ? 0.55 : PAL.dim * 0.7; ctx.fillStyle = color(n); ctx.fill();
         ctx.globalAlpha = active ? 1 : PAL.dim;
@@ -1007,8 +949,6 @@ export function renderDashboardPage(): string {
       }
       if(selected===n){ ctx.lineWidth = 2*lw; ctx.strokeStyle = PAL.ring; ctx.stroke(); }
       else if(n===focus){ ctx.lineWidth = 1.6*lw; ctx.strokeStyle = PAL.ring; ctx.stroke(); }
-      // smart labels: folders and external anchors are always named; files only when zoomed in, focused, or a hub.
-      // Suppressed entirely while moving, and capped per frame so a dense view can't stall on text.
       if(labels && active && shownLabels < LABEL_CAP && (n.folder || n.external || n===focus || tf.k >= 0.9 || n.deg >= 8)){
         ctx.fillStyle = PAL.label; ctx.fillText(n.label, n.x, n.y - r - 6*lw); shownLabels++;
       }
@@ -1031,11 +971,6 @@ export function renderDashboardPage(): string {
     return null;
   }
 
-  // ================= alternative graph types =================
-  // Each renderer consumes the same per-level nodes/links the node-link view uses, so drilling,
-  // selection and the side panel work identically. build() sets geometry + bbox; draw() paints;
-  // hit(wx,wy) returns the group under a world point. External-reference nodes are dropped from the
-  // space-filling types (treemap/sunburst) where they have no meaning.
   function sizeOf(n){ return Math.max(1, n.folder ? n.files : n.symbols); }
   function byGroup(a, b){
     var ax = a.external ? 2 : (a.folder ? 0 : 1), bx = b.external ? 2 : (b.folder ? 0 : 1);
@@ -1045,7 +980,6 @@ export function renderDashboardPage(): string {
   function ordered(){ return nodes.slice().sort(byGroup); }
   function sumBy(arr, f){ var s = 0; for(var i=0;i<arr.length;i++) s += f(arr[i]); return s; }
 
-  // --- adjacency matrix: rows/cols = files, a painted cell = a dependency. Scales to huge graphs. ---
   var mat = null;
   function buildMatrix(){
     var ord = ordered(), n = ord.length, idx = {};
@@ -1082,7 +1016,6 @@ export function renderDashboardPage(): string {
     return null;
   }
 
-  // --- chord / dependency wheel: nodes on a ring, arcs curve through the centre ---
   var chord = null;
   function buildChord(){
     var ord = ordered(), n = ord.length, R = Math.max(120, (n * 48) / PI2);
@@ -1113,7 +1046,6 @@ export function renderDashboardPage(): string {
   }
   function hitChord(wx, wy){ return hitRing(chord && chord.ord, wx, wy); }
 
-  // --- hierarchical edge bundling: same ring, edges bundled toward the centre ---
   var bundle = null;
   function buildBundling(){
     var ord = ordered(), n = ord.length, R = Math.max(130, (n * 46) / PI2);
@@ -1123,7 +1055,6 @@ export function renderDashboardPage(): string {
   function drawBundling(){ if(bundle) drawRing(bundle.ord, true); }
   function hitBundling(wx, wy){ return hitRing(bundle && bundle.ord, wx, wy); }
 
-  // --- arc diagram: nodes on a line, dependencies as semicircles above ---
   var arc = null;
   function buildArc(){
     var ord = ordered(), n = ord.length, gap = Math.max(44, Math.min(90, 760/Math.max(1,n))), w = (n-1)*gap;
@@ -1135,7 +1066,7 @@ export function renderDashboardPage(): string {
     for(i=0;i<links.length;i++){ var a=byId[links[i].source], b=byId[links[i].target]; if(!a||!b) continue;
       var cx=(a.x+b.x)/2, r=Math.abs(b.x-a.x)/2, touch = focus && (links[i].source===focus.id || links[i].target===focus.id);
       ctx.globalAlpha = focus ? (touch ? 1 : 0.12) : 0.55; ctx.strokeStyle = touch ? PAL.linkHot : PAL.link; ctx.lineWidth = (touch ? 1.8 : 0.9) * lw;
-      ctx.beginPath(); ctx.arc(cx, 0, r, Math.PI, 0, false); ctx.stroke(); }   // upper semicircle (y is down)
+      ctx.beginPath(); ctx.arc(cx, 0, r, Math.PI, 0, false); ctx.stroke(); }
     ctx.globalAlpha = 1; ctx.font = (11/tf.k) + 'px ui-sans-serif, system-ui, sans-serif';
     for(i=0;i<arc.ord.length;i++){ var nd = arc.ord[i], active = !focus || nd===focus || (nb && nb[nd.id]);
       ctx.globalAlpha = active ? 1 : PAL.dim; ctx.beginPath(); ctx.arc(nd.x, 0, (nd.folder?5:4)*lw, 0, PI2); ctx.fillStyle = color(nd); ctx.fill();
@@ -1148,7 +1079,6 @@ export function renderDashboardPage(): string {
     var thr = 16/tf.k; return bd <= thr*thr ? best : null;
   }
 
-  // --- treemap: squarified rectangles, area by symbol/file count, nested by colour ---
   var tree = null;
   function squarify(items, x, y, w, h){
     var out = [], vals = items.map(function(it){ return { node:it.node, v:it.v }; }), total = 0, i;
@@ -1189,7 +1119,6 @@ export function renderDashboardPage(): string {
     return null;
   }
 
-  // --- sunburst: inner ring = this level, outer ring = each folder's children ---
   var sun = null;
   function buildSunburst(){
     var items = nodes.filter(function(n){ return !n.external; }), total = sumBy(items, sizeOf) || 1;
@@ -1222,7 +1151,6 @@ export function renderDashboardPage(): string {
     return null;
   }
 
-  // --- sankey: files laid out in dependency layers, imports as flowing ribbons ---
   var sankey = null;
   function buildSankey(){
     var level = {}, i, s, t; nodes.forEach(function(n){ level[n.id] = 0; });
@@ -1270,13 +1198,11 @@ export function renderDashboardPage(): string {
     bundling: { build: buildBundling, draw: drawBundling, hit: hitBundling }
   };
 
-  // ---- interaction ----
   var down=false, moved=false, startN=null, panning=false, last={x:0,y:0};
   function pos(e){ var rc=canvas.getBoundingClientRect(); return { x:e.clientX-rc.left, y:e.clientY-rc.top }; }
 
   canvas.addEventListener('mousedown', function(e){
     var p=pos(e); startN=nodeAt(p.x,p.y); down=true; moved=false; last=p;
-    // dragging a node only makes sense in node-link; elsewhere a press pans (a click still selects)
     if(startN && gtype==='node-link'){ dragging=startN; startN.fixed=true; canvas.style.cursor='grabbing'; }
     else { panning=true; canvas.style.cursor='grabbing'; }
   });
@@ -1290,14 +1216,13 @@ export function renderDashboardPage(): string {
       tf.x += p.x-last.x; tf.y += p.y-last.y; target.x=tf.x; target.y=tf.y; last=p;
       moved=true; ensureRunning(); return;
     }
-    // hover
     var h=nodeAt(p.x,p.y);
     canvas.style.cursor = h ? 'pointer' : 'grab';
     if(h!==hoverNode){ hoverNode=h; ensureRunning(); }
   });
   window.addEventListener('mouseup', function(){
     if(down && startN && !moved){ select(startN); startN.fixed=false; }
-    else if(down && !startN && !moved){ select(null); }  // click on empty space clears selection
+    else if(down && !startN && !moved){ select(null); }
     if(down && dragging) reheat(0.25);
     down=false; dragging=null; panning=false;
     canvas.style.cursor = hoverNode ? 'pointer' : 'grab';
@@ -1333,7 +1258,6 @@ export function renderDashboardPage(): string {
   function fitView(animate){
     var minx, miny, maxx, maxy;
     if(bbox){
-      // a non-node-link view supplied its own world-space bounds
       minx=bbox.minx; miny=bbox.miny; maxx=bbox.maxx; maxy=bbox.maxy;
     } else {
       if(!nodes.length) return;
@@ -1351,7 +1275,6 @@ export function renderDashboardPage(): string {
 
   function select(n){ selected=n; renderPanel(); ensureRunning(); }
 
-  // ---- sidebar ----
   function renderSidebar(){
     setText('proj', data.project);
     setText('s-files', data.stats.files);
@@ -1376,7 +1299,6 @@ export function renderDashboardPage(): string {
     });
   }
 
-  // ---- panel building blocks (shared by the file inspector and the insights view) ----
   function setPanelHead(key){ document.getElementById('headPanel').textContent = t(key); }
   function dirHint(id){ var i=id.lastIndexOf('/'); if(i<0) return ''; var d=id.slice(0,i), j=d.lastIndexOf('/'); return j<0?d:d.slice(j+1); }
   function pill(mod, num, label){
@@ -1387,7 +1309,6 @@ export function renderDashboardPage(): string {
     var h=el('div','psub'); h.appendChild(el('span',null,label));
     if(count!=null) h.appendChild(el('span','cnt', String(count))); return h;
   }
-  // a clickable file row that reveals the file in the graph; caller appends any right-side badge
   function fileRow(fileId){
     var row=el('div','row'); row.title=fileId;
     row.appendChild(el('span','mono', base(fileId)));
@@ -1427,7 +1348,6 @@ export function renderDashboardPage(): string {
       });
       return;
     }
-    // ---- file inspector: health, dependencies (both directions), then symbols ----
     var syms = data.symbols.filter(function(s){ return s.file===selected.id; });
     var exp=0, dead=0;
     syms.forEach(function(s){ if(s.exported) exp++; if(deadAt[s.file+':'+s.line]) dead++; });
@@ -1451,8 +1371,6 @@ export function renderDashboardPage(): string {
     });
   }
 
-  // Default panel when nothing is selected: an actionable read of the dependency graph —
-  // the hubs everything imports, and the isolated files nothing touches.
   function renderInsights(host){
     if(!rawNodes.length){ host.appendChild(el('div','muted', t('panelEmpty'))); return; }
     host.appendChild(el('div','ins-note', t('panelEmpty')));
@@ -1517,7 +1435,6 @@ export function renderDashboardPage(): string {
     api('/api/connect','POST').then(function(){ return api('/api/data'); }).then(function(d){ data=d; renderSidebar(); if(d.connected) showToast(t('connected')); });
   });
 
-  // rules manager: list modules with on/off switches, add/remove custom rules.
   function ruleSwitch(r){
     var sw = document.createElement('button');
     sw.className = 'switch' + (r.active ? ' on' : '');
@@ -1571,26 +1488,22 @@ export function renderDashboardPage(): string {
     });
   });
 
-  // theme toggle: cycle stored preference between light and dark; changing it repaints
-  // both the CSS chrome (via [data-theme]) and the canvas palette.
   document.getElementById('btnTheme').addEventListener('click', function(){
     var root = document.documentElement;
-    root.classList.add('theming');                       // enable the soft cross-fade…
+    root.classList.add('theming');
     clearTimeout(themingT);
-    themingT = setTimeout(function(){ root.classList.remove('theming'); }, 340);  // …just for the switch
+    themingT = setTimeout(function(){ root.classList.remove('theming'); }, 340);
     var next = resolvedDark() ? 'light' : 'dark';
     try { localStorage.setItem(THEME_KEY, next); } catch(e){}
     applyTheme(true);
   });
 
-  // menu buttons: each toggles its own popover (opening one closes the others)
   document.getElementById('btnLang').addEventListener('click', function(e){ e.stopPropagation(); spinGlobe(); openMenu('langMenu','btnLang'); });
   document.getElementById('btnCanvasMenu').addEventListener('click', function(e){ e.stopPropagation(); openMenu('canvasMenu','btnCanvasMenu'); });
   document.addEventListener('click', function(e){
     MENUS.forEach(function(x){ var w = document.getElementById(x[1]).parentNode; if(!w.contains(e.target)) setMenuOpen(x[0], x[1], false); });
   });
   window.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeMenus(); });
-  // follow the OS while the user hasn't picked a theme of their own
   if(mq){
     var onSys = function(){ if(!storedTheme()) applyTheme(); };
     if(mq.addEventListener) mq.addEventListener('change', onSys);
@@ -1598,7 +1511,6 @@ export function renderDashboardPage(): string {
   }
   applyLang();
 
-  // brief hint on first load
   var hint=document.getElementById('hint');
   hint.classList.add('show');
   setTimeout(function(){ hint.classList.remove('show'); }, 4200);
