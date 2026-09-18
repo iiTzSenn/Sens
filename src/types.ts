@@ -63,6 +63,26 @@ export interface FileInfo {
   exports: string[];
 }
 
+/**
+ * A path whose mtime reveals that source files were *added* or *removed*,
+ * letting a freshness check skip the full project glob. Two kinds of entry,
+ * both stat-ed the same way:
+ *
+ *  - every non-ignored **directory** — creating, deleting or renaming an entry
+ *    inside a directory bumps that directory's mtime, which is how a new file
+ *    is noticed (a file in a brand-new directory bumps the new directory's
+ *    parent, which is itself watched);
+ *  - every **.gitignore** — editing one can un-ignore a directory that already
+ *    exists, which no directory mtime would reveal.
+ *
+ * Stored outside the index itself, in `.sens/meta.json` — see `store/meta.ts`.
+ */
+export interface WatchedPath {
+  /** Path relative to the project root, POSIX-style ("" is the root). */
+  path: string;
+  mtimeMs: number;
+}
+
 export interface ProjectIndex {
   /** Index schema version (see INDEX_SCHEMA_VERSION). */
   schemaVersion: number;

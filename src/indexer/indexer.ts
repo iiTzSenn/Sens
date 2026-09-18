@@ -1,6 +1,8 @@
+import { statSync } from "node:fs";
+import path from "node:path";
 import { globby } from "globby";
 import { INDEX_SCHEMA_VERSION } from "../types.js";
-import type { ProjectIndex } from "../types.js";
+import type { ProjectIndex, WatchedPath } from "../types.js";
 import {
   PARSERS,
   parserForFile,
@@ -18,6 +20,48 @@ const DEFAULT_IGNORE = [
   "**/.venv/**",
   "**/venv/**",
 ];
+
+/**
+ * The paths whose mtime reveals that files were *added* or *removed*: every
+ * non-ignored directory, plus every `.gitignore` (editing one can un-ignore a
+ * directory that already exists, which no directory mtime would show).
+ *
+ * Listing directories costs a fraction of listing every source file, and it is
+ * what lets the freshness check skip the full glob on the hot path — see
+ * `store/meta.ts`. Stat failures are dropped: a path that cannot be stat-ed
+ * now is simply not watched, and the next structural change is caught by its
+ * parent directory.
+ */
+export async function resolveWatched(
+  root: string,
+  ignore: string[] = [],
+): Promise<WatchedPath[]> {
+  const opts = {
+    cwd: root,
+    gitignore: true,
+    absolute: false,
+    ignore: [...DEFAULT_IGNORE, ...ignore],
+  };
+  const [dirs, ignoreFiles] = await Promise.all([
+    globby("**/", { ...opts, onlyDirectories: true }),
+    globby("**/.gitignore", { ...opts, dot: true }),
+  ]);
+
+  const watched: WatchedPath[] = [];
+  for (const p of ["", ...dirs, ...ignoreFiles]) {
+    // "" is the root itself: a new top-level file bumps its mtime.
+    const clean = p.replace(/\/$/, "");
+    try {
+      watched.push({
+        path: clean,
+        mtimeMs: statSync(path.join(root, clean)).mtimeMs,
+      });
+    } catch {
+      // Vanished between listing and stat — ignore (see doc comment).
+    }
+  }
+  return watched.sort((a, b) => a.path.localeCompare(b.path));
+}
 
 /** Resolve the set of source files under `root` (respecting .gitignore). */
 export async function resolveFiles(
