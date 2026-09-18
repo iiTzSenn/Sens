@@ -27,7 +27,8 @@
     "test:native": "cargo test --manifest-path rust/sens-hook/Cargo.toml",
     "package:native": "node scripts/package-native.mjs",
     "diff:hook": "node rust/diff-hook.mjs",
-    "diff:query": "tsx rust/diff-query.mjs"
+    "diff:query": "tsx rust/diff-query.mjs",
+    "diff:index": "tsx rust/diff-index.mjs"
   },
   "keywords": [
     "claude",

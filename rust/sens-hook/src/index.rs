@@ -30,17 +30,21 @@ pub struct Reference {
     pub from: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct FileInfo {
     pub path: String,
     #[serde(rename = "mtimeMs")]
     pub mtime_ms: f64,
+    #[serde(default)]
+    pub exports: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ImportEdge {
     pub from: String,
     pub to: String,
+    #[serde(default)]
+    pub names: Vec<String>,
 }
 
 #[derive(Deserialize)]

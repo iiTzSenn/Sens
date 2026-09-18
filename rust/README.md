@@ -142,3 +142,56 @@ spawning the binary costs roughly what building the engine in Node cost.
 The binary answering on its own is ~99ms for the same query. Getting the CLI
 there means the binary becoming the entry point and rendering too — which is the
 double-renderer trade this deliberately avoided.
+
+## The indexer
+
+All ten tree-sitter languages are ported — Go, Python, Rust, Java, C#, C, C++,
+PHP, Ruby, Kotlin — along with the generic framework they share: symbol
+extraction, the import graph, and reference resolution with its three scope
+modes (`name`, `import`, `package`).
+
+`rust/diff-index.mjs` builds the index both ways over each fixture and compares
+symbols, exports, imports and references. All 15 fixtures match exactly, the
+polyglot one included.
+
+`sens-hook index` prints that index as JSON; `--write` puts it in
+`.sens/index.json`.
+
+Kotlin needed care: `tree-sitter-kotlin-ng` is a different grammar from the WASM
+one Node loads, and names nodes differently — `identifier` where the other says
+`simple_identifier`, an `import` node where the other has `import_list` /
+`import_header`. The extractor accepts either, so both grammars produce the same
+index.
+
+### What this is worth: almost nothing, and the reason matters
+
+| | |
+| --- | --- |
+| parse + extract, Node (tree-sitter WASM) | 283 ms |
+| parse + extract, Rust (native, `rayon`) | **109 ms** |
+| `sens index` end to end, either way | ~730 ms |
+
+Measured on 1,620 files across five languages. The parsing really is 2.6x
+faster — but it is only about a fifth of the command. **Roughly 80% is
+serializing and writing the 11.6 MB `index.json`, and serde_json is no faster at
+that than `JSON.stringify`.**
+
+Two wirings were tried and both reverted, because both were measured and neither
+paid:
+
+- Node calling the binary and reading the index over a pipe: **slower** (360 ms
+  vs 280 ms). Moving 11.6 MB of JSON across a process boundary costs more than
+  the parsing it saves.
+- The binary writing `.sens/index.json` and Node loading it: a wash (732 ms vs
+  728 ms).
+
+So the indexer is built and verified but not on the default path. The win it
+unlocks is real and sits one step further out: **the index format**. A compact
+binary index the Rust side writes and memory-maps would remove the ~300 ms of
+serialization from indexing *and* the 22 ms of parsing every hook call pays.
+That is the change worth making next; this port is its prerequisite.
+
+Worth noting this contradicts an earlier conclusion, and the contradiction is
+the useful part: in Node, `JSON.parse` of the index was 26 ms of a 428 ms call
+and not worth touching. Which bottleneck matters is a property of the
+architecture, not of the code.

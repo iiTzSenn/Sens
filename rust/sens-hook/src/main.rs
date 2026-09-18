@@ -4,7 +4,9 @@ mod format;
 mod freshness;
 mod hook;
 mod index;
+mod indexer;
 mod json;
+mod lang;
 mod query;
 mod reflective;
 mod testfile;
@@ -22,6 +24,16 @@ const CANNOT_ANSWER: i32 = 2;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+
+    if args.first().map(String::as_str) == Some("index") {
+        match index_mode(&args[1..]) {
+            Some(json) if !json.is_empty() => println!("{json}"),
+            Some(_) => {}
+            None => std::process::exit(CANNOT_ANSWER),
+        }
+        return;
+    }
+
     if args.first().map(String::as_str) == Some("query") {
         match query_mode(&args[1..]) {
             Some(text) => println!("{text}"),
@@ -113,4 +125,29 @@ fn delegate(raw: &str) {
     }
     drop(child.stdin.take());
     let _ = child.wait();
+}
+
+fn index_mode(args: &[String]) -> Option<String> {
+    let root = std::env::current_dir().ok()?;
+    let built = indexer::build(&root)?;
+    let document = serde_json::json!({
+        "schemaVersion": index::INDEX_SCHEMA_VERSION,
+        "root": root.to_string_lossy(),
+        "createdAt": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_millis() as f64,
+        "files": built.files,
+        "symbols": built.symbols,
+        "references": built.references,
+        "imports": built.imports,
+    });
+    if args.iter().any(|a| a == "--write") {
+        let dir = index::sens_dir(&root);
+        std::fs::create_dir_all(&dir).ok()?;
+        let file = std::fs::File::create(dir.join("index.json")).ok()?;
+        serde_json::to_writer(std::io::BufWriter::new(file), &document).ok()?;
+        return Some(String::new());
+    }
+    Some(json::encode(&document))
 }
