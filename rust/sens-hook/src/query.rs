@@ -1,36 +1,37 @@
 use std::collections::{HashMap, HashSet};
 use std::path::MAIN_SEPARATOR;
 
-use crate::index::{ProjectIndex, Reference, SymbolInfo};
+use crate::binindex::BinIndex;
+use crate::index::{Reference, SymbolInfo};
 use crate::testfile::is_test_file;
 
 pub struct Engine<'a> {
-    index: &'a ProjectIndex<'a>,
+    index: &'a BinIndex,
     entry_points: HashSet<&'a str>,
     by_id: HashMap<&'a str, usize>,
     by_name_lower: HashMap<String, Vec<usize>>,
     by_name_or_suffix: HashMap<&'a str, Vec<usize>>,
     by_file: Vec<(&'a str, Vec<usize>)>,
     by_file_index: HashMap<&'a str, usize>,
-    imports_from: HashMap<&'a str, OrderedSet<'a>>,
-    imports_to: HashMap<&'a str, OrderedSet<'a>>,
-    callees_of: HashMap<&'a str, OrderedSet<'a>>,
-    callers_of: HashMap<&'a str, OrderedSet<'a>>,
+    imports_from: HashMap<&'a str, OrderedStrings<'a>>,
+    imports_to: HashMap<&'a str, OrderedStrings<'a>>,
+    callees_of: HashMap<usize, OrderedSet>,
+    callers_of: HashMap<usize, OrderedSet>,
 }
 
 #[derive(Default)]
-pub struct OrderedSet<'a> {
-    order: Vec<&'a str>,
-    seen: HashSet<&'a str>,
+pub struct OrderedSet {
+    order: Vec<usize>,
+    seen: HashSet<usize>,
 }
 
-impl<'a> OrderedSet<'a> {
-    fn insert(&mut self, value: &'a str) {
+impl OrderedSet {
+    fn insert(&mut self, value: usize) {
         if self.seen.insert(value) {
             self.order.push(value);
         }
     }
-    fn iter(&self) -> impl Iterator<Item = &&'a str> {
+    fn iter(&self) -> impl Iterator<Item = &usize> {
         self.order.iter()
     }
     fn len(&self) -> usize {
@@ -89,7 +90,7 @@ fn normalize(path: &str) -> String {
 }
 
 impl<'a> Engine<'a> {
-    pub fn new(index: &'a ProjectIndex<'a>, entry_points: &'a [String]) -> Self {
+    pub fn new(index: &'a BinIndex, entry_points: &'a [String]) -> Self {
         let mut engine = Self {
             index,
             entry_points: entry_points.iter().map(String::as_str).collect(),
@@ -131,21 +132,13 @@ impl<'a> Engine<'a> {
             engine.imports_to.entry(&edge.to).or_default().insert(&edge.from);
         }
 
-        for (target, raw) in &index.references {
-            for reference in index.parse_references(raw) {
-                let Some(from) = reference.from else { continue };
-                if from == *target {
+        for si in 0..index.symbols.len() {
+            for &(_, _, from) in index.raw_references(si) {
+                if from == u32::MAX || from as usize == si {
                     continue;
                 }
-                let Some(from_key) = engine.by_id.get_key_value(from.as_str()).map(|(k, _)| *k)
-                else {
-                    continue;
-                };
-                let Some(target_key) = engine.by_id.get_key_value(*target).map(|(k, _)| *k) else {
-                    continue;
-                };
-                engine.callees_of.entry(from_key).or_default().insert(target_key);
-                engine.callers_of.entry(target_key).or_default().insert(from_key);
+                engine.callees_of.entry(from as usize).or_default().insert(si);
+                engine.callers_of.entry(si).or_default().insert(from as usize);
             }
         }
 
@@ -156,11 +149,12 @@ impl<'a> Engine<'a> {
         &self.index.symbols[i]
     }
 
+    fn resolve_indices(&self, name: &str) -> Vec<usize> {
+        self.by_name_or_suffix.get(name).cloned().unwrap_or_default()
+    }
+
     fn resolve(&self, name: &str) -> Vec<&'a SymbolInfo> {
-        self.by_name_or_suffix
-            .get(name)
-            .map(|ids| ids.iter().map(|&i| self.symbol(i)).collect())
-            .unwrap_or_default()
+        self.resolve_indices(name).into_iter().map(|i| self.symbol(i)).collect()
     }
 
     pub fn find_symbol(&self, name: &str) -> Vec<&'a SymbolInfo> {
@@ -254,7 +248,7 @@ impl<'a> Engine<'a> {
             .find(|f| f.path == norm || f.path.ends_with(&norm))
             .map(|f| f.path.clone())
             .unwrap_or(norm);
-        let sorted = |set: Option<&OrderedSet<'a>>| {
+        let sorted = |set: Option<&OrderedStrings<'a>>| {
             let mut v: Vec<&str> = set.map(|s| s.iter().copied().collect()).unwrap_or_default();
             v.sort_by(|a, b| compare_paths(a, b));
             v
@@ -266,9 +260,9 @@ impl<'a> Engine<'a> {
         }
     }
 
-    fn neighbors(&self, set: Option<&OrderedSet<'a>>) -> Vec<&'a SymbolInfo> {
+    fn neighbors(&self, set: Option<&OrderedSet>) -> Vec<&'a SymbolInfo> {
         let mut out: Vec<&SymbolInfo> = set
-            .map(|s| s.iter().filter_map(|id| self.by_id.get(id).map(|&i| self.symbol(i))).collect())
+            .map(|s| s.iter().map(|&i| self.symbol(i)).collect())
             .unwrap_or_default();
         out.sort_by(|a, b| {
             compare_paths(a.file.as_str(), b.file.as_str()).then_with(|| a.line.cmp(&b.line))
@@ -277,68 +271,66 @@ impl<'a> Engine<'a> {
     }
 
     pub fn explain(&self, name: &str) -> Vec<Neighborhood<'a>> {
-        self.resolve(name)
+        self.resolve_indices(name)
             .into_iter()
-            .map(|symbol| Neighborhood {
-                callers: self.neighbors(self.callers_of.get(symbol.id.as_str())),
-                callees: self.neighbors(self.callees_of.get(symbol.id.as_str())),
-                symbol,
+            .map(|si| Neighborhood {
+                symbol: self.symbol(si),
+                callers: self.neighbors(self.callers_of.get(&si)),
+                callees: self.neighbors(self.callees_of.get(&si)),
             })
             .collect()
     }
 
     pub fn path(&self, from: &str, to: &str) -> Option<Vec<&'a SymbolInfo>> {
-        let sources = self.resolve(from);
-        let targets: HashSet<&str> =
-            self.resolve(to).iter().map(|s| s.id.as_str()).collect();
+        let sources = self.resolve_indices(from);
+        let targets: HashSet<usize> = self.resolve_indices(to).into_iter().collect();
         if sources.is_empty() || targets.is_empty() {
             return None;
         }
 
-        let mut prev: HashMap<&str, Option<&str>> = HashMap::new();
-        let mut queue: Vec<&str> = Vec::new();
-        for s in &sources {
-            let id = s.id.as_str();
-            if prev.contains_key(id) {
+        let mut prev: HashMap<usize, Option<usize>> = HashMap::new();
+        let mut queue: Vec<usize> = Vec::new();
+        for si in sources {
+            if prev.contains_key(&si) {
                 continue;
             }
-            prev.insert(id, None);
-            queue.push(id);
+            prev.insert(si, None);
+            queue.push(si);
         }
 
         let mut i = 0;
         while i < queue.len() {
-            let id = queue[i];
+            let si = queue[i];
             i += 1;
-            if targets.contains(id) {
-                return Some(self.rebuild(&prev, id));
+            if targets.contains(&si) {
+                return Some(self.rebuild(&prev, si));
             }
             let neighbors = self
                 .callees_of
-                .get(id)
+                .get(&si)
                 .into_iter()
                 .flat_map(|s| s.iter().copied())
-                .chain(self.callers_of.get(id).into_iter().flat_map(|s| s.iter().copied()));
+                .chain(self.callers_of.get(&si).into_iter().flat_map(|s| s.iter().copied()));
             for n in neighbors {
-                if prev.contains_key(n) {
+                if prev.contains_key(&n) {
                     continue;
                 }
-                prev.insert(n, Some(id));
+                prev.insert(n, Some(si));
                 queue.push(n);
             }
         }
         None
     }
 
-    fn rebuild(&self, prev: &HashMap<&str, Option<&'a str>>, end: &'a str) -> Vec<&'a SymbolInfo> {
-        let mut ids: Vec<&str> = Vec::new();
+    fn rebuild(&self, prev: &HashMap<usize, Option<usize>>, end: usize) -> Vec<&'a SymbolInfo> {
+        let mut ids: Vec<usize> = Vec::new();
         let mut cur = Some(end);
-        while let Some(id) = cur {
-            ids.push(id);
-            cur = prev.get(id).copied().flatten();
+        while let Some(si) = cur {
+            ids.push(si);
+            cur = prev.get(&si).copied().flatten();
         }
         ids.reverse();
-        ids.iter().filter_map(|id| self.by_id.get(id).map(|&i| self.symbol(i))).collect()
+        ids.into_iter().map(|i| self.symbol(i)).collect()
     }
 }
 
@@ -362,60 +354,55 @@ fn score(s: &SymbolInfo, keywords: &[String]) -> f64 {
 }
 
 impl<'a> Engine<'a> {
-    fn mark(&self, roots: impl Fn(&mut dyn FnMut(&'a str))) -> HashSet<&'a str> {
-        let mut live: HashSet<&str> = HashSet::new();
-        let mut stack: Vec<&str> = Vec::new();
+    fn mark(&self, roots: impl Fn(&mut dyn FnMut(usize))) -> HashSet<usize> {
+        let mut live: HashSet<usize> = HashSet::new();
+        let mut stack: Vec<usize> = Vec::new();
         {
-            let mut seed = |id: &'a str| {
-                if let Some((key, _)) = self.by_id.get_key_value(id) {
-                    if live.insert(key) {
-                        stack.push(key);
-                    }
+            let mut seed = |si: usize| {
+                if si < self.index.symbols.len() && live.insert(si) {
+                    stack.push(si);
                 }
             };
             roots(&mut seed);
         }
-        while let Some(id) = stack.pop() {
-            let callees: Vec<&str> = self
+        while let Some(si) = stack.pop() {
+            let callees: Vec<usize> = self
                 .callees_of
-                .get(id)
+                .get(&si)
                 .map(|s| s.iter().copied().collect())
                 .unwrap_or_default();
             for callee in callees {
-                if let Some((key, _)) = self.by_id.get_key_value(callee) {
-                    if live.insert(key) {
-                        stack.push(key);
-                    }
+                if live.insert(callee) {
+                    stack.push(callee);
                 }
             }
         }
         live
     }
 
-    fn reachable(&self) -> (HashSet<&'a str>, HashSet<&'a str>) {
+    fn reachable(&self) -> (HashSet<usize>, HashSet<usize>) {
         let real = self.mark(|seed| {
-            for s in &self.index.symbols {
-                if s.entry {
-                    seed(&s.id);
-                } else if s.exported && self.entry_points.contains(s.file.as_str()) {
-                    seed(&s.id);
-                } else if is_test_file(&s.file) {
-                    seed(&s.id);
+            for (si, s) in self.index.symbols.iter().enumerate() {
+                if s.entry
+                    || (s.exported && self.entry_points.contains(s.file.as_str()))
+                    || is_test_file(&s.file)
+                {
+                    seed(si);
                 }
             }
-            for (id, raw) in &self.index.references {
-                if self.index.parse_references(raw).iter().any(|r| r.from.is_none()) {
-                    seed(id);
+            for si in 0..self.index.symbols.len() {
+                if self.index.raw_references(si).iter().any(|&(_, _, from)| from == u32::MAX) {
+                    seed(si);
                 }
             }
         });
         let live = self.mark(|seed| {
-            for id in &real {
-                seed(id);
+            for &si in &real {
+                seed(si);
             }
-            for s in &self.index.symbols {
+            for (si, s) in self.index.symbols.iter().enumerate() {
                 if s.exported {
-                    seed(&s.id);
+                    seed(si);
                 }
             }
         });
@@ -428,17 +415,16 @@ impl<'a> Engine<'a> {
         let (real, live) = self.reachable();
 
         let mut candidates: Vec<DeadCandidate> = Vec::new();
-        for s in &self.index.symbols {
+        for (si, s) in self.index.symbols.iter().enumerate() {
             if !in_scope(&s.file) || is_test_file(&s.file) {
                 continue;
             }
             if s.exported && self.entry_points.contains(s.file.as_str()) {
                 continue;
             }
-            let refs = self.index.references_for(&s.id).len();
-            let id = s.id.as_str();
+            let refs = self.index.raw_references(si).len();
             if s.kind == "method" {
-                if live.contains(id) {
+                if live.contains(&si) {
                     continue;
                 }
                 candidates.push(DeadCandidate {
@@ -448,7 +434,7 @@ impl<'a> Engine<'a> {
                     reflective_hit: None,
                 });
             } else if s.exported {
-                if real.contains(id) {
+                if real.contains(&si) {
                     continue;
                 }
                 candidates.push(DeadCandidate {
@@ -462,7 +448,7 @@ impl<'a> Engine<'a> {
                     reflective_hit: None,
                 });
             } else {
-                if live.contains(id) {
+                if live.contains(&si) {
                     continue;
                 }
                 candidates.push(DeadCandidate {
@@ -489,15 +475,35 @@ impl<'a> Engine<'a> {
             if !in_scope(file) || is_test_file(file) || self.entry_points.contains(file) {
                 continue;
             }
-            if self.imports_to.get(file).map(OrderedSet::len).unwrap_or(0) > 0 {
+            if self.imports_to.get(file).map(OrderedStrings::len).unwrap_or(0) > 0 {
                 continue;
             }
-            if !ids.is_empty() && ids.iter().all(|&i| !live.contains(self.symbol(i).id.as_str())) {
+            if !ids.is_empty() && ids.iter().all(|i| !live.contains(i)) {
                 files.push(file);
             }
         }
         files.sort_by(|a, b| compare_paths(a, b));
 
         DeadCodeReport { candidates, files }
+    }
+}
+
+#[derive(Default)]
+pub struct OrderedStrings<'a> {
+    order: Vec<&'a str>,
+    seen: HashSet<&'a str>,
+}
+
+impl<'a> OrderedStrings<'a> {
+    fn insert(&mut self, value: &'a str) {
+        if self.seen.insert(value) {
+            self.order.push(value);
+        }
+    }
+    fn iter(&self) -> impl Iterator<Item = &&'a str> {
+        self.order.iter()
+    }
+    fn len(&self) -> usize {
+        self.order.len()
     }
 }

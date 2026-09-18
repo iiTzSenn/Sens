@@ -1,4 +1,5 @@
 mod fallback;
+mod binindex;
 mod cli;
 mod format;
 mod freshness;
@@ -67,10 +68,8 @@ fn stage(t: &mut Instant, label: &str) {
 
 fn query_mode(args: &[String]) -> Option<String> {
     let root = std::env::current_dir().ok()?;
-    let buffer = index::read_index(&root)?;
-    let index = index::parse_index(&buffer)?;
-    let meta = index::load_meta(&root, index.created_at)?;
-    if freshness::check(&root, &index, &meta) != Freshness::Fresh {
+    let (index, meta) = load_engine_index(&root)?;
+    if freshness::check(&root, &index.files, &meta) != Freshness::Fresh {
         return None;
     }
     let engine = query::Engine::new(&index, &meta.entry_points);
@@ -86,17 +85,12 @@ fn answer(root: &Path, raw: &str) -> Option<String> {
         return None;
     }
 
-    let buffer = index::read_index(root)?;
-    stage(&mut t, "leer índice");
-    let index = index::parse_index(&buffer)?;
-    stage(&mut t, "parsear índice");
-    let meta = index::load_meta(root, index.created_at)?;
-    stage(&mut t, "leer meta");
-    if freshness::check(root, &index, &meta) != Freshness::Fresh {
+    let (index, meta) = load_engine_index(root)?;
+    stage(&mut t, "cargar índice");
+    if freshness::check(root, &index.files, &meta) != Freshness::Fresh {
         return None;
     }
     stage(&mut t, "comprobar frescura");
-
     let engine = query::Engine::new(&index, &meta.entry_points);
     stage(&mut t, "construir motor");
     let action = hook::decide(&engine, &root.to_string_lossy(), &payload)?;
@@ -150,4 +144,26 @@ fn index_mode(args: &[String]) -> Option<String> {
         return Some(String::new());
     }
     Some(json::encode(&document))
+}
+
+fn load_engine_index(root: &Path) -> Option<(binindex::BinIndex, index::IndexMeta)> {
+    let json_path = index::sens_dir(root).join("index.json");
+    let json_len = std::fs::metadata(&json_path).ok()?.len();
+
+    let use_cache = std::env::var_os("SENS_NO_BINCACHE").is_none();
+    if let Some(cached) = use_cache.then(|| binindex::load(root, json_len)).flatten() {
+        let meta = index::load_meta(root, cached.created_at)?;
+        return Some((cached, meta));
+    }
+
+    let buffer = std::fs::read(&json_path).ok()?;
+    let built = binindex::from_json(&buffer)?;
+    if built.schema_version != index::INDEX_SCHEMA_VERSION {
+        return None;
+    }
+    let meta = index::load_meta(root, built.created_at)?;
+    if use_cache {
+        binindex::save(root, &built);
+    }
+    Some((built, meta))
 }

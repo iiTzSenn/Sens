@@ -195,3 +195,47 @@ Worth noting this contradicts an earlier conclusion, and the contradiction is
 the useful part: in Node, `JSON.parse` of the index was 26 ms of a 428 ms call
 and not worth touching. Which bottleneck matters is a property of the
 architecture, not of the code.
+
+## The binary index
+
+`.sens/index.bin` is a cache the Rust side writes and reads; nothing on the
+TypeScript side knows or cares about it. Layout: an 8-byte magic, a header, one
+string arena, then fixed-width records that reference the arena by (offset,
+length). References store a *file index* and a *caller index* rather than
+strings, which is where most of the size goes.
+
+It is derived from `index.json`, keyed to that file's byte length, and rebuilt
+whenever they disagree — so a stale or corrupt `.bin` costs one conversion, never
+a wrong answer. `SENS_NO_BINCACHE=1` turns it off.
+
+On a 1,165-file project:
+
+| | |
+| --- | --- |
+| `index.json` | 10.9 MB |
+| `index.bin` | **2.3 MB** |
+| loading it (read + decode) | 28 ms → **6 ms** |
+| hook call, JSON index | 117 ms |
+| hook call, binary index | **81 ms** |
+
+The engine was reworked to match: the call graph, reachability and `path` all
+work in symbol *indices* now instead of string ids, so building the engine
+allocates nothing per reference. That was worth as much as the format itself —
+materializing references to build the graph had quietly cost 26 ms.
+
+### Two corrections to earlier numbers
+
+Both came out of measuring this, and both matter more than the speedup.
+
+**An earlier "~70 ms hook" figure was wrong.** It used a Grep for `useState`,
+which is not a declared symbol in that project — so the binary found nothing,
+declined, and exited. It was timing a bail-out, not an answer. With a symbol the
+index actually holds, the honest comparison is: Node hook 224 ms, native with
+JSON 117 ms, native with the binary index **81 ms**.
+
+**Process startup on this machine is ~54 ms, not ~3 ms.** A 124-byte Rust binary
+that does nothing takes the same 54 ms as the real one, so it is the operating
+system, not the executable — Windows process creation, likely with a virus
+scanner in the path. `node -e "0"` is ~75 ms on the same machine. So the native
+advantage over Node at startup is about 20 ms here, not 75, and most of the win
+is in the work: 170 ms of Sens's own time in Node against 27 ms native.

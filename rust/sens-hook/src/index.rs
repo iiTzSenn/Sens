@@ -98,10 +98,6 @@ pub fn sens_dir(root: &Path) -> PathBuf {
     root.join(".sens")
 }
 
-pub fn read_index(root: &Path) -> Option<Vec<u8>> {
-    std::fs::read(sens_dir(root).join("index.json")).ok()
-}
-
 pub fn parse_index(raw: &[u8]) -> Option<ProjectIndex<'_>> {
     let index: ProjectIndex = serde_json::from_slice(raw).ok()?;
     (index.schema_version == INDEX_SCHEMA_VERSION).then_some(index)

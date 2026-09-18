@@ -3,7 +3,7 @@ use std::time::UNIX_EPOCH;
 
 use rayon::prelude::*;
 
-use crate::index::{IndexMeta, ProjectIndex};
+use crate::index::{FileInfo, IndexMeta};
 
 #[derive(PartialEq, Debug)]
 pub enum Freshness {
@@ -33,7 +33,7 @@ fn all_unchanged<T: Sync>(
         .all(|item| matches!(mtime_ms(&path_of(item)), Some(now) if same_instant(now, recorded(item))))
 }
 
-pub fn check(root: &Path, index: &ProjectIndex, meta: &IndexMeta) -> Freshness {
+pub fn check(root: &Path, files: &[FileInfo], meta: &IndexMeta) -> Freshness {
 
     let structure = all_unchanged(
         &meta.watched,
@@ -44,7 +44,7 @@ pub fn check(root: &Path, index: &ProjectIndex, meta: &IndexMeta) -> Freshness {
         return Freshness::Unsure;
     }
 
-    if all_unchanged(&index.files, |f| root.join(&f.path), |f| f.mtime_ms) {
+    if all_unchanged(files, |f| root.join(&f.path), |f| f.mtime_ms) {
         Freshness::Fresh
     } else {
         Freshness::Unsure
