@@ -1,4 +1,5 @@
 import type { ProjectIndex, SymbolInfo, Reference } from "../types.js";
+import { comparePaths } from "../order.js";
 import { isTestFile } from "../config.js";
 
 export interface WhoUsesResult {
@@ -196,7 +197,7 @@ export class QueryEngine {
         .sort((a, b) => a.line - b.line);
       entries.push({ file, exported, internalCount: syms.length - exported.length });
     }
-    return entries.sort((a, b) => a.file.localeCompare(b.file));
+    return entries.sort((a, b) => comparePaths(a.file, b.file));
   }
 
   fileDependencies(file: string): FileDependencies {
@@ -319,5 +320,5 @@ function add(map: Map<string, Set<string>>, key: string, value: string): void {
 }
 
 function byFileLine(a: SymbolInfo, b: SymbolInfo): number {
-  return a.file.localeCompare(b.file) || a.line - b.line;
+  return comparePaths(a.file, b.file) || a.line - b.line;
 }

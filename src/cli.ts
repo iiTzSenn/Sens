@@ -23,6 +23,9 @@ import {
 } from "./cli/render.js";
 import * as suggest from "./cli/suggest.js";
 import type { Block } from "./cli/suggest.js";
+import { nativeQuery } from "./native-query.js";
+import type { QueryArgs, QueryName } from "./queries.js";
+import type { QueryEngine } from "./query/engine.js";
 
 const root = process.cwd();
 const program = new Command();
@@ -34,6 +37,18 @@ program
   )
   .option("--verbose", "show full error stack traces on failure")
   .version(VERSION);
+
+async function ask<K extends QueryName, T>(
+  name: K,
+  args: QueryArgs[K],
+  fromEngine: (engine: QueryEngine) => T | Promise<T>,
+): Promise<T> {
+  logUsage(root, name, args as Record<string, unknown>);
+  const native = nativeQuery(root, name, args);
+  if (native !== null) return native as T;
+  const { engine } = await getEngine();
+  return fromEngine(engine);
+}
 
 async function getEngine(announce = false): ReturnType<typeof createEngine> {
   const sp = ui.spinner("Indexando proyecto…");
@@ -121,9 +136,7 @@ program
   .description("Find where a symbol is defined")
   .action(async (name: string) => {
     ui.header(`find ${name}`);
-    const { engine } = await getEngine();
-    logUsage(root, "find_symbol", { name });
-    const syms = engine.findSymbol(name);
+    const syms = await ask("find_symbol", { name }, (e) => e.findSymbol(name));
     show(renderSymbols(syms, `Sin coincidencias para “${name}”.`), suggest.find(name, syms.length));
   });
 
@@ -134,9 +147,7 @@ program
   .option("--full", "list every call site instead of a partial summary for heavily-used symbols")
   .action(async (name: string, opts: { full?: boolean }) => {
     ui.header(`who ${name}`);
-    const { engine } = await getEngine();
-    logUsage(root, "who_uses", { name, full: opts.full });
-    const results = engine.whoUses(name);
+    const results = await ask("who_uses", { name, full: opts.full }, (e) => e.whoUses(name));
     show(renderWhoUses(results, { full: opts.full }), suggest.who(name, results.length));
   });
 
@@ -146,9 +157,7 @@ program
   .description("Show a symbol's callers and callees (call graph neighborhood)")
   .action(async (name: string) => {
     ui.header(`explain ${name}`);
-    const { engine } = await getEngine();
-    logUsage(root, "explain_symbol", { name });
-    const results = engine.explain(name);
+    const results = await ask("explain_symbol", { name }, (e) => e.explain(name));
     show(renderExplain(results), suggest.explain(name, results.length));
   });
 
@@ -159,9 +168,7 @@ program
   .description("Shortest chain of calls/references connecting two symbols")
   .action(async (from: string, to: string) => {
     ui.header(`path ${from} → ${to}`);
-    const { engine } = await getEngine();
-    logUsage(root, "symbol_path", { from, to });
-    const p = engine.path(from, to);
+    const p = await ask("symbol_path", { from, to }, (e) => e.path(from, to));
     show(renderPath(p, from, to), suggest.path(from, to, !!(p && p.length)));
   });
 
@@ -171,9 +178,7 @@ program
   .description("Print a file's signatures, without its bodies")
   .action(async (file: string) => {
     ui.header(`outline ${file}`);
-    const { engine } = await getEngine();
-    logUsage(root, "file_outline", { file });
-    const syms = engine.fileOutline(file);
+    const syms = await ask("file_outline", { file }, (e) => e.fileOutline(file));
     show(renderSymbols(syms, `Sin símbolos en “${file}”.`), suggest.outline(file, syms.length));
   });
 
@@ -184,9 +189,7 @@ program
   .action(async (keywords: string[]) => {
     const query = keywords.join(" ");
     ui.header(`exists ${query}`);
-    const { engine } = await getEngine();
-    logUsage(root, "already_exists", { query });
-    const syms = engine.alreadyExists(query);
+    const syms = await ask("already_exists", { query }, (e) => e.alreadyExists(query));
     show(
       renderSymbols(syms, `Nada coincide con “${query}” — parece nuevo.`),
       suggest.exists(query, syms.length, syms[0]?.name),
@@ -199,9 +202,7 @@ program
   .description("List unused symbols/exports (candidates)")
   .action(async (subdir?: string) => {
     ui.header(subdir ? `dead-code ${subdir}` : "dead-code");
-    const { engine } = await getEngine();
-    logUsage(root, "dead_code", { subdir });
-    const report = await analyzeDeadCode(root, engine, subdir);
+    const report = await ask("dead_code", { subdir }, (e) => analyzeDeadCode(root, e, subdir));
     const top = report.candidates[0]?.symbol.name;
     show(renderDeadCode(report), suggest.deadCode(report.candidates.length + report.files.length, top));
   });
@@ -212,9 +213,8 @@ program
   .description("List a file's imports and importers (import graph)")
   .action(async (file: string) => {
     ui.header(`deps ${file}`);
-    const { engine } = await getEngine();
-    logUsage(root, "file_dependencies", { file });
-    show(renderFileDependencies(engine.fileDependencies(file)), suggest.deps(file));
+    const deps = await ask("file_dependencies", { file }, (e) => e.fileDependencies(file));
+    show(renderFileDependencies(deps), suggest.deps(file));
   });
 
 program

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::index::SymbolInfo;
-use crate::query::WhoUses;
+use crate::query::{DeadCandidate, DeadCodeReport, FileDependencies, MapEntry, Neighborhood, Tier, WhoUses};
 
 fn symbol_name(id: &str) -> &str {
     id.split('#').nth(1).unwrap_or(id)
@@ -85,6 +85,153 @@ call site before renaming/editing all usages."
     lines.join("\n")
 }
 
+pub fn format_map(entries: &[MapEntry]) -> String {
+    let mut lines = vec![format!("project map — {} file(s)", entries.len()), String::new()];
+    for e in entries {
+        lines.push(e.file.to_string());
+        for s in &e.exported {
+            lines.push(format!("  {}", s.signature));
+        }
+        if e.internal_count > 0 {
+            lines.push(format!("  (+{} internal)", e.internal_count));
+        }
+    }
+    lines.join("\n")
+}
+
+pub fn format_file_dependencies(deps: &FileDependencies) -> String {
+    let mut lines = vec![deps.file.clone()];
+    if deps.imports.is_empty() {
+        lines.push("  imports: (none)".to_string());
+    } else {
+        lines.push(format!("  imports ({}):", deps.imports.len()));
+        for f in &deps.imports {
+            lines.push(format!("    {f}"));
+        }
+    }
+    if deps.imported_by.is_empty() {
+        lines.push("  imported by: (none)".to_string());
+    } else {
+        lines.push(format!("  imported by ({}):", deps.imported_by.len()));
+        for f in &deps.imported_by {
+            lines.push(format!("    {f}"));
+        }
+    }
+    lines.join("\n")
+}
+
+pub fn format_explain(results: &[Neighborhood]) -> String {
+    if results.is_empty() {
+        return "symbol not found".to_string();
+    }
+    let mut lines: Vec<String> = Vec::new();
+    let block = |lines: &mut Vec<String>, title: &str, syms: &[&SymbolInfo]| {
+        lines.push(format!("  {title} ({}):", syms.len()));
+        if syms.is_empty() {
+            lines.push("    (none)".to_string());
+        }
+        for s in syms {
+            lines.push(format!("    {}  {}:{}", s.name, s.file, s.line));
+        }
+    };
+    for r in results {
+        lines.push(format!(
+            "{}  ({}:{})  {}",
+            r.symbol.name, r.symbol.file, r.symbol.line, r.symbol.signature
+        ));
+        block(&mut lines, "called by", &r.callers);
+        block(&mut lines, "calls", &r.callees);
+    }
+    lines.join("\n")
+}
+
+pub fn format_path(path: Option<&[&SymbolInfo]>, from: &str, to: &str) -> String {
+    match path {
+        None => format!("no path found from {from} to {to}"),
+        Some(p) if p.is_empty() => format!("no path found from {from} to {to}"),
+        Some(p) => p
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                format!(
+                    "{}{}  ({}:{})",
+                    if i == 0 { "" } else { "  → " },
+                    s.name,
+                    s.file,
+                    s.line
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    }
+}
+
+const TIER_LABELS: [(Tier, &str); 3] = [
+    (Tier::High, "HIGH confidence — internal, unreferenced; safe to remove"),
+    (Tier::Medium, "MEDIUM — internal dead island; glance at the reason, then remove"),
+    (Tier::Low, "LOW — exported API or method (dynamic dispatch); verify before removing"),
+];
+
+pub fn format_dead_code(report: &DeadCodeReport) -> String {
+    if report.candidates.is_empty() && report.files.is_empty() {
+        return "no dead-code candidates found".to_string();
+    }
+    let dead_files: std::collections::HashSet<&str> = report.files.iter().copied().collect();
+    let mut lines = vec![format!(
+        "{} dead-code candidate(s){} — unreachable from any entry point; candidates, not a verdict",
+        report.candidates.len(),
+        if report.files.is_empty() {
+            String::new()
+        } else {
+            format!(" + {} dead file(s)", report.files.len())
+        }
+    )];
+
+    if !report.files.is_empty() {
+        lines.push(String::new());
+        lines.push(format!(
+            "WHOLE DEAD FILES — nothing imports them, no live symbol ({}):",
+            report.files.len()
+        ));
+        for f in &report.files {
+            lines.push(format!("  {f}  — delete the file"));
+        }
+    }
+
+    let loose: Vec<&DeadCandidate> = report
+        .candidates
+        .iter()
+        .filter(|c| !dead_files.contains(c.symbol.file.as_str()))
+        .collect();
+    for (tier, label) in TIER_LABELS {
+        let group: Vec<&&DeadCandidate> = loose.iter().filter(|c| c.tier == tier).collect();
+        if group.is_empty() {
+            continue;
+        }
+        lines.push(String::new());
+        lines.push(format!("{label} ({}):", group.len()));
+        for c in group {
+            let warn = match &c.reflective_hit {
+                Some(where_) => {
+                    format!(" — ⚠ also appears in {where_} (possible reflective use)")
+                }
+                None => String::new(),
+            };
+            lines.push(format!(
+                "  {}:{}  {} {}{}  — {}{}",
+                c.symbol.file,
+                c.symbol.line,
+                c.symbol.kind,
+                c.symbol.name,
+                if c.symbol.exported { "  [exported]" } else { "" },
+                c.reason,
+                warn
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,6 +240,8 @@ mod tests {
     fn sym(name: &str, file: &str, line: u32, exported: bool) -> SymbolInfo {
         SymbolInfo {
             id: format!("{file}#{name}#{line}"),
+            kind: "function".to_string(),
+            entry: false,
             name: name.to_string(),
             file: file.to_string(),
             line,

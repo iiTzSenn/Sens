@@ -1,4 +1,5 @@
 import { statSync } from "node:fs";
+import { comparePaths } from "../order.js";
 import path from "node:path";
 import { globby } from "globby";
 import { INDEX_SCHEMA_VERSION } from "../types.js";
@@ -49,7 +50,7 @@ export async function resolveWatched(
 
     }
   }
-  return watched.sort((a, b) => a.path.localeCompare(b.path));
+  return watched.sort((a, b) => comparePaths(a.path, b.path));
 }
 
 export async function resolveFiles(
@@ -114,6 +115,6 @@ function mergeContributions(
     index.imports.push(...p.imports);
     Object.assign(index.references, p.references);
   }
-  index.files.sort((a, b) => a.path.localeCompare(b.path));
+  index.files.sort((a, b) => comparePaths(a.path, b.path));
   return index;
 }

@@ -103,3 +103,42 @@ npm run package:native            # npm/<host-platform>/
 npm run package:native -- linux-x64 path/to/binary
 node scripts/package-native.mjs --manifest-only
 ```
+
+## The other queries
+
+All nine operations are in the binary now, reachable as `sens-hook query <name>
+[args] [--json]`. They emit either the plain text `src/format.ts` produces or
+the structured data behind it.
+
+`rust/diff-query.mjs` runs every one against the TypeScript implementation over
+the same index; all 19 cases currently match byte for byte, `dead_code` and its
+reflective scan included.
+
+The renderer stays in TypeScript on purpose. `src/cli/render.ts` is presentation
+— colours, terminal widths, Spanish labels — and it changes often; a second copy
+in Rust would be a permanent tax on the part of the codebase that moves most. So
+the CLI asks the binary for data (`--json`) and renders it itself, which keeps
+one engine and one renderer.
+
+Two bugs the differential caught, both about ordering:
+
+- Rust's `HashMap` iterates arbitrarily while a JavaScript object keeps insertion
+  order, so the call graph came out in a different order. Fixed with `IndexMap`.
+- `neighbors()` sorts by file and line; the port did not.
+
+It also forced a change on the TypeScript side. Sorting with `localeCompare`
+made the output depend on the machine's locale and ICU version — punctuation
+sorts before letters there, so `lib_test.go` came before `lib.go`. For a tool
+whose text feeds a model and gets diffed, that is a defect: `src/order.ts` now
+sorts deterministically, and Rust matches it.
+
+### What this is worth
+
+On a 1,165-file project, `sens find` goes from 273ms to 234ms and
+`sens dead-code` from 285ms to 253ms — around 13%. Modest, because a short-lived
+CLI still pays node's startup (~76ms) plus the bundle import (~100ms), and
+spawning the binary costs roughly what building the engine in Node cost.
+
+The binary answering on its own is ~99ms for the same query. Getting the CLI
+there means the binary becoming the entry point and rendering too — which is the
+double-renderer trade this deliberately avoided.

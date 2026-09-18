@@ -1,14 +1,18 @@
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
 pub const INDEX_SCHEMA_VERSION: u32 = 6;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct SymbolInfo {
     pub id: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub entry: bool,
     pub name: String,
     pub file: String,
     pub line: u32,
@@ -17,12 +21,12 @@ pub struct SymbolInfo {
     pub exported: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Reference {
     pub file: String,
     pub line: u32,
 
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
 }
 
@@ -34,6 +38,12 @@ pub struct FileInfo {
 }
 
 #[derive(Deserialize)]
+pub struct ImportEdge {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Deserialize)]
 pub struct ProjectIndex<'a> {
     #[serde(rename = "schemaVersion")]
     pub schema_version: u32,
@@ -41,11 +51,17 @@ pub struct ProjectIndex<'a> {
     pub created_at: f64,
     pub files: Vec<FileInfo>,
     pub symbols: Vec<SymbolInfo>,
+    #[serde(default)]
+    pub imports: Vec<ImportEdge>,
     #[serde(borrow)]
-    pub references: HashMap<&'a str, &'a RawValue>,
+    pub references: IndexMap<&'a str, &'a RawValue>,
 }
 
 impl ProjectIndex<'_> {
+
+    pub fn parse_references(&self, raw: &RawValue) -> Vec<Reference> {
+        serde_json::from_str(raw.get()).unwrap_or_default()
+    }
 
     pub fn references_for(&self, id: &str) -> Vec<Reference> {
         self.references
@@ -61,6 +77,8 @@ pub struct IndexMeta {
     #[serde(rename = "indexCreatedAt")]
     pub index_created_at: f64,
     pub watched: Vec<WatchedPath>,
+    #[serde(rename = "entryPoints", default)]
+    pub entry_points: Vec<String>,
 }
 
 #[derive(Deserialize)]
