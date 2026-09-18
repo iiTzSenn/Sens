@@ -12,6 +12,9 @@ export default defineConfig({
   entry: {
     cli: "src/cli.ts",
     index: "src/index.ts",
+    // Separate executable: the PreToolUse hook runs once per model tool call,
+    // so it must not pay for importing the CLI bundle. See src/hook-client.ts.
+    hook: "src/hook-entry.ts",
   },
   format: ["esm"],
   target: "node18",

@@ -15,8 +15,13 @@ import { loadConfig, activeRules } from "./config.js";
 import { composeRules } from "./rules.js";
 import { SKILL_MD, SKILL_NAME, sensInstructions } from "./skill.js";
 
-/** Command Claude Code runs for the hooks. Assumes sens is on PATH (global install). */
-const HOOK_COMMAND = "sens hook";
+/**
+ * Command Claude Code runs for the hooks. Assumes sens is on PATH (global
+ * install). `sens-hook` is a dedicated executable rather than `sens hook`: it
+ * runs once per model tool call, and going through the CLI bundle costs ~100ms
+ * of module loading before any hook logic runs. Both forms work.
+ */
+const HOOK_COMMAND = "sens-hook";
 /** Tools the PreToolUse hook intercepts. */
 const HOOK_MATCHER = "Read|Grep|Glob";
 
@@ -64,7 +69,13 @@ function hasSensHook(entries: HookEntry[]): boolean {
   return entries.some(
     (entry) =>
       Array.isArray(entry.hooks) &&
-      entry.hooks.some((h) => typeof h.command === "string" && h.command.includes("sens hook")),
+      entry.hooks.some(
+        (h) =>
+          typeof h.command === "string" &&
+          // Either spelling counts as wired, so re-running init never
+          // duplicates a hook set up by an older version.
+          (h.command.includes("sens-hook") || h.command.includes("sens hook")),
+      ),
   );
 }
 

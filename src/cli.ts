@@ -370,8 +370,52 @@ program
     "PreToolUse hook: nudge the model toward sens tools before it reads/greps (reads hook JSON from stdin)",
   )
   .action(async () => {
-    const { runHook } = await import("./hook.js");
-    await runHook();
+    // Same slim path `sens-hook` takes, so an install wired to `sens hook` by
+    // an older version still gets the daemon. It has already paid for loading
+    // the CLI bundle by this point, but not for the index and the engine.
+    const { runHookClient } = await import("./hook-client.js");
+    await runHookClient();
+  });
+
+program
+  .command("daemon")
+  .description(
+    "Manage the resident query process that keeps the index warm between calls",
+  )
+  .option("--serve", "run the daemon in this process (used by the auto-start)")
+  .option("--stop", "shut down the daemon for this project")
+  .option("--status", "report whether a daemon is running for this project")
+  .action(async (opts: { serve?: boolean; stop?: boolean; status?: boolean }) => {
+    const { startDaemon } = await import("./daemon/server.js");
+    const { stopDaemon, daemonRunning } = await import("./daemon/client.js");
+    const { socketPath } = await import("./daemon/protocol.js");
+
+    if (opts.stop) {
+      ui.header("daemon stop");
+      ui.success(
+        (await stopDaemon(root))
+          ? "Daemon detenido."
+          : "No había ningún daemon en marcha.",
+      );
+      return;
+    }
+    if (opts.status) {
+      ui.header("daemon status");
+      const running = await daemonRunning(root);
+      ui.success(running ? "En marcha." : "Parado.");
+      ui.detail(socketPath(root));
+      return;
+    }
+    if (opts.serve) {
+      // Background mode: no banner, no stdout — it is detached from a terminal.
+      await startDaemon(root);
+      return;
+    }
+
+    ui.header("daemon");
+    const { address } = await startDaemon(root);
+    ui.success("Daemon en marcha. Ctrl-C para pararlo.");
+    ui.detail(address);
   });
 
 program.parseAsync().catch((err) => {

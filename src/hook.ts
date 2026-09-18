@@ -13,7 +13,7 @@
 // payload, emits nothing and lets the tool proceed untouched. Wired from a
 // project's .claude/settings.json PreToolUse hook; see `sens hook` in the CLI.
 
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parserForFile } from "./indexer/languages/parser.js";
@@ -115,8 +115,8 @@ function alreadyNudged(sessionId: string, tool: string): boolean {
   return false;
 }
 
-/** Emit the hook's decision as PreToolUse JSON on stdout. */
-function emit(action: HookAction): void {
+/** The hook's decision as PreToolUse JSON. */
+function render(action: HookAction): string {
   const hookSpecificOutput: Record<string, unknown> = {
     hookEventName: "PreToolUse",
   };
@@ -126,16 +126,23 @@ function emit(action: HookAction): void {
   } else {
     hookSpecificOutput.additionalContext = action.message;
   }
-  process.stdout.write(JSON.stringify({ hookSpecificOutput }));
+  return JSON.stringify({ hookSpecificOutput });
 }
 
-/** Read the PreToolUse payload from stdin and answer with sens, if we can. */
-export async function runHook(): Promise<void> {
+/**
+ * Answer a raw PreToolUse payload, returning what should go to stdout ("" for
+ * "say nothing and let the tool run").
+ *
+ * Split out from {@link runHook} so the daemon can run exactly this — the same
+ * logic, with the engine already warm — on behalf of a slim client process.
+ * See `hook-client.ts`.
+ */
+export async function runHookPayload(root: string, raw: string): Promise<string> {
   let payload: HookPayload;
   try {
-    payload = JSON.parse(readFileSync(0, "utf8")) as HookPayload;
+    payload = JSON.parse(raw) as HookPayload;
   } catch {
-    return; // not our shape / no stdin — never interfere with the tool call
+    return ""; // not our shape — never interfere with the tool call
   }
 
   // SessionStart: put the project's active working rules in front of the model
@@ -143,28 +150,26 @@ export async function runHook(): Promise<void> {
   if (payload.hook_event_name === "SessionStart") {
     let ctx: string | null = null;
     try {
-      ctx = sessionStartContext(process.cwd());
+      ctx = sessionStartContext(root);
     } catch {
-      return;
+      return "";
     }
-    if (ctx) {
-      process.stdout.write(
-        JSON.stringify({
+    return ctx
+      ? JSON.stringify({
           hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: ctx },
-        }),
-      );
-    }
-    return;
+        })
+      : "";
   }
 
   const tool = payload.tool_name ?? "";
   let action: HookAction | null;
   try {
-    action = await actionFor(process.cwd(), tool, payload.tool_input ?? {});
+    action = await actionFor(root, tool, payload.tool_input ?? {});
   } catch {
-    return; // a sens failure must never break the tool call
+    return ""; // a sens failure must never break the tool call
   }
-  if (!action) return;
-  if (action.once && alreadyNudged(payload.session_id ?? "nosession", tool)) return;
-  emit(action);
+  if (!action) return "";
+  if (action.once && alreadyNudged(payload.session_id ?? "nosession", tool)) return "";
+  return render(action);
 }
+

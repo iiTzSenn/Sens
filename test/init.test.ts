@@ -27,7 +27,7 @@ describe("sens init", () => {
       expect(readFileSync(r.skillPath!, "utf8")).toContain("name: sens");
       expect(r.hookWired).toBe("added");
       const s = settingsOf(root);
-      expect(s).toContain("sens hook");
+      expect(s).toContain("sens-hook");
       expect(s).toContain("PreToolUse");
       expect(s).toContain("SessionStart");
     } finally {
@@ -42,7 +42,7 @@ describe("sens init", () => {
       const [second] = await initProject(root);
       expect(second.hookWired).toBe("already");
       // one entry per event (PreToolUse + SessionStart), stable across runs
-      const occurrences = settingsOf(root).split("sens hook").length - 1;
+      const occurrences = settingsOf(root).split("sens-hook").length - 1;
       expect(occurrences).toBe(2);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -64,7 +64,34 @@ describe("sens init", () => {
       expect(r.hookWired).toBe("added");
       const s = settingsOf(root);
       expect(s).toContain("echo hi"); // pre-existing hook preserved
-      expect(s).toContain("sens hook"); // ours appended
+      expect(s).toContain("sens-hook"); // ours appended
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves a hook wired by an older version alone", async () => {
+    // Older versions wrote `sens hook` (the CLI subcommand). It still works, so
+    // re-running init must recognise it rather than adding a second hook that
+    // would answer every tool call twice.
+    const root = tmpProject();
+    try {
+      mkdirSync(path.join(root, ".claude"), { recursive: true });
+      writeFileSync(
+        path.join(root, ".claude", "settings.json"),
+        JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              { matcher: "Read|Grep|Glob", hooks: [{ type: "command", command: "sens hook" }] },
+            ],
+            SessionStart: [{ hooks: [{ type: "command", command: "sens hook" }] }],
+          },
+        }),
+        "utf8",
+      );
+      const [r] = await initProject(root);
+      expect(r.hookWired).toBe("already");
+      expect(settingsOf(root)).not.toContain("sens-hook");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

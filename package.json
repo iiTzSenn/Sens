@@ -5,7 +5,8 @@
   "type": "module",
   "bin": {
     "sens": "dist/cli.js",
-    "sens-mcp": "dist/cli.js"
+    "sens-mcp": "dist/cli.js",
+    "sens-hook": "dist/hook.js"
   },
   "files": [
     "dist"
