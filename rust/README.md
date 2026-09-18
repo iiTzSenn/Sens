@@ -68,3 +68,38 @@ empty payload. All 22 currently match exactly.
 Distribution. The binary is built from source here; shipping it means per-platform
 npm packages under `optionalDependencies`, the way esbuild, swc and Biome do it,
 so `npx sens-mcp` keeps working untouched.
+
+## Distribution
+
+The binary ships the way esbuild, swc and Biome ship theirs: one npm package per
+platform, pulled in as an `optionalDependency` so npm installs only the one that
+matches. `npx sens-mcp` keeps working untouched, and a platform with no prebuilt
+binary simply gets the TypeScript hook.
+
+```
+@sens-mcp/win32-x64     @sens-mcp/darwin-x64     @sens-mcp/linux-x64
+@sens-mcp/win32-arm64   @sens-mcp/darwin-arm64   @sens-mcp/linux-arm64
+```
+
+`src/native.ts` resolves the binary at runtime: the platform package first, then
+a local `cargo build --release` so a checkout works without publishing anything.
+`sens init` writes whichever it found into `.claude/settings.json`, falling back
+to the `sens-hook` node executable when there is none.
+
+Finding the TypeScript half works the other way round and needs no configuration:
+the binary walks up from its own location looking for `dist/hook.js` or
+`node_modules/sens-mcp/dist/hook.js`, which covers both a published install and a
+git checkout. `SENS_NODE_HOOK` overrides it.
+
+`optionalDependencies` are **not** committed to `package.json`: the platform
+packages do not exist on the registry until a release publishes them, and listing
+them early breaks `npm ci` for everyone. `.github/workflows/release.yml` builds
+the matrix, then writes the manifest immediately before publishing —
+platform packages first, `sens-mcp` last.
+
+```bash
+npm run build:native
+npm run package:native            # npm/<host-platform>/
+npm run package:native -- linux-x64 path/to/binary
+node scripts/package-native.mjs --manifest-only
+```

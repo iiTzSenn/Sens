@@ -41,8 +41,11 @@ describe("sens init", () => {
       await initProject(root);
       const [second] = await initProject(root);
       expect(second.hookWired).toBe("already");
-      const occurrences = settingsOf(root).split("sens-hook").length - 1;
-      expect(occurrences).toBe(2);
+      const hooks = JSON.parse(settingsOf(root)).hooks;
+      expect(hooks.PreToolUse).toHaveLength(1);
+      expect(hooks.PreToolUse[0].hooks).toHaveLength(1);
+      expect(hooks.SessionStart).toHaveLength(1);
+      expect(hooks.SessionStart[0].hooks).toHaveLength(1);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

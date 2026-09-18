@@ -1,3 +1,4 @@
+mod fallback;
 mod format;
 mod freshness;
 mod hook;
@@ -70,7 +71,7 @@ fn answer(root: &Path, raw: &str) -> Option<String> {
 }
 
 fn delegate(raw: &str) {
-    let Ok(script) = std::env::var("SENS_NODE_HOOK") else { return };
+    let Some(script) = fallback::node_hook_path() else { return };
     let Ok(mut child) = Command::new("node")
         .arg(script)
         .stdin(Stdio::piped())

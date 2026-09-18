@@ -4,8 +4,15 @@ import { createEngine } from "./core.js";
 import { loadConfig, activeRules } from "./config.js";
 import { composeRules } from "./rules.js";
 import { SKILL_MD, SKILL_NAME, sensInstructions } from "./skill.js";
+import { nativeHookPath } from "./native.js";
 
-const HOOK_COMMAND = "sens-hook";
+const NODE_HOOK_COMMAND = "sens-hook";
+
+function hookCommand(): string {
+  const native = nativeHookPath();
+  if (!native) return NODE_HOOK_COMMAND;
+  return native.includes(" ") ? `"${native}"` : native;
+}
 const HOOK_MATCHER = "Read|Grep|Glob";
 const FILE_AGENTS: Record<string, { label: string; file: string }> = {
   codex: { label: "Codex", file: "AGENTS.md" },
@@ -60,7 +67,7 @@ function hasSensHook(entries: HookEntry[]): boolean {
 function addSensHook(hooks: Record<string, HookEntry[]>, event: string, matcher?: string): boolean {
   const entries = (hooks[event] = hooks[event] ?? []);
   if (hasSensHook(entries)) return false;
-  const entry: HookEntry = { hooks: [{ type: "command", command: HOOK_COMMAND }] };
+  const entry: HookEntry = { hooks: [{ type: "command", command: hookCommand() }] };
   if (matcher) entry.matcher = matcher;
   entries.push(entry);
   return true;
