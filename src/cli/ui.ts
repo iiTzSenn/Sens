@@ -2,6 +2,7 @@ import chalk from "chalk";
 import ora from "ora";
 import boxen from "boxen";
 import { VERSION } from "../index.js";
+import { terminal, scan } from "../brand/tokens.js";
 
 export const INDENT = "  ";
 
@@ -17,13 +18,14 @@ export const sym = {
 } as const;
 
 export const c = {
-  brand: chalk.cyan,
-  title: chalk.cyan.bold,
-  text: chalk.white,
-  meta: chalk.dim,
-  ok: chalk.green,
-  err: chalk.red,
-  warn: chalk.yellow,
+  brand: chalk.hex(terminal.brand),
+  focus: chalk.hex(terminal.focus),
+  title: chalk.hex(terminal.text).bold,
+  text: chalk.hex(terminal.text),
+  meta: chalk.hex(terminal.meta),
+  ok: chalk.hex(terminal.ok),
+  err: chalk.hex(terminal.err),
+  warn: chalk.hex(terminal.warn),
 };
 
 const ANSI = /\[[0-9;]*m/g;
@@ -45,7 +47,7 @@ export function align(left: string, right: string, width = rowWidth()): string {
 const rule = (): string => c.meta("─".repeat(rowWidth()));
 
 export function header(command: string): void {
-  const left = `${c.title("sens")} ${c.meta(sym.child)} ${c.text(command)}`;
+  const left = `${c.brand("sens")} ${c.meta(sym.child)} ${c.text(command)}`;
   console.log("\n" + INDENT + align(left, c.meta(`v${VERSION}`)));
   console.log(INDENT + rule());
 }
@@ -107,7 +109,7 @@ export function nextSteps(steps: Step[], title = "Próximos pasos"): void {
     const s = steps[i];
     const arrow = c.meta(sym.arrow);
     if (s.cmd) {
-      console.log(`${INDENT}${arrow} ${c.brand(labels[i].padEnd(w))}   ${c.meta(s.hint)}`);
+      console.log(`${INDENT}${arrow} ${c.text(labels[i].padEnd(w))}   ${c.meta(s.hint)}`);
     } else {
       console.log(`${INDENT}${arrow} ${c.meta(s.hint)}`);
     }
@@ -115,16 +117,19 @@ export function nextSteps(steps: Step[], title = "Próximos pasos"): void {
 }
 
 export interface Spinner {
-
   update(text: string): void;
-
   succeed(text?: string): void;
   fail(text?: string): void;
   stop(): void;
 }
 
 export function spinner(text: string): Spinner {
-  const o = ora({ text, indent: INDENT.length, spinner: "dots", color: "cyan" }).start();
+  const o = ora({
+    text,
+    indent: INDENT.length,
+    spinner: { interval: scan.interval, frames: scan.frames.map((f) => c.focus(f)) },
+    color: "white",
+  }).start();
   return {
     update: (t) => {
       o.text = t;

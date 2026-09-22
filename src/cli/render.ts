@@ -18,7 +18,7 @@ const symbolName = (id: string): string => id.split("#")[1] ?? id;
 const loc = (s: { file: string; line: number }): string => `${s.file}:${s.line}`;
 
 const bulletFor = (exported: boolean): string =>
-  exported ? c.brand(sym.file) : c.meta(sym.empty);
+  exported ? c.text(sym.file) : c.meta(sym.empty);
 
 const note = (msg: string): string => I1 + c.meta(msg);
 
@@ -81,7 +81,7 @@ export function renderWhoUses(
   const lines: string[] = [];
   for (const r of results) {
     const n = r.references.length;
-    const left = `${c.brand(sym.file)} ${c.text(r.symbol.name)}`;
+    const left = `${c.focus(sym.file)} ${c.text(r.symbol.name)}`;
     const right = `${c.meta(loc(r.symbol))} ${c.meta("·")} ${c.text(String(n))} ${c.meta(n === 1 ? "uso" : "usos")}`;
     lines.push(I1 + align(left, right, rowWidth(1)));
 
@@ -159,7 +159,7 @@ export function renderExplain(results: Neighborhood[]): string {
     }
   };
   for (const r of results) {
-    const left = `${c.brand(sym.file)} ${c.text(r.symbol.name)}`;
+    const left = `${c.focus(sym.file)} ${c.text(r.symbol.name)}`;
     lines.push(I1 + align(left, c.meta(loc(r.symbol)), rowWidth(1)));
     block(sym.branch, "llamado por", r.callers);
     block(sym.arrow, "llama a", r.callees);
@@ -176,14 +176,14 @@ export function renderPath(
     return note(`sin ruta de ${from} a ${to}`);
   return path
     .map((s, i) => {
-      const prefix = i === 0 ? `${c.brand(sym.file)} ` : `${I1}${c.meta(sym.arrow)} `;
+      const prefix = i === 0 ? `${c.focus(sym.file)} ` : `${I1}${c.meta(sym.arrow)} `;
       return `${I1}${prefix}${c.text(s.name)}  ${c.meta(`(${loc(s)})`)}`;
     })
     .join("\n");
 }
 
 export function renderFileDependencies(deps: FileDependencies): string {
-  const lines: string[] = [`${I1}${c.brand(sym.file)} ${c.text(deps.file)}`];
+  const lines: string[] = [`${I1}${c.focus(sym.file)} ${c.text(deps.file)}`];
   const block = (glyph: string, title: string, files: string[]): void => {
     if (files.length === 0) {
       lines.push(`${I2}${c.meta(`${title}: (ninguno)`)}`);
