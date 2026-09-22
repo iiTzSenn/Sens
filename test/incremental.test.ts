@@ -239,4 +239,52 @@ describe("incremental index", { timeout: 30000 }, () => {
     const shout = incremental.symbols.find((s) => s.name === "shout");
     expect(incremental.references[shout!.id]?.some((r) => r.file === "src/boot.ts")).toBe(true);
   });
+  it("matches a full rebuild twice over, on a warm project", async () => {
+    await ensureIndex(root);
+    write(
+      "src/rows.ts",
+      [
+        "export function parseRow(raw: string): string {",
+        "  return raw.trim().toLowerCase();",
+        "}",
+        "export function widen(raw: string): string {",
+        "  return raw + raw;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const first = await updateIndex(root, loadIndex(root) as ProjectIndex, ["src/rows.ts"], {
+      keepWarm: true,
+    });
+    expect(first).not.toBeNull();
+
+    write(
+      "src/boot.ts",
+      [
+        'import { parseRow, widen } from "./rows.js";',
+        "export function boot(raw: string): string {",
+        "  return widen(parseRow(raw)) + widen(raw);",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const second = await updateIndex(root, first as ProjectIndex, ["src/boot.ts"], {
+      keepWarm: true,
+    });
+    const full = (await ensureIndex(root, { force: true })).index;
+
+    expect(second).not.toBeNull();
+    expect(normalize(second as ProjectIndex)).toEqual(normalize(full));
+  });
+
+  it("refuses when a file it was not told about moved", async () => {
+    await ensureIndex(root);
+    write("src/boot.ts", "export function boot(raw: string): string {\n  return raw;\n}\n");
+
+    const updated = await updateIndex(root, loadIndex(root) as ProjectIndex, ["src/rows.ts"]);
+
+    expect(updated).toBeNull();
+  });
 });

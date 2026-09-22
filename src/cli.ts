@@ -80,6 +80,43 @@ function show(body: string, block?: Block): void {
   ui.blank();
 }
 
+interface Summary {
+  files: number;
+  symbols: number;
+  said: string;
+}
+
+async function updateOnly(touched: string[]): Promise<Summary> {
+  const { reindexViaDaemon, ensureDaemon } = await import("./daemon/client.js");
+  const served = await reindexViaDaemon(root, touched);
+  if (served) {
+    const done = JSON.parse(served) as Summary & { incremental: boolean };
+    return {
+      files: done.files,
+      symbols: done.symbols,
+      said: done.incremental ? "Índice actualizado · daemon" : "Índice reconstruido · daemon",
+    };
+  }
+  const { index, incremental } = await refreshIndex(root, touched);
+  ensureDaemon(root, true);
+  return {
+    files: index.files.length,
+    symbols: index.symbols.length,
+    said: incremental ? "Índice actualizado" : "Índice reconstruido",
+  };
+}
+
+async function indexAll(force?: boolean): Promise<Summary> {
+  const { index, fromCache } = await createEngine(root, { force });
+  return {
+    files: index.files.length,
+    symbols: index.symbols.length,
+    said: fromCache ? "El índice ya estaba al día" : "Índice reconstruido",
+  };
+}
+
+
+program
 program
   .command("index")
   .description("Build or update the project index")
@@ -96,28 +133,18 @@ program
           : "Indexando proyecto…",
     );
     const start = Date.now();
-    let index: ProjectIndex;
-    let fromCache = false;
-    let incremental = false;
+    let done: Summary;
     try {
-      if (touched.length > 0) {
-        const updated = await refreshIndex(root, touched);
-        index = updated.index;
-        incremental = updated.incremental;
-      } else {
-        const built = await createEngine(root, { force: opts.force });
-        index = built.index;
-        fromCache = built.fromCache;
-      }
+      done = touched.length > 0 ? await updateOnly(touched) : await indexAll(opts.force);
     } catch (err) {
       sp.fail("No se pudo indexar el proyecto");
       throw err;
     }
     const ms = Date.now() - start;
     sp.succeed(
-      `${fromCache ? "El índice ya estaba al día" : incremental ? "Índice actualizado" : "Índice reconstruido"}  ${ui.c.meta(`${ui.sym.branch} ${index.files.length} archivos · ${index.symbols.length} símbolos · ${ms}ms`)}`,
+      `${done.said}  ${ui.c.meta(`${ui.sym.branch} ${done.files} archivos · ${done.symbols} símbolos · ${ms}ms`)}`,
     );
-    if (index.files.length === 0) {
+    if (done.files === 0) {
       ui.warn("No se encontraron archivos para indexar.");
       ui.detail(`Sens indexa: ${supportedLanguages()}. Si este proyecto usa otro lenguaje, aún no está soportado.`);
     }
@@ -392,9 +419,10 @@ program
     "Manage the resident query process that keeps the index warm between calls",
   )
   .option("--serve", "run the daemon in this process (used by the auto-start)")
+  .option("--warm", "build the TypeScript program up front, for reindexing")
   .option("--stop", "shut down the daemon for this project")
   .option("--status", "report whether a daemon is running for this project")
-  .action(async (opts: { serve?: boolean; stop?: boolean; status?: boolean }) => {
+  .action(async (opts: { serve?: boolean; stop?: boolean; status?: boolean; warm?: boolean }) => {
     const { startDaemon } = await import("./daemon/server.js");
     const { stopDaemon, daemonRunning } = await import("./daemon/client.js");
     const { socketPath } = await import("./daemon/protocol.js");
@@ -417,7 +445,7 @@ program
     }
     if (opts.serve) {
 
-      await startDaemon(root);
+      await startDaemon(root, { warm: opts.warm });
       return;
     }
     ui.header("daemon");

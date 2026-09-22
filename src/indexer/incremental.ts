@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { comparePaths } from "../order.js";
 import { INDEX_SCHEMA_VERSION } from "../types.js";
@@ -9,9 +9,22 @@ import type {
   SymbolInfo,
 } from "../types.js";
 import { parserForFile, type IndexContribution } from "./languages/parser.js";
-import { resolveImport, typescriptParser } from "./languages/typescript.js";
+import {
+  extract,
+  openProject,
+  resolveImport,
+  syncProject,
+  typescriptParser,
+} from "./languages/typescript.js";
+import type { Project } from "ts-morph";
 
 const MAX_TOUCHED = 25;
+
+const warm = new Map<string, Project>();
+
+export function dropWarmProject(root: string): void {
+  warm.delete(root);
+}
 
 const SPECIFIER =
   /(?:from|import|require)\s*\(?\s*["']([^"']+)["']/g;
@@ -20,6 +33,7 @@ export async function updateIndex(
   root: string,
   previous: ProjectIndex,
   touched: string[],
+  opts: { keepWarm?: boolean } = {},
 ): Promise<ProjectIndex | null> {
   if (previous.schemaVersion !== INDEX_SCHEMA_VERSION) return null;
 
@@ -27,24 +41,86 @@ export async function updateIndex(
   if (paths.length === 0 || paths.length > MAX_TOUCHED) return null;
   if (paths.some((file) => parserForFile(file) !== typescriptParser)) return null;
 
-  const alive = paths.filter((file) => existsSync(path.join(root, file)));
-  const closure = new Set(closureOf(root, previous, alive));
-  const part = alive.length
-    ? await typescriptParser.build(
-        root,
-        [...closure].map((file) => path.join(root, file)),
-        {
-          referencesFrom: new Set(alive),
-          exportsElsewhere: exportsOutside(previous, closure),
-        },
-      )
-    : { symbols: [], files: [], imports: [], references: {} };
-
   const edited = new Set(paths);
+  if (movedWithoutUs(root, previous, edited)) return null;
+
+  const alive = paths.filter((file) => existsSync(path.join(root, file)));
+  const part = !alive.length
+    ? { symbols: [], files: [], imports: [], references: {} }
+    : opts.keepWarm
+      ? await fromWarmProject(root, previous, alive)
+      : await fromImportClosure(root, previous, alive);
+
   if (namedElsewhere(root, previous, edited, exportsSwappedBy(previous, part, edited))) {
     return null;
   }
   return merge(previous, edited, new Set(alive), part);
+}
+
+export async function warmProject(
+  root: string,
+  previous: ProjectIndex,
+): Promise<void> {
+  await heldProject(root, previous);
+}
+
+async function heldProject(root: string, previous: ProjectIndex): Promise<Project> {
+  const known = warm.get(root);
+  if (known) return known;
+  const project = await openProject(
+    root,
+    previous.files
+      .map((file) => file.path)
+      .filter((file) => parserForFile(file) === typescriptParser)
+      .map((file) => absolute(root, file)),
+  );
+  warm.set(root, project);
+  return project;
+}
+
+async function fromWarmProject(
+  root: string,
+  previous: ProjectIndex,
+  alive: string[],
+): Promise<IndexContribution> {
+  const project = await heldProject(root, previous);
+  syncProject(project, alive.map((file) => absolute(root, file)));
+  return extract(root, project, { referencesFrom: new Set(alive) });
+}
+
+function fromImportClosure(
+  root: string,
+  previous: ProjectIndex,
+  alive: string[],
+): Promise<IndexContribution> {
+  const closure = new Set(closureOf(root, previous, alive));
+  return typescriptParser.build(
+    root,
+    [...closure].map((file) => absolute(root, file)),
+    {
+      referencesFrom: new Set(alive),
+      exportsElsewhere: exportsOutside(previous, closure),
+    },
+  );
+}
+
+function absolute(root: string, file: string): string {
+  return path.join(root, file).split(path.sep).join("/");
+}
+
+function movedWithoutUs(
+  root: string,
+  previous: ProjectIndex,
+  edited: Set<string>,
+): boolean {
+  return previous.files.some((file) => {
+    if (edited.has(file.path)) return false;
+    try {
+      return statSync(path.join(root, file.path)).mtimeMs !== file.mtimeMs;
+    } catch {
+      return true;
+    }
+  });
 }
 
 function exportsOutside(

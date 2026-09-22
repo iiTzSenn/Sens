@@ -3,7 +3,12 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { startDaemon } from "../src/daemon/server";
-import { queryViaDaemon, hookViaDaemon, daemonRunning } from "../src/daemon/client";
+import {
+  queryViaDaemon,
+  hookViaDaemon,
+  daemonRunning,
+  reindexViaDaemon,
+} from "../src/daemon/client";
 import { socketPath } from "../src/daemon/protocol";
 import { runHookPayload } from "../src/hook";
 
@@ -52,6 +57,25 @@ describe("daemon", () => {
     await serve();
     expect(await hookViaDaemon(root, raw)).toBe(direct);
     expect(direct).toContain("permissionDecision");
+  });
+
+  it("reindexes a touched file and keeps serving the new index", { timeout: 30000 }, async () => {
+    const { ensureIndex } = await import("../src/core");
+    await ensureIndex(root);
+    await serve();
+
+    writeFileSync(
+      path.join(root, "src", "a.ts"),
+      "export function alpha() { return beta(); }\nexport function beta() { return 2; }\nexport function gamma() { return beta(); }\n",
+    );
+
+    const served = await reindexViaDaemon(root, ["src/a.ts"]);
+
+    expect(served).not.toBeNull();
+    expect(JSON.parse(served as string).incremental).toBe(true);
+
+    const uses = await queryViaDaemon(root, "who_uses", { name: "beta" });
+    expect(uses).toContain("gamma");
   });
 
   it("returns null when no daemon is running, instead of throwing", async () => {

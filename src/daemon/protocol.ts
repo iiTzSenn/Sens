@@ -19,9 +19,13 @@ export const SHUTDOWN = "__shutdown__";
 
 export const HOOK = "__hook__";
 
+export const REINDEX = "__reindex__";
+
 export const IDLE_TIMEOUT_MS = Number(process.env.SENS_DAEMON_IDLE_MS) || 10 * 60_000;
 
 export const REQUEST_TIMEOUT_MS = 5_000;
+
+export const REINDEX_TIMEOUT_MS = 120_000;
 
 export const SPAWN_COOLDOWN_MS = 10_000;
 

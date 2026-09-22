@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { buildIndex, resolveWatched } from "./indexer/indexer.js";
-import { updateIndex } from "./indexer/incremental.js";
+import { dropWarmProject, updateIndex } from "./indexer/incremental.js";
 import { loadIndex, saveIndex, isFresh } from "./store/store.js";
 import { loadMeta, saveMeta, buildMeta, structureUnchanged } from "./store/meta.js";
 import { loadConfig, entryPointFiles, type SensConfig } from "./config.js";
@@ -16,6 +16,7 @@ const engineCache = new Map<
 export interface EnsureOptions {
   force?: boolean;
   ignore?: string[];
+  keepWarm?: boolean;
 }
 
 function persist(
@@ -37,6 +38,7 @@ async function rebuild(
   ignore: string[],
 ): Promise<ProjectIndex> {
   mkdirSync(sensDir(root), { recursive: true });
+  dropWarmProject(root);
   const watched = await resolveWatched(root, ignore);
   const index = await buildIndex(root, { ignore });
   return persist(root, index, watched, await entryPointFiles(root, config));
@@ -52,7 +54,9 @@ export async function refreshIndex(
   const previous = loadIndex(root);
   const meta = previous && loadMeta(root, previous.createdAt);
   if (previous && meta && structureUnchanged(root, meta.watched)) {
-    const updated = await updateIndex(root, previous, touched);
+    const updated = await updateIndex(root, previous, touched, {
+      keepWarm: opts.keepWarm,
+    });
     if (updated) {
       return {
         index: persist(root, updated, meta.watched, meta.entryPoints),

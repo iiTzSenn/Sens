@@ -8,6 +8,8 @@ import {
   daemonDisabled,
   SHUTDOWN,
   HOOK,
+  REINDEX,
+  REINDEX_TIMEOUT_MS,
   REQUEST_TIMEOUT_MS,
   SPAWN_COOLDOWN_MS,
   type DaemonRequest,
@@ -22,7 +24,11 @@ export function queryViaDaemon<K extends QueryName>(
   return request(root, { id: 1, query, args: args as Record<string, unknown> });
 }
 
-function request(root: string, req: DaemonRequest): Promise<string | null> {
+function request(
+  root: string,
+  req: DaemonRequest,
+  patience = REQUEST_TIMEOUT_MS,
+): Promise<string | null> {
   if (daemonDisabled()) return Promise.resolve(null);
   return new Promise((resolve) => {
     let settled = false;
@@ -35,7 +41,7 @@ function request(root: string, req: DaemonRequest): Promise<string | null> {
 
     const socket = connect(socketPath(root));
     socket.setEncoding("utf8");
-    socket.setTimeout(REQUEST_TIMEOUT_MS, () => done(null));
+    socket.setTimeout(patience, () => done(null));
     socket.on("error", () => done(null));
 
     socket.on("connect", () => socket.write(JSON.stringify(req) + "\n"));
@@ -58,6 +64,13 @@ function request(root: string, req: DaemonRequest): Promise<string | null> {
 export function hookViaDaemon(root: string, raw: string): Promise<string | null> {
   return request(root, { id: 1, query: HOOK, args: { raw } });
 }
+
+export function reindexViaDaemon(
+  root: string,
+  only: string[],
+): Promise<string | null> {
+  return request(root, { id: 1, query: REINDEX, args: { only } }, REINDEX_TIMEOUT_MS);
+}
 function spawnedRecently(root: string): boolean {
   try {
     return Date.now() - statSync(spawnMarkerPath(root)).mtimeMs < SPAWN_COOLDOWN_MS;
@@ -66,14 +79,14 @@ function spawnedRecently(root: string): boolean {
   }
 }
 
-export function ensureDaemon(root: string): void {
+export function ensureDaemon(root: string, warm = false): void {
   if (daemonDisabled() || spawnedRecently(root)) return;
 
   const cli = process.argv[1];
   if (!cli) return;
   try {
     writeFileSync(spawnMarkerPath(root), String(Date.now()), "utf8");
-    spawn(process.execPath, [cli, "daemon", "--serve"], {
+    spawn(process.execPath, [cli, "daemon", "--serve", ...(warm ? ["--warm"] : [])], {
       cwd: root,
       detached: true,
       stdio: "ignore",

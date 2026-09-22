@@ -2,11 +2,14 @@ import { createServer, type Socket, type Server } from "node:net";
 import { unlinkSync } from "node:fs";
 import { runQuery, type QueryArgs, type QueryName } from "../queries.js";
 import { runHookPayload } from "../hook.js";
-import { createEngine } from "../core.js";
+import { createEngine, refreshIndex } from "../core.js";
+import { warmProject } from "../indexer/incremental.js";
+import { loadIndex } from "../store/store.js";
 import {
   socketPath,
   SHUTDOWN,
   HOOK,
+  REINDEX,
   IDLE_TIMEOUT_MS,
   type DaemonRequest,
   type DaemonResponse,
@@ -22,6 +25,7 @@ function clearStaleSocket(addr: string): void {
 
 export async function startDaemon(
   root: string,
+  opts: { warm?: boolean } = {},
 ): Promise<{ address: string; close: () => Promise<void> }> {
   const address = socketPath(root);
   clearStaleSocket(address);
@@ -61,6 +65,17 @@ export async function startDaemon(
       if (req.query === HOOK) {
 
         const text = await runHookPayload(root, String(req.args.raw ?? ""));
+        socket.write(JSON.stringify({ id, ok: true, text }) + "\n");
+        return;
+      }
+      if (req.query === REINDEX) {
+        const only = Array.isArray(req.args.only) ? req.args.only.map(String) : [];
+        const { index, incremental } = await refreshIndex(root, only, { keepWarm: true });
+        const text = JSON.stringify({
+          files: index.files.length,
+          symbols: index.symbols.length,
+          incremental,
+        });
         socket.write(JSON.stringify({ id, ok: true, text }) + "\n");
         return;
       }
@@ -109,6 +124,10 @@ export async function startDaemon(
 
   try {
     await createEngine(root);
+    if (opts.warm) {
+      const index = loadIndex(root);
+      if (index) await warmProject(root, index);
+    }
   } catch {
 
   }

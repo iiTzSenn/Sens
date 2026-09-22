@@ -3,6 +3,7 @@ import path from "node:path";
 import type {
   FunctionDeclaration,
   MethodDeclaration,
+  Project,
   VariableDeclaration,
   Node as TsNode,
 } from "ts-morph";
@@ -33,12 +34,8 @@ function varSig(v: VariableDeclaration, kind: string): string {
   return `${kind} ${v.getName()}${t ? ": " + collapse(t) : ""}`;
 }
 
-async function build(
-  root: string,
-  absFiles: string[],
-  opts: BuildOptions = {},
-): Promise<IndexContribution> {
-  const { Project, Node, SyntaxKind } = await import("ts-morph");
+export async function openProject(root: string, absFiles: string[]): Promise<Project> {
+  const { Project: Ctor } = await import("ts-morph");
 
   const configPath = ["tsconfig.json", "jsconfig.json"]
     .map((f) => path.join(root, f))
@@ -50,14 +47,43 @@ async function build(
     compilerOptions: { allowJs: true, checkJs: false },
   } as const;
 
-  let project;
+  let project: Project;
   try {
-    project = configPath ? new Project({ ...options, tsConfigFilePath: configPath }) : new Project(options);
+    project = configPath ? new Ctor({ ...options, tsConfigFilePath: configPath }) : new Ctor(options);
   } catch {
 
-    project = new Project(options);
+    project = new Ctor(options);
   }
   for (const f of absFiles) project.addSourceFileAtPath(f);
+  return project;
+}
+
+export function syncProject(project: Project, absFiles: string[]): void {
+  for (const f of absFiles) {
+    const known = project.getSourceFile(f);
+    if (!existsSync(f)) {
+      if (known) project.removeSourceFile(known);
+      continue;
+    }
+    if (known) known.refreshFromFileSystemSync();
+    else project.addSourceFileAtPath(f);
+  }
+}
+
+async function build(
+  root: string,
+  absFiles: string[],
+  opts: BuildOptions = {},
+): Promise<IndexContribution> {
+  return extract(root, await openProject(root, absFiles), opts);
+}
+
+export async function extract(
+  root: string,
+  project: Project,
+  opts: BuildOptions = {},
+): Promise<IndexContribution> {
+  const { Node, SyntaxKind } = await import("ts-morph");
 
   const symbols: SymbolInfo[] = [];
   const files: FileInfo[] = [];
