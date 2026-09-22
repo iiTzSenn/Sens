@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="Sens — a project index for Claude Code" width="860">
+  <img src="docs/banner.svg" alt="sens — a project index for Claude Code" width="860">
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/sens-mcp"><img alt="npm version" src="https://img.shields.io/npm/v/sens-mcp?style=flat-square&color=cb3837&logo=npm"></a>
-  <a href="#license"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-1a7f47?style=flat-square"></a>
-  <img alt="Built for Claude Code" src="https://img.shields.io/badge/built_for-Claude_Code-4f7cff?style=flat-square">
-  <img alt="MCP server" src="https://img.shields.io/badge/MCP-server-7a5cff?style=flat-square">
+  <a href="#license"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-111313?style=flat-square"></a>
+  <img alt="Built for Claude Code" src="https://img.shields.io/badge/built_for-Claude_Code-111313?style=flat-square">
+  <img alt="MCP server" src="https://img.shields.io/badge/MCP-server-111313?style=flat-square">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white">
-  <img alt="Status" src="https://img.shields.io/badge/status-early_development-e0a33d?style=flat-square">
+  <img alt="Status" src="https://img.shields.io/badge/status-early_development-111313?style=flat-square">
 </p>
 
 <p align="center">
@@ -29,11 +29,11 @@
   <img src="docs/agents/cursor.svg" alt="Cursor" title="Cursor" height="46">
 </p>
 <p align="center">
-  <img alt="Windsurf" src="https://img.shields.io/badge/Windsurf-141a1e?style=for-the-badge&logo=windsurf&logoColor=58C4A6">
-  <img alt="Gemini CLI" src="https://img.shields.io/badge/Gemini_CLI-141a1e?style=for-the-badge&logo=googlegemini&logoColor=8AB4F8">
-  <img alt="Zed" src="https://img.shields.io/badge/Zed-141a1e?style=for-the-badge&logo=zedindustries&logoColor=white">
-  <img alt="Cline" src="https://img.shields.io/badge/Cline-141a1e?style=for-the-badge&logo=cline&logoColor=white">
-  <img alt="Continue" src="https://img.shields.io/badge/Continue-141a1e?style=for-the-badge&logo=continue&logoColor=white">
+  <img alt="Windsurf" src="https://img.shields.io/badge/Windsurf-0c0d0d?style=for-the-badge&logo=windsurf&logoColor=58C4A6">
+  <img alt="Gemini CLI" src="https://img.shields.io/badge/Gemini_CLI-0c0d0d?style=for-the-badge&logo=googlegemini&logoColor=8AB4F8">
+  <img alt="Zed" src="https://img.shields.io/badge/Zed-0c0d0d?style=for-the-badge&logo=zedindustries&logoColor=white">
+  <img alt="Cline" src="https://img.shields.io/badge/Cline-0c0d0d?style=for-the-badge&logo=cline&logoColor=white">
+  <img alt="Continue" src="https://img.shields.io/badge/Continue-0c0d0d?style=for-the-badge&logo=continue&logoColor=white">
 </p>
 <p align="center">
   <sub>Claude&nbsp;Code&nbsp;&nbsp;·&nbsp;&nbsp;Codex&nbsp;&nbsp;·&nbsp;&nbsp;GitHub&nbsp;Copilot&nbsp;&nbsp;·&nbsp;&nbsp;Cursor&nbsp;&nbsp;·&nbsp;&nbsp;Windsurf&nbsp;&nbsp;·&nbsp;&nbsp;Gemini&nbsp;CLI&nbsp;&nbsp;·&nbsp;&nbsp;Zed&nbsp;&nbsp;·&nbsp;&nbsp;Cline&nbsp;&nbsp;·&nbsp;&nbsp;Continue&nbsp;&nbsp;·&nbsp;&nbsp;any&nbsp;MCP&nbsp;client</sub>
@@ -45,7 +45,7 @@
 
 If you use Claude Code on a **subscription**, your pain isn't a per-token bill — it's the **usage limit** and the **context window filling up**. Every time the agent opens 20 files just to orient itself, it burns your quota and bloats the context (which then compacts and quietly loses memory).
 
-Sens keeps a compact **index** of your project and serves it to Claude — through a **hook** that answers the model's searches before they run, a **skill** it loads on demand, or an **MCP** server — so the model asks focused questions instead of reading everything:
+Sens keeps a compact **index** of your project and serves it to Claude — through an **MCP** server, or a **hook** that answers the model's searches before they run — so the model asks focused questions instead of reading everything:
 
 > *"where is `login`?"* · *"who uses it?"* · *"does something like this already exist?"* · *"what's dead code here?"*
 
@@ -59,27 +59,12 @@ One engine, two payoffs:
 
 ## Contents
 
-- [Quick start](#quick-start) · [What Claude gets](#what-claude-gets-mcp-tools) · [Slash commands](#slash-commands) · [CLI](#cli) · [Dashboard](#dashboard)
+- [Quick start](#quick-start) · [What Claude gets](#what-claude-gets-mcp-tools) · [Slash commands](#slash-commands) · [CLI](#cli)
 - [Does it actually help?](#does-it-actually-help) · [How it works](#how-it-works) · [Configuration](#configuration) · [Dead code](#dead-code--read-this) · [Roadmap](#roadmap) · [License](#license)
 
 ## Quick start
 
-Install Sens and set it up in your project:
-
-```bash
-npm i -g sens-mcp
-cd your-project
-sens init
-```
-
-`sens init` builds the index, installs a **skill** so Claude knows when to query Sens, wires a **hook** that answers Claude's searches *before they run* (when the model is about to grep for a symbol, Sens returns it and every use directly; a file read gets the outline injected first), and puts your **working rules** in front of the model at the start of every session. Nothing else to start: just work normally and ask Claude naturally (*"any dead code? check with sens"*).
-
-Using another agent? `sens init --agent codex` (or `copilot`, `cursor`, `all`) writes the same guide + rules into that agent's instructions file (`AGENTS.md`, `.github/copilot-instructions.md`, `.cursorrules`) so it drives the `sens` CLI too.
-
-<details>
-<summary><b>Prefer MCP?</b> (or a host that only speaks MCP)</summary>
-
-Add Sens as an MCP server instead. In your project's `.mcp.json` (or Claude Code's MCP config):
+Add Sens as an MCP server. In your project's `.mcp.json` (or Claude Code's MCP config):
 
 ```json
 {
@@ -98,12 +83,13 @@ Or register it once for **every** project:
 claude mcp add sens -s user -- npx -y sens-mcp mcp
 ```
 
-Claude Code launches Sens on demand — no per-project install, no manual server to run.
-</details>
+Claude Code launches Sens on demand — no per-project install, no manual server to run. The index builds itself on the first query; `sens index` warms it up front.
+
+Then work normally and ask Claude naturally (*"any dead code? check with sens"*).
 
 ## What Claude gets
 
-The same set of operations, whether Claude runs them as `sens` commands (driven by the skill/hook) or as MCP tools:
+The same set of operations, whether Claude runs them as `sens` commands or as MCP tools:
 
 | Operation | What it does | Replaces |
 | --- | --- | --- |
@@ -119,7 +105,7 @@ The same set of operations, whether Claude runs them as `sens` commands (driven 
 
 ## Working rules
 
-Sens's MCP server also hands Claude a short set of **working rules** it follows when writing or changing code — reuse what exists instead of duplicating, keep code minimal but maintainable, and leave nothing orphaned — each tied to the tool that lets it *verify* the rule (`already_exists`/`find_symbol` before writing, `dead_code` before finishing, `who_uses` before a rename). The rules are **composable modules** (search-first, minimal, no-orphans, optimization, plus opt-in error-handling and testing). `sens init` wires a `SessionStart` hook that injects the active modules at the start of every session, so they apply automatically. Enable/disable modules or add your own in `sens.config.json`, from the **dashboard's "Working rules" panel**, or see their state with `sens rules --list`. Run `sens rules` to print the active set, or `sens rules --write` to drop a `SENS_RULES.md` you can reference from your `CLAUDE.md` / `AGENTS.md`.
+Sens's MCP server also hands Claude a short set of **working rules** it follows when writing or changing code — reuse what exists instead of duplicating, keep code minimal but maintainable, and leave nothing orphaned — each tied to the tool that lets it *verify* the rule (`already_exists`/`find_symbol` before writing, `dead_code` before finishing, `who_uses` before a rename). The rules are **composable modules** (search-first, minimal, no-orphans, optimization, plus opt-in error-handling and testing). Enable/disable modules or add your own in `sens.config.json`, or see their state with `sens rules --list`. Run `sens rules` to print the active set, or `sens rules --write` to drop a `SENS_RULES.md` you can reference from your `CLAUDE.md` / `AGENTS.md`.
 
 ## Slash commands
 
@@ -132,14 +118,12 @@ Sens also registers prompts, so it shows up in Claude Code's `/` menu:
 | `/sens find <name>` | Locate a symbol |
 | `/sens exists <keywords>` | Check for existing code before writing |
 | `/sens rules` | Load the working rules and follow them |
-| `/sens dashboard` | Open the web dashboard (graph) |
 
 ## CLI
 
 You can also drive Sens yourself:
 
 ```bash
-npx sens-mcp init           # set up here (--agent codex|copilot|cursor|all for other agents)
 npx sens-mcp index          # build/update the index (cached by file mtime)
 npx sens-mcp map [subdir]   # compact project map
 npx sens-mcp find <name>    # where a symbol is defined
@@ -150,42 +134,12 @@ npx sens-mcp outline <file> # a file's signatures, no bodies
 npx sens-mcp exists <kw...> # does something like this already exist?
 npx sens-mcp dead-code      # unused symbols (candidates)
 npx sens-mcp deps <file>    # what a file imports and what imports it
-npx sens-mcp report         # self-contained HTML report → .sens/report.html
-npx sens-mcp dashboard      # interactive web dashboard
 npx sens-mcp rules          # print active rules (--list for module states, --write to save)
-npx sens-mcp skill          # print the Claude Code skill (--write to install it)
-npx sens-mcp usage          # which Sens tools the model has actually called
 ```
 
 > Installed globally (`npm i -g sens-mcp`) the command is just `sens <command>`.
 
 Every command shares one modern look — a braille spinner while indexing, a consistent `sens › <command>` header, and color that *means* something (green ok, red error, yellow warning, gray for paths/counts/timings). Errors stay a single clear line; add `--verbose` for the full stack trace. This styling is **terminal-only**: what the model reads over the MCP server or the hook stays plain text, so nothing here bloats its context.
-
-## Dashboard
-
-`sens dashboard` starts a local web UI (default `http://localhost:4319`):
-
-- an **interactive graph** of your project — files as nodes, imports as edges (drag, click a node to see its symbols);
-- live **stats** and a clickable **dead-code** list;
-- a symbol **search**;
-- a **Working rules** panel to toggle rule modules on/off and add your own;
-- a one-click **Connect to Claude Code** (writes `.mcp.json`) and a **Rebuild index** button.
-
-```bash
-npx sens-mcp dashboard --root . --port 4319   # --no-open to skip opening the browser
-npx sens-mcp dashboard --host                 # also expose on your LAN (prints a Network URL + QR)
-npx sens-mcp dashboard --tunnel               # also get a public URL via cloudflared/ngrok if installed
-```
-
-> `--host` / `--tunnel` are opt-in and guarded by an access token in the printed link, because the dashboard can **write** your project's config. By default it binds to `localhost` only.
-
-<p align="center">
-  <img src="docs/dashboard_light.webp" alt="Sens dashboard — project dependency graph (light theme)" width="90%">
-  <br><br>
-  <img src="docs/dashboard_dark.webp" alt="Sens dashboard — project dependency graph (dark theme)" width="90%">
-</p>
-
-<p align="center"><i>Nodes are files; blue = has exports, gray = internal, red = has dead code. Light &amp; dark themes, multiple graph layouts (network, chord, arc, treemap…).</i></p>
 
 ## Does it actually help?
 
@@ -248,7 +202,6 @@ It still can't see every dynamic/reflective path, so: **verify LOW candidates be
 - [ ] Semantic `already_exists` (embeddings) + near-duplicate detection
 - [x] Per-language dead-code accuracy across all tree-sitter languages
 - [ ] Vue/Svelte SFC support; more languages via tree-sitter
-- [ ] Dashboard: symbol-level graph, live file watching
 - [x] A reproducible benchmark suite (`npm run bench`)
 
 ## Contributing
@@ -260,9 +213,16 @@ npm install
 npm run build      # bundle to dist/
 npm test           # vitest
 npm run typecheck
+npm run brand      # regenerate logo, icons and banner
 ```
 
 `npm link` makes `sens` a global command pointing at your local build.
+
+Anything visual — interface, asset, terminal output, marketing — follows
+[the Sens visual identity](docs/brand/identity.md). Colours live in
+`src/brand/tokens.ts` and the mark's geometry in `src/brand/mark.ts`; import the
+token instead of retyping a hex, and edit the generator rather than the
+generated asset.
 
 ## License
 

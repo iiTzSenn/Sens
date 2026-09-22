@@ -8,7 +8,6 @@ import type { ProjectIndex } from "../src/types";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.join(here, "fixtures", "cppdead");
 
-// One shared build: loading the tree-sitter C++ grammar is the expensive part.
 let index: ProjectIndex;
 async function getIndex(): Promise<ProjectIndex> {
   if (!index) index = await buildIndex(fixture);
@@ -24,8 +23,6 @@ describe("C++ dead-code accuracy", () => {
     const cands = await candidates();
     const staticFn = cands.find((c) => c.symbol.name === "staticUnused");
     const anonFn = cands.find((c) => c.symbol.name === "anonUnused");
-    // static / anonymous-namespace linkage is internal — treated as not exported
-    // so an unused one reaches HIGH instead of being capped at LOW.
     expect(staticFn?.tier).toBe("high");
     expect(staticFn?.symbol.exported).toBe(false);
     expect(anonFn?.tier).toBe("high");
@@ -41,12 +38,12 @@ describe("C++ dead-code accuracy", () => {
 
   it("(c) never flags live code (no false positives)", async () => {
     const names = (await candidates()).map((c) => c.symbol.name);
-    expect(names).not.toContain("main");         // program entry point
-    expect(names).not.toContain("Shape.area");   // virtual base, used
-    expect(names).not.toContain("Circle.area");  // override, used on an instance
-    expect(names).not.toContain("Circle.render"); // plain instance method, used
-    expect(names).not.toContain("usedHelper");   // defined in util.cpp, used in main.cpp
-    expect(names).not.toContain("maxOf");        // template, instantiated + used
+    expect(names).not.toContain("main");
+    expect(names).not.toContain("Shape.area");
+    expect(names).not.toContain("Circle.area");
+    expect(names).not.toContain("Circle.render");
+    expect(names).not.toContain("usedHelper");
+    expect(names).not.toContain("maxOf");
   });
 
   it("resolves #include \"util.hpp\" to the project file for the import graph", async () => {

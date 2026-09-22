@@ -11,12 +11,10 @@ import {
   type Ctx,
 } from "./treesitter/base.js";
 
-// Go exports a top-level name iff it starts with an upper-case letter.
 const isExported = (name: string): boolean => /^[A-Z]/.test(name);
 
 const unquote = (s: string): string => s.replace(/^[`"]|[`"]$/g, "");
 
-/** The `package` name of a source file (`package main` -> "main"), or undefined. */
 function packageName(root: Node): string | undefined {
   const clause = named(root, "package_clause");
   return clause ? firstDescendant(clause, "package_identifier")?.text : undefined;
@@ -30,9 +28,6 @@ function extract(root: Node, emit: Emit, ctx: Ctx): void {
         const nameNode = field(node, "name");
         if (!nameNode) break;
         const fname = nameNode.text;
-        // Runtime entry points Go invokes itself, with no visible in-project
-        // caller: `main` in `package main`, and any `init`. Marking them entry
-        // keeps them out of the dead-code report (they'd otherwise be HIGH).
         const entry = fname === "init" || (fname === "main" && pkg === "main");
         emit.symbol({ name: fname, kind: "function", node, nameNode, exported: isExported(fname), entry });
         break;
@@ -78,9 +73,6 @@ function extract(root: Node, emit: Emit, ctx: Ctx): void {
   }
 }
 
-/** The member half of a qualified access `pkg.Name` — the `field` child of a
- * selector_expression. These target another namespace, so they must keep the
- * broad ("name") attribution and not be narrowed to a same-named local symbol. */
 function isQualifiedUse(leaf: Node): boolean {
   const parent = leaf.parent;
   return (
@@ -92,11 +84,7 @@ function isQualifiedUse(leaf: Node): boolean {
 export const goParser: LanguageParser = {
   name: "go",
   extensions: ["go"],
-  // Package scope: files in the same directory (package) see each other without
-  // imports, so an unqualified name narrows to the local package — letting a
-  // same-named func in another package be flagged when only one is used. A
-  // qualified `pkg.Name` use stays broad (isQualifiedUse) so it never gets
-  // misattributed to a same-named local symbol, which would be a false positive.
+
   build: (root, files) =>
     buildTreeSitter(root, files, "go", extract, { scope: "package", isQualifiedUse }),
 };

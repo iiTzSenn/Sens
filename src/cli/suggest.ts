@@ -1,17 +1,5 @@
-// Dynamic, context-aware command suggestions for the CLI. Two shapes:
-//
-//  - "Próximos pasos" after a successful result — the logical next command,
-//    with the user's own argument spliced in (e.g. after `find login` →
-//    `sens who login`).
-//  - Empty-result help — when a query finds nothing, point at the command that
-//    probably does what the user meant, instead of a dead end.
-//
-// Terminal-only, like the rest of ./ui.ts and ./render.ts: none of this reaches
-// the model over MCP or the hook.
-
 import type { Step } from "./ui.js";
 
-/** A suggestion block: the lines plus the section title ("" = tight, no header). */
 export interface Block {
   steps: Step[];
   title: string;
@@ -19,7 +7,6 @@ export interface Block {
 
 const NEXT = "Próximos pasos";
 
-/** The empty-query dead end shared by name lookups (find / who / explain). */
 const notFound = (name: string): Block => ({
   title: "",
   steps: [

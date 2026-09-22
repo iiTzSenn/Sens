@@ -39,7 +39,6 @@ describe("formatWhoUses", () => {
     expect(out).toContain("PARTIAL SUMMARY");
     expect(out).toContain("used in 20 file(s)");
     expect(out).toContain("full:true");
-    // Should not dump all 500 individual file:line entries.
     expect(out.split("\n").length).toBeLessThan(30);
   });
 

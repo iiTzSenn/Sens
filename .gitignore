@@ -1,19 +1,18 @@
-# Dependencies & build output
 node_modules/
 dist/
+npm/
 .sens/
 
-# Logs
 *.log
 
-# npm — NEVER commit auth tokens or packed tarballs
 .npmrc
 *.tgz
 
-# Claude Code — keep shared config, ignore local/secret overrides
 .claude/settings.local.json
 CLAUDE.md
 
-# OS junk
 .DS_Store
 Thumbs.db
+
+rust/*/target/
+rust/sens-app/gen/

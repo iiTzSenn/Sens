@@ -1,5 +1,3 @@
-// Plain-text formatters for query results, shared by the CLI and MCP server.
-
 import type { SymbolInfo } from "./types.js";
 import type {
   MapEntry,
@@ -10,7 +8,6 @@ import type {
   DeadCodeTier,
 } from "./query/engine.js";
 
-/** The declared name inside a symbol id (`file#name#line`). */
 const symbolName = (id: string): string => id.split("#")[1] ?? id;
 
 export function formatMap(entries: MapEntry[]): string {
@@ -33,11 +30,6 @@ export function formatSymbols(syms: SymbolInfo[]): string {
     .join("\n");
 }
 
-// Above this many call sites, listing every file:line by default wastes
-// tokens for a quick overview — group by file and show the busiest ones
-// instead. This is a SUMMARY, not a substitute for the full list: pass
-// `full: true` to get every site before doing a project-wide edit/rename,
-// so a truncated view never gets mistaken for complete coverage.
 const MAX_INLINE_REFS = 30;
 const MAX_GROUPED_FILES = 10;
 
@@ -79,7 +71,6 @@ export function formatWhoUses(
   return lines.join("\n");
 }
 
-/** Tier headings, most-confident first. */
 const DEAD_TIERS: { tier: DeadCodeTier; label: string }[] = [
   { tier: "high", label: "HIGH confidence — internal, unreferenced; safe to remove" },
   { tier: "medium", label: "MEDIUM — internal dead island; glance at the reason, then remove" },
@@ -101,7 +92,6 @@ export function formatDeadCode(report: DeadCodeReport): string {
     for (const f of files) lines.push(`  ${f}  — delete the file`);
   }
 
-  // Symbols inside a dead file are already covered by the file entry above.
   const loose = candidates.filter((c) => !deadFiles.has(c.symbol.file));
   for (const { tier, label } of DEAD_TIERS) {
     const group = loose.filter((c) => c.tier === tier);

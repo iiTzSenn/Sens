@@ -2,7 +2,7 @@ namespace App;
 
 class Program
 {
-    // static Main is the runtime entry point — must never be flagged.
+
     static void Main(string[] args)
     {
         var greeter = new Greeter();

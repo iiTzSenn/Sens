@@ -4,7 +4,7 @@ mod widgets;
 mod worker;
 
 fn main() {
-    // cross-module calls via qualified paths keep these modules' items alive
+
     alpha::run();
     beta::run();
 
@@ -15,13 +15,10 @@ fn main() {
     worker::work();
 }
 
-// internal, never referenced -> HIGH
 fn private_unused() {}
 
-// exported but never used in-project -> LOW (could be public API)
 pub fn public_unused() {}
 
-// FFI export: a live entry point even though nothing in-crate calls it
 #[no_mangle]
 pub extern "C" fn ffi_entry() {}
 

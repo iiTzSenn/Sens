@@ -7,19 +7,11 @@ import { runQuery } from "../queries.js";
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 
-/**
- * Start the Sens MCP server over stdio.
- *
- * Every tool just forwards to `runQuery`, the shared path used by the CLI and the
- * PreToolUse hook too — so the index cache, usage logging and output formatting
- * are identical no matter which transport asked.
- */
 export async function startMcpServer(root: string): Promise<void> {
   const server = new McpServer(
     { name: "sens", version: VERSION },
     { instructions: AGENT_RULES },
   );
-
   server.registerTool(
     "project_map",
     {
@@ -128,8 +120,6 @@ export async function startMcpServer(root: string): Promise<void> {
       text(await runQuery(root, "symbol_path", { from, to })),
   );
 
-  // Prompts show up as typeable slash commands in Claude Code (tools do not).
-  // Each one just asks Claude to run the matching Sens tool.
   server.registerPrompt(
     "map",
     { title: "Sens: project map", description: "Get a compact map of the project via Sens." },
@@ -216,25 +206,6 @@ export async function startMcpServer(root: string): Promise<void> {
           content: {
             type: "text",
             text: `Before writing new code, use the sens \`already_exists\` tool to check whether something matching "${query}" already exists, so we reuse instead of duplicating.`,
-          },
-        },
-      ],
-    }),
-  );
-
-  server.registerPrompt(
-    "dashboard",
-    {
-      title: "Sens: open web dashboard",
-      description: "Launch the local web dashboard with the interactive project graph.",
-    },
-    () => ({
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text: "Open the Sens web dashboard so I can see the project graph. Run the `sens dashboard` command (it starts a local web server) as a BACKGROUND process — do not wait on it — then tell me the http://localhost:4319 URL to open. If `sens` is not on PATH, run the installed Sens build's `dist/cli.js dashboard` with node instead.",
           },
         },
       ],

@@ -1,0 +1,1543 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Sens</title>
+<style>
+  :root {
+    --sens-carbon-950: #0c0d0d;
+    --sens-carbon-900: #111313;
+    --sens-carbon-800: #1a1d1c;
+    --sens-carbon-700: #252927;
+    --sens-carbon-600: #363b38;
+    --sens-alloy-500: #747b77;
+    --sens-alloy-400: #929995;
+    --sens-alloy-300: #b5bbb7;
+    --sens-bone-200: #dddcd5;
+    --sens-bone-100: #eceae3;
+    --sens-bone-50: #f4f1ea;
+    --sens-paper: #fbfaf6;
+    --sens-signal-700: #78aa12;
+    --sens-signal-600: #a9e52d;
+    --sens-signal-500: #c7ff4a;
+    --sens-signal-200: #e4ffa5;
+    --sens-signal-100: #f0ffd0;
+    --sens-success: #43c878;
+    --sens-warning: #e7b84b;
+    --sens-danger: #e7655f;
+    --sens-info: #6fa7d8;
+
+    --ground: var(--sens-carbon-950);
+    --panel: var(--sens-carbon-900);
+    --card: var(--sens-carbon-800);
+    --raise: var(--sens-carbon-700);
+    --hair: var(--sens-carbon-800);
+    --hair-strong: var(--sens-carbon-700);
+    --edge: var(--sens-carbon-600);
+    --text: var(--sens-bone-50);
+    --dim: var(--sens-alloy-300);
+    --faint: var(--sens-alloy-400);
+    --ghost: var(--sens-alloy-500);
+    --red: var(--sens-danger);
+    --green: var(--sens-success);
+    --amber: var(--sens-warning);
+    --focus: var(--sens-signal-500);
+
+    --r-control: 8px;
+    --r-card: 12px;
+    --r-sheet: 16px;
+    --fast: 140ms;
+    --slow: 200ms;
+    --curve: cubic-bezier(.2, .6, .3, 1);
+
+    --ui: Geist, Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+
+  body {
+    background: var(--ground); color: var(--text);
+    font-family: var(--ui); font-size: 15px; line-height: 1.53;
+    overflow: hidden; user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button, input, select { font: inherit; color: inherit; }
+  button { background: none; border: 0; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  * { scrollbar-width: thin; scrollbar-color: var(--raise) transparent; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--raise); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--edge); background-clip: content-box; }
+
+  .label {
+    font-family: var(--ui); font-size: 11px; line-height: 16px;
+    font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--faint);
+  }
+
+  .app { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+
+  .topbar {
+    display: flex; align-items: center; gap: 12px;
+    height: 56px; padding: 0 0 0 16px; overflow: hidden;
+    border-bottom: 1px solid var(--hair); background: var(--panel);
+    -webkit-app-region: drag;
+  }
+  .topbar button, .topbar input, .topbar select { -webkit-app-region: no-drag; }
+
+  .win { display: flex; align-self: stretch; flex: none; margin-inline-start: 4px; }
+  .win button {
+    width: 46px; align-self: stretch; display: grid; place-items: center;
+    color: var(--faint);
+    transition: background var(--fast) var(--curve), color var(--fast) var(--curve);
+  }
+  .win button:hover { background: var(--raise); color: var(--text); }
+  .win .shut:hover { background: var(--red); color: var(--sens-carbon-950); }
+  .win .restore { display: none; }
+  .win[data-max="true"] .restore { display: block; }
+  .win[data-max="true"] .grow { display: none; }
+
+  .brand { display: flex; align-items: center; gap: 10px; flex: none; padding-right: 4px; }
+  .brand b {
+    font-family: var(--ui); font-weight: 600;
+    font-size: 17px; letter-spacing: -0.02em;
+  }
+
+  .chipbtn, .field, .icon-btn {
+    height: 28px; border-radius: var(--r-control);
+    border: 1px solid var(--hair-strong); background: var(--card);
+    transition: background var(--fast) var(--curve), border-color var(--fast) var(--curve), color var(--fast) var(--curve);
+  }
+
+  .chipbtn {
+    display: flex; align-items: center; gap: 7px; min-width: 0; max-width: 220px; flex: 0 1 auto;
+    padding: 0 10px; font-size: 12px; color: var(--dim);
+  }
+  .chipbtn:hover { background: var(--raise); border-color: var(--edge); color: var(--text); }
+  .chipbtn svg { width: 12px; height: 12px; flex: none; color: var(--faint); }
+  .chipbtn:hover svg { color: var(--text); }
+  .chipbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chipbtn:disabled { opacity: .4; pointer-events: none; }
+  .chipbtn[hidden] { display: none; }
+
+  .field {
+    width: 148px; min-width: 0; padding: 0 10px;
+    font-family: var(--mono); font-size: 12px;
+    outline: none; user-select: text; color: var(--dim);
+  }
+  .field:hover { border-color: var(--edge); }
+  .field:focus { border-color: var(--focus); color: var(--text); }
+  .field::placeholder { color: var(--ghost); }
+  .field:disabled { opacity: .4; }
+  .field[hidden] { display: none; }
+
+  select.field { width: auto; max-width: 210px; padding-right: 8px; }
+
+  .health {
+    margin-left: auto; display: flex; align-items: center; gap: 14px; flex: none;
+    font-family: var(--mono); font-size: 12px; color: var(--faint); white-space: nowrap;
+  }
+  .health .pip {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px;
+    border: 2px solid var(--edge); background: transparent;
+  }
+  .health[data-fresh="true"] .pip { border-color: var(--green); background: var(--green); }
+  .health[data-fresh="false"] .pip { border-color: var(--amber); background: transparent; }
+  .health b { color: var(--dim); font-weight: 400; }
+  .health .seal { color: var(--ghost); }
+
+  .icon-btn {
+    width: 28px; display: grid; place-items: center;
+    color: var(--faint); flex: none;
+  }
+  .icon-btn:hover { background: var(--raise); border-color: var(--edge); color: var(--text); }
+  .icon-btn[aria-pressed="true"] { color: var(--focus); border-color: var(--edge); }
+
+  .body {
+    display: grid; grid-template-columns: 232px minmax(0, 1fr) 0;
+    min-height: 0; transition: grid-template-columns var(--slow) var(--curve);
+  }
+  .body[data-code="open"] { grid-template-columns: 232px minmax(0, 1fr) minmax(400px, 46%); }
+
+  .rail { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; background: var(--panel); border-right: 1px solid var(--hair); }
+  .rail-head { padding: 20px 16px 10px; display: flex; align-items: center; gap: 10px; }
+  .rail-head .icon-btn { margin-left: auto; }
+
+  .sessions { overflow: auto; min-height: 0; padding: 0 8px 16px; display: flex; flex-direction: column; gap: 2px; }
+  .session {
+    position: relative; text-align: left; padding: 10px 12px; display: grid; gap: 3px;
+    border-radius: var(--r-control);
+    transition: background var(--fast) var(--curve);
+  }
+  .session:hover { background: var(--card); }
+  .session[aria-current="true"] { background: var(--raise); }
+  .session[aria-current="true"]::before {
+    content: ''; position: absolute; left: 0; top: 10px; bottom: 10px;
+    width: 2px; border-radius: 1px; background: var(--focus);
+  }
+  .session .name { font-size: 13px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .session[aria-current="true"] .name { color: var(--text); }
+  .session .meta { font-family: var(--mono); font-size: 11px; color: var(--ghost); display: flex; gap: 10px; }
+  .session .meta .cut { color: var(--green); }
+  .session .meta .hit { color: var(--red); }
+  .none { padding: 14px 12px; font-family: var(--mono); font-size: 12px; color: var(--ghost); }
+
+  .chat { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; min-width: 0; }
+  .thread { overflow: auto; min-height: 0; }
+  .thread-inner { max-width: 760px; margin: 0 auto; padding: 32px 24px 8px; display: flex; flex-direction: column; gap: 24px; }
+
+  .turn { display: grid; gap: 8px; }
+  .turn .who {
+    font-family: var(--ui); font-size: 11px; line-height: 16px;
+    font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  .turn .body-text { color: var(--dim); }
+  .turn.you { border-left: 2px solid var(--edge); padding-left: 16px; }
+  .turn.you .who { color: var(--text); }
+  .turn.you .body-text { color: var(--text); }
+
+  .tick {
+    display: flex; align-items: baseline; gap: 10px;
+    font-family: var(--mono); font-size: 12px; line-height: 20px; color: var(--faint);
+  }
+  .tick .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--edge); flex: none; transform: translateY(-3px); }
+  .tick b { color: var(--text); font-weight: 400; }
+  .tick.warn { color: var(--amber); }
+  .tick.warn .dot { background: var(--amber); }
+
+  .card { border: 1px solid var(--hair-strong); border-radius: var(--r-card); background: var(--panel); overflow: hidden; }
+
+  .verdict { border-color: var(--sig, var(--hair-strong)); }
+  .verdict[data-v="stop"] { --sig: var(--red); }
+  .verdict[data-v="clear"] { --sig: var(--green); }
+  .verdict .top { padding: 18px 20px 14px; }
+  .verdict .kicker {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 11px; line-height: 16px; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--faint); margin-bottom: 10px;
+  }
+  .verdict .kicker::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--sig); flex: none;
+  }
+  .verdict .said {
+    font-family: var(--ui); font-weight: 600;
+    font-size: 24px; line-height: 30px; letter-spacing: -0.01em; color: var(--text);
+  }
+  .verdict .gates { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 20px 16px; }
+  .gate {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 11px; line-height: 18px; padding: 2px 9px;
+    border: 1px solid var(--hair-strong); border-radius: var(--r-control); color: var(--faint);
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  .gate::before { content: '·'; color: currentColor; }
+  .gate[data-v="stop"] { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); background: color-mix(in srgb, var(--red) 10%, transparent); }
+  .gate[data-v="stop"]::before { content: '✗'; }
+  .gate[data-v="pass"] { color: var(--green); border-color: color-mix(in srgb, var(--green) 35%, transparent); }
+  .gate[data-v="pass"]::before { content: '✓'; }
+  .gate[data-v="abstain"] { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 35%, transparent); }
+  .gate[data-v="abstain"]::before { content: '–'; }
+  .verdict .proof {
+    border-top: 1px solid var(--hair-strong); padding: 14px 20px; background: var(--ground);
+    font-family: var(--mono); font-size: 12px; line-height: 20px; color: var(--faint);
+    display: grid; gap: 6px; user-select: text;
+  }
+  .verdict .proof div { overflow-wrap: anywhere; }
+
+  .diff .top {
+    display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    border-bottom: 1px solid var(--hair-strong);
+    font-family: var(--mono); font-size: 12px; color: var(--faint);
+  }
+  .diff .top .file { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .diff .top .tally { margin-left: auto; display: flex; gap: 10px; flex: none; }
+  .diff .top .plus { color: var(--green); }
+  .diff .top .minus { color: var(--red); }
+  .diff .lines { overflow-x: auto; padding: 8px 0; user-select: text; background: var(--ground); }
+  .diff .row { display: flex; font-family: var(--mono); font-size: 12.5px; line-height: 1.75; white-space: pre; }
+  .diff .row .num { width: 52px; flex: none; text-align: right; padding-right: 14px; color: var(--ghost); user-select: none; }
+  .diff .row .mark { width: 18px; flex: none; user-select: none; color: var(--faint); }
+  .diff .row .src { padding-right: 20px; color: var(--dim); }
+  .diff .row.add { background: color-mix(in srgb, var(--green) 10%, transparent); }
+  .diff .row.add .mark { color: var(--green); }
+  .diff .row.add .src { color: var(--text); }
+  .diff .row.del { background: color-mix(in srgb, var(--red) 10%, transparent); }
+  .diff .row.del .mark { color: var(--red); }
+  .diff .row.del .src { color: var(--faint); }
+  .diff .more {
+    width: 100%; text-align: left; padding: 11px 16px; border-top: 1px solid var(--hair-strong);
+    font-family: var(--mono); font-size: 12px; color: var(--faint);
+    transition: color var(--fast) var(--curve), background var(--fast) var(--curve);
+  }
+  .diff .more:hover { color: var(--text); background: var(--card); }
+
+  .composer { padding: 16px 24px 20px; }
+  .composer-inner { position: relative; max-width: 760px; margin: 0 auto; }
+
+  .workspace { position: relative; display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .workspace .dirty { width: 4px; height: 4px; border-radius: 50%; flex: none; background: var(--amber); }
+  .workspace .dirty[hidden] { display: none; }
+
+  .sheet {
+    position: absolute; bottom: calc(100% + 8px); inset-inline-start: 0; z-index: 20;
+    width: min(320px, 100%); padding: 8px; display: grid; gap: 8px;
+    border: 1px solid var(--hair-strong); border-radius: var(--r-sheet);
+    background: var(--panel);
+  }
+  .sheet[hidden] { display: none; }
+  .sheet .seek { position: relative; display: flex; }
+  .sheet .seek svg {
+    position: absolute; inset-inline-start: 11px; top: 50%; transform: translateY(-50%);
+    color: var(--ghost); pointer-events: none;
+  }
+  .sheet .seek .field { width: 100%; padding-inline-start: 29px; }
+  .sheet .rows { max-height: 244px; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
+
+  .branch-row {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    padding: 7px 10px; border-radius: var(--r-control);
+    font-family: var(--mono); font-size: 12px; color: var(--faint);
+    transition: background var(--fast) var(--curve), color var(--fast) var(--curve);
+  }
+  .branch-row:hover { background: var(--card); color: var(--text); }
+  .branch-row[aria-current="true"] { background: var(--raise); color: var(--text); }
+  .branch-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .branch-row .tip { margin-left: auto; flex: none; color: var(--focus); display: none; }
+  .branch-row[aria-current="true"] .tip { display: block; }
+
+  .clips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .clips[hidden] { display: none; }
+  .clip {
+    display: inline-flex; align-items: center; gap: 8px; max-width: 280px;
+    padding: 5px 7px 5px 11px; border-radius: var(--r-control);
+    border: 1px solid var(--hair-strong); background: var(--card);
+    font-family: var(--mono); font-size: 11px; color: var(--dim);
+  }
+  .clip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  .clip b { color: var(--ghost); font-weight: 400; flex: none; }
+  .clip button { color: var(--faint); display: grid; place-items: center; flex: none; }
+  .clip button:hover { color: var(--red); }
+
+  @property --spin {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+  }
+
+  .composer .box {
+    position: relative;
+    display: flex; align-items: center; gap: 12px;
+    border: 1px solid var(--hair-strong); border-radius: var(--r-card);
+    background: var(--panel); padding: 14px 16px;
+    transition: border-color var(--fast) var(--curve), background var(--fast) var(--curve);
+  }
+  .composer .box:hover { border-color: var(--edge); }
+  .composer .box:focus-within { border-color: var(--focus); background: var(--card); }
+  .composer .box[data-busy="true"]::after {
+    content: ''; position: absolute; inset: -1px; border-radius: inherit;
+    padding: 2px; pointer-events: none;
+    background: conic-gradient(
+      from var(--spin),
+      transparent 0deg,
+      transparent 196deg,
+      color-mix(in srgb, var(--focus) 30%, transparent) 268deg,
+      var(--focus) 320deg,
+      color-mix(in srgb, var(--focus) 30%, transparent) 344deg,
+      transparent 358deg
+    );
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: var(--lap-name, orbit) var(--lap-time, 2200ms) linear infinite;
+  }
+  .composer .box[data-stopping="true"]::after { animation-duration: 4200ms; opacity: .45; }
+  @keyframes orbit {
+    0% { --spin: 0deg; }
+    20% { --spin: 142deg; }
+    38% { --spin: 172deg; }
+    58% { --spin: 322deg; }
+    78% { --spin: 350deg; }
+    100% { --spin: 360deg; }
+  }
+  .round {
+    width: 30px; height: 30px; flex: none; border-radius: var(--r-control);
+    display: grid; place-items: center; color: var(--faint);
+    transition: background var(--fast) var(--curve), color var(--fast) var(--curve);
+  }
+  .round:hover { background: var(--raise); color: var(--text); }
+  .round:disabled { opacity: .35; pointer-events: none; }
+  .round[aria-pressed="true"] { color: var(--focus); background: var(--raise); }
+
+  .send { background: var(--focus); color: var(--sens-carbon-950); }
+  .send:hover { background: var(--sens-signal-600); color: var(--sens-carbon-950); }
+  .send:disabled { background: var(--raise); color: var(--ghost); }
+  .send .halt { display: none; }
+  .composer .box[data-busy="true"] .send { background: var(--raise); color: var(--text); }
+  .composer .box[data-busy="true"] .send .go { display: none; }
+  .composer .box[data-busy="true"] .send .halt { display: block; }
+
+  .picker-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 4px 9px; margin: -4px 0; border-radius: var(--r-control);
+    font: inherit; color: var(--faint);
+    transition: background var(--fast) var(--curve), color var(--fast) var(--curve);
+  }
+  .picker-btn:hover { background: var(--card); color: var(--text); }
+  .picker-btn[aria-expanded="true"] { background: var(--card); color: var(--text); }
+
+  .picker {
+    position: absolute; bottom: calc(100% + 12px); inset-inline-start: 0;
+    width: min(440px, 100%); z-index: 20; padding: 18px;
+    border: 1px solid var(--hair-strong); border-radius: var(--r-sheet);
+    background: var(--panel); display: grid; gap: 16px;
+  }
+  .picker[hidden] { display: none; }
+  .pick-group { display: grid; gap: 9px; }
+  .pick-group[hidden] { display: none; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .opt {
+    padding: 7px 12px; border-radius: var(--r-control);
+    border: 1px solid var(--hair-strong); background: var(--card);
+    font-size: 12.5px; color: var(--faint);
+    transition: background var(--fast) var(--curve), border-color var(--fast) var(--curve), color var(--fast) var(--curve);
+  }
+  .opt:hover { border-color: var(--edge); color: var(--text); }
+  .opt[aria-pressed="true"] { background: var(--raise); border-color: var(--focus); color: var(--text); }
+  .opt .hint { color: var(--ghost); }
+  .composer input {
+    flex: 1; min-width: 0; border: 0; background: none; outline: none;
+    font-size: 15px; user-select: text;
+  }
+  .composer input::placeholder { color: var(--ghost); }
+  .composer input:disabled { color: var(--ghost); }
+  .composer .under {
+    margin-top: 10px; padding: 0; display: flex; justify-content: space-between; gap: 12px;
+    font-family: var(--ui); font-size: 11px; line-height: 16px; font-weight: 600;
+    color: var(--ghost); text-transform: uppercase; letter-spacing: .08em;
+  }
+  .composer .under span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .composer .under .saved { color: var(--green); }
+
+  .code {
+    background: var(--panel); border-left: 1px solid var(--hair);
+    display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; overflow: hidden;
+  }
+  .code-head {
+    display: flex; align-items: center; gap: 12px; padding: 0 16px;
+    height: 48px; border-bottom: 1px solid var(--hair);
+  }
+  .code-head .icon-btn { margin-left: auto; }
+  .code-head .icon-btn + .icon-btn { margin-left: 0; }
+  .code-head .where {
+    font-family: var(--mono); font-size: 12px; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left;
+  }
+  .code-head .marks { font-family: var(--mono); font-size: 12px; display: flex; gap: 10px; flex: none; }
+  .code-head .marks .plus { color: var(--green); }
+  .code-head .marks .minus { color: var(--red); }
+
+  .code-body { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 0; }
+  .code-body[data-tree="hidden"] { grid-template-columns: 0 minmax(0, 1fr); }
+
+  .tree { border-right: 1px solid var(--hair); display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; overflow: hidden; }
+  .tree .filter { padding: 12px; }
+  .tree .filter input { width: 100%; }
+  .filelist { overflow: auto; min-height: 0; padding: 0 8px 16px; display: flex; flex-direction: column; gap: 1px; }
+  .filerow {
+    position: relative; text-align: left; padding: 7px 12px; border-radius: var(--r-control);
+    display: flex; align-items: baseline; gap: 10px;
+    font-family: var(--mono); font-size: 12px; color: var(--faint);
+    transition: background var(--fast) var(--curve), color var(--fast) var(--curve);
+  }
+  .filerow:hover { background: var(--card); color: var(--text); }
+  .filerow[aria-current="true"] { background: var(--raise); color: var(--text); }
+  .filerow[aria-current="true"]::before {
+    content: ''; position: absolute; left: 0; top: 7px; bottom: 7px;
+    width: 2px; border-radius: 1px; background: var(--focus);
+  }
+  .filerow .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  .filerow .n { margin-left: auto; color: var(--ghost); flex: none; }
+  .filerow[data-touched="true"] .n { color: var(--green); }
+
+  .source { overflow: auto; min-height: 0; padding: 12px 0 28px; user-select: text; background: var(--ground); }
+  .source .line { display: flex; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; white-space: pre; }
+  .source .line .num {
+    width: 56px; flex: none; text-align: right; padding-right: 16px;
+    color: var(--ghost); user-select: none; border-right: 1px solid transparent;
+  }
+  .source .line .src { padding: 0 20px 0 14px; min-width: 0; color: var(--dim); }
+  .source .line[data-touched="add"] { background: color-mix(in srgb, var(--green) 10%, transparent); }
+  .source .line[data-touched="add"] .num { border-right-color: var(--green); color: var(--green); }
+  .source .empty { padding: 16px 20px; font-family: var(--mono); font-size: 12px; color: var(--ghost); }
+
+  .tok-key { color: var(--sens-info); }
+  .tok-str { color: var(--sens-alloy-300); }
+  .tok-num { color: var(--sens-alloy-300); }
+  .tok-com { color: var(--ghost); font-style: italic; }
+  .tok-fn { color: var(--text); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; }
+    .composer .box[data-busy="true"]::after { animation: none; background: var(--focus); opacity: .5; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+        <defs><clipPath id="sens-brand-body"><rect width="48" height="48" rx="11"/></clipPath></defs>
+        <g clip-path="url(#sens-brand-body)">
+          <rect width="48" height="48" fill="var(--sens-carbon-800)"/>
+          <path d="M48 13C41 13 35 8.5 29 8.5C21 8.5 13.5 13 13.5 18.5C13.5 23 19 21.8 24 24C29 26.2 34.5 25 34.5 29.5C34.5 35 27 39.5 19 39.5C13 39.5 7 35 0 35" fill="none" stroke="var(--sens-signal-500)" stroke-width="4.6" stroke-linecap="round"/>
+        </g>
+      </svg>
+      <b>sens</b>
+    </div>
+
+    <input class="field" id="command" placeholder="mi-cli --flag" autocomplete="off" spellcheck="false" hidden>
+    <input class="field" id="key" type="password" placeholder="clave Anthropic" autocomplete="off" spellcheck="false">
+
+    <div class="health" id="health" data-fresh="none">
+      <span><span class="pip"></span><span id="index-state">sin índice</span></span>
+      <span>sello <b id="seal">—</b></span>
+      <button class="icon-btn" id="toggle-files" title="Ficheros del proyecto">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 4h9l5 5v11H5z"/><path d="M14 4v5h5"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="win" id="win" data-max="false">
+      <button id="win-min" title="Minimizar" aria-label="Minimizar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+      <button id="win-max" title="Maximizar" aria-label="Maximizar">
+        <span class="grow"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></span>
+        <span class="restore"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="12" height="12" rx="2"/><path d="M15 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h4"/></svg></span>
+      </button>
+      <button class="shut" id="win-close" title="Cerrar" aria-label="Cerrar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+  </header>
+
+  <div class="body" id="body" data-code="closed">
+    <nav class="rail">
+      <div class="rail-head">
+        <span class="label">Sesiones</span>
+        <button class="icon-btn" id="new-session" title="Sesión nueva">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </button>
+      </div>
+      <div class="sessions" id="sessions"><p class="none">Elige una carpeta.</p></div>
+    </nav>
+
+    <section class="chat">
+      <div class="thread" id="thread">
+        <div class="thread-inner" id="thread-inner"></div>
+      </div>
+      <div class="composer">
+        <div class="composer-inner">
+          <div class="picker" id="picker" hidden>
+            <div class="pick-group" id="group-provider">
+              <span class="label">Proveedor</span>
+              <div class="opts" id="opt-provider"></div>
+            </div>
+            <div class="pick-group" id="group-model">
+              <span class="label">Modelo</span>
+              <div class="opts" id="opt-model"></div>
+            </div>
+            <div class="pick-group" id="group-level">
+              <span class="label">Razonamiento</span>
+              <div class="opts" id="opt-level"></div>
+            </div>
+          </div>
+          <div class="workspace">
+            <button class="chipbtn" id="folder" title="Elegir carpeta de trabajo">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+              </svg>
+              <span id="root">Elegir carpeta…</span>
+            </button>
+            <button class="chipbtn" id="branch" aria-haspopup="true" aria-expanded="false" hidden>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
+              </svg>
+              <span id="branch-name">—</span>
+              <span class="dirty" id="dirty" hidden></span>
+            </button>
+            <div class="sheet" id="branches" hidden>
+              <div id="branch-here"></div>
+              <div class="seek">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+                </svg>
+                <input class="field" id="branch-filter" placeholder="Buscar ramas…" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="rows" id="branch-rows"></div>
+            </div>
+          </div>
+          <div class="clips" id="clips" hidden></div>
+          <div class="box">
+            <button class="round" id="attach" title="Adjuntar ficheros" aria-label="Adjuntar ficheros"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5 12.2 19.3a4.5 4.5 0 0 1-6.4-6.4l7.8-7.8a3 3 0 0 1 4.3 4.3l-7.8 7.8a1.5 1.5 0 0 1-2.2-2.1l7.2-7.2"/></svg></button>
+            <button class="round" id="dictate" title="Dictar" aria-label="Dictar" aria-pressed="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+            <input id="task" placeholder="Dime qué hacer…" autocomplete="off" disabled>
+            <button class="round send" id="send" title="Enviar" aria-label="Enviar" disabled>
+              <span class="go"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V6M6 12l6-6 6 6"/></svg></span><span class="halt"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg></span>
+            </button>
+          </div>
+          <div class="under">
+            <button class="picker-btn" id="pick" aria-haspopup="true" aria-expanded="false">
+              <span id="crew">modelo</span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <span class="saved" id="saved"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="code" id="code">
+      <div class="code-head">
+        <span class="where" id="where">Ningún fichero abierto</span>
+        <span class="marks" id="marks"></span>
+        <button class="icon-btn" id="toggle-tree" title="Árbol de ficheros" aria-pressed="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 6h6M4 12h16M4 18h10"/>
+          </svg>
+        </button>
+        <button class="icon-btn" id="close-code" title="Cerrar">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="code-body" id="code-body" data-tree="shown">
+        <div class="tree">
+          <div class="filter"><input class="field" id="filter" placeholder="filtrar…" autocomplete="off" spellcheck="false"></div>
+          <div class="filelist" id="filelist"><p class="none">Sin carpeta.</p></div>
+        </div>
+        <div class="source" id="source"><p class="empty">Elige un fichero.</p></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+  const invoke = window.__TAURI__.core.invoke;
+  const listen = window.__TAURI__.event.listen;
+  const dialog = window.__TAURI__.dialog;
+  const frame = window.__TAURI__.window.getCurrentWindow();
+
+  const DIFF_PREVIEW = 14;
+
+  const body = document.getElementById("body");
+  const thread = document.getElementById("thread");
+  const inner = document.getElementById("thread-inner");
+  const taskInput = document.getElementById("task");
+  const keyInput = document.getElementById("key");
+  const commandInput = document.getElementById("command");
+  const rootLabel = document.getElementById("root");
+  const folderBtn = document.getElementById("folder");
+  const indexState = document.getElementById("index-state");
+  const sealLabel = document.getElementById("seal");
+  const health = document.getElementById("health");
+  const sessionList = document.getElementById("sessions");
+  const fileList = document.getElementById("filelist");
+  const where = document.getElementById("where");
+  const marks = document.getElementById("marks");
+  const sourcePane = document.getElementById("source");
+  const codeBody = document.getElementById("code-body");
+  const filterInput = document.getElementById("filter");
+  const crewLabel = document.getElementById("crew");
+  const savedLabel = document.getElementById("saved");
+  const composerBox = document.querySelector(".composer .box");
+  const clipRow = document.getElementById("clips");
+  const sendBtn = document.getElementById("send");
+  const dictateBtn = document.getElementById("dictate");
+  const attachBtn = document.getElementById("attach");
+  const pickBtn = document.getElementById("pick");
+  const picker = document.getElementById("picker");
+  const branchBtn = document.getElementById("branch");
+  const branchLabel = document.getElementById("branch-name");
+  const branchDot = document.getElementById("dirty");
+  const branchPanel = document.getElementById("branches");
+  const branchHere = document.getElementById("branch-here");
+  const branchRows = document.getElementById("branch-rows");
+  const branchFilter = document.getElementById("branch-filter");
+
+  let root = "";
+  let repo = null;
+  let current = "";
+  let saved = 0;
+  let busy = false;
+  let stopping = false;
+  let files = [];
+  let opened = "";
+  const touched = new Map();
+
+  const el = (tag, className, value) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (value !== undefined) node.textContent = value;
+    return node;
+  };
+
+  const signed = (n) => `${n >= 0 ? "+" : ""}${n}`;
+
+  const stem = (path) => path.split(/[/\\]/).filter(Boolean).pop() || path;
+
+  function place(node) {
+    inner.append(node);
+    thread.scrollTop = thread.scrollHeight;
+    return node;
+  }
+
+  function turn(who, value, mine) {
+    const node = el("div", mine ? "turn you" : "turn");
+    node.append(el("div", "who", who), el("div", "body-text", value));
+    return place(node);
+  }
+
+  function tick(parts, tone) {
+    const node = el("div", tone ? `tick ${tone}` : "tick");
+    node.append(el("span", "dot"));
+    const line = el("span");
+    for (const part of [].concat(parts)) {
+      line.append(typeof part === "string" ? document.createTextNode(part) : part);
+    }
+    node.append(line);
+    return place(node);
+  }
+
+  const bold = (value) => el("b", null, value);
+
+  function verdictCard(outcome) {
+    const stopped = outcome.rulings.filter((r) => r.verdict === "stop");
+    const card = el("div", "card verdict");
+    card.dataset.v = outcome.applies ? "clear" : "stop";
+
+    const top = el("div", "top");
+    top.append(
+      el("div", "kicker", outcome.applies
+        ? `los ${outcome.rulings.length} gates pasan · ${signed(outcome.netLines)} líneas`
+        : `${stopped[0].gate} · ${stopped[0].rule} · regla compilada`),
+      el("div", "said", outcome.applies ? "Puedes escribirlo." : stopped[0].said),
+    );
+    card.append(top);
+
+    const gates = el("div", "gates");
+    for (const ruling of outcome.rulings) {
+      const chip = el("span", "gate", `${ruling.gate} ${ruling.rule}`);
+      chip.dataset.v = ruling.verdict;
+      chip.title = ruling.said;
+      gates.append(chip);
+    }
+    card.append(gates);
+
+    const evidence = stopped.flatMap((r) => r.evidence);
+    if (evidence.length) {
+      const proof = el("div", "proof");
+      for (const item of evidence) proof.append(el("div", null, item));
+      card.append(proof);
+    }
+    return place(card);
+  }
+
+  function diffCard(file) {
+    const card = el("div", "card diff");
+
+    const top = el("div", "top");
+    const tally = el("div", "tally");
+    tally.append(
+      el("span", "plus", `+${file.added.length}`),
+      el("span", "minus", `−${file.removed.length}`),
+    );
+    top.append(el("span", "file", file.path), tally);
+    card.append(top);
+
+    const rows = [
+      ...file.removed.map((line) => ({ line, kind: "del" })),
+      ...file.added.map((line) => ({ line, kind: "add" })),
+    ].sort((a, b) => a.line.line - b.line.line);
+
+    const lines = el("div", "lines");
+    const draw = (from, to) => {
+      for (const { line, kind } of rows.slice(from, to)) {
+        const row = el("div", `row ${kind}`);
+        row.append(
+          el("span", "num", String(line.line)),
+          el("span", "mark", kind === "add" ? "+" : "−"),
+          el("span", "src", line.text),
+        );
+        lines.append(row);
+      }
+    };
+
+    draw(0, DIFF_PREVIEW);
+    card.append(lines);
+
+    if (rows.length > DIFF_PREVIEW) {
+      const more = el("button", "more", `mostrar ${rows.length - DIFF_PREVIEW} líneas más`);
+      more.addEventListener("click", () => {
+        draw(DIFF_PREVIEW, rows.length);
+        more.remove();
+      });
+      card.append(more);
+    }
+    return place(card);
+  }
+
+  function renderStep(step) {
+    switch (step.step) {
+      case "oriented":
+        tick(["leí el mapa · ", bold(`${step.symbols} símbolos`), `, ${step.files} ficheros · ningún fichero abierto entero`]);
+        break;
+      case "proposed":
+        tick([`${step.model} propone `, bold(step.paths.join(", ")), step.note ? ` · ${step.note}` : ""]);
+        break;
+      case "judged":
+        verdictCard(step.outcome);
+        break;
+      case "proven": {
+        const verdict = step.ruling.verdict;
+        if (verdict === "pass") { tick(["G4 · ", bold(step.ruling.said)]); break; }
+        if (verdict === "abstain") { tick([`G4 · ${step.ruling.said}`], "warn"); break; }
+        verdictCard({
+          applies: false,
+          netLines: 0,
+          rulings: [step.ruling],
+        });
+        break;
+      }
+      case "repairing":
+        tick([bold(step.gate), ` lo detuvo · rehaciendo (intento ${step.attempt})`], "warn");
+        break;
+      case "dieted":
+        tick(["segunda pasada · ", bold(`${signed(step.from)} → ${signed(step.to)}`), " líneas"]);
+        break;
+      case "dietRejected":
+        tick([step.reason], "warn");
+        break;
+      case "applied":
+        saved += step.net;
+        savedLabel.textContent = `${signed(saved)} líneas en esta sesión`;
+        if (step.files.length > 1) {
+          tick([bold(`${step.files.length} ficheros`), ` · ${signed(step.net)} líneas netas`]);
+        }
+        for (const file of step.files) diffCard(file);
+        remember(step.files);
+        break;
+      case "reindexed":
+        tick(step.millis === 0
+          ? ["índice al día · ", bold("ya lo estaba")]
+          : ["índice al día · ", bold(`${step.millis} ms`), step.delegated ? " · vía Node" : " · nativo"]);
+        break;
+      case "reindexFailed":
+        tick([step.reason], "warn");
+        break;
+      case "gaveUp":
+        turn("Motor · me planto", step.reason);
+        break;
+    }
+  }
+
+  const when = (millis) => new Date(millis).toLocaleString("es", {
+    day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+  });
+
+  async function paintSessions() {
+    const listed = await invoke("sessions", { root });
+    sessionList.replaceChildren();
+    if (!listed.length) {
+      sessionList.append(el("p", "none", "Todavía no hay sesiones."));
+      return;
+    }
+    for (const summary of listed) {
+      const card = el("button", "session");
+      card.setAttribute("aria-current", String(summary.id === current));
+      const meta = el("div", "meta");
+      meta.append(el("span", null, when(summary.startedAt)));
+      if (summary.stops) meta.append(el("span", "hit", `${summary.stops} paradas`));
+      if (summary.netLines) meta.append(el("span", "cut", `${signed(summary.netLines)}`));
+      card.append(el("div", "name", summary.title), meta);
+      card.addEventListener("click", () => load(summary.id));
+      sessionList.append(card);
+    }
+  }
+
+  function paintFiles() {
+    const needle = filterInput.value.trim().toLowerCase();
+    const shown = needle ? files.filter((f) => f.path.toLowerCase().includes(needle)) : files;
+    fileList.replaceChildren();
+
+    if (!shown.length) {
+      fileList.append(el("p", "none", root ? "Nada coincide." : "Sin carpeta."));
+      return;
+    }
+    for (const file of shown.slice(0, 400)) {
+      const row = el("button", "filerow");
+      row.append(el("span", "path", file.path), el("span", "n", String(file.symbols)));
+      row.title = file.path;
+      if (file.path === opened) row.setAttribute("aria-current", "true");
+      if (touched.has(file.path)) row.dataset.touched = "true";
+      row.addEventListener("click", () => view(file.path));
+      fileList.append(row);
+    }
+  }
+
+  const KEYWORDS = new Set(["abstract","as","async","await","break","case","catch","class","const","continue","crate","def","default","delete","do","elif","else","enum","export","extends","extern","false","fn","for","from","func","function","go","if","impl","implements","import","in","instanceof","interface","lambda","let","loop","match","mod","mut","new","nil","null","of","package","pass","pub","raise","return","self","static","struct","super","switch","this","throw","trait","true","try","type","typeof","undefined","use","var","void","where","while","with","yield"]);
+
+  const TOKENS = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(\/\/.*$)|(\b\d[\w.]*\b)|([A-Za-z_$][\w$]*)(?=\s*\()|([A-Za-z_$][\w$]*)/gm;
+
+  function painted(text, hash) {
+    const out = document.createDocumentFragment();
+    if (hash && /^\s*#/.test(text)) {
+      out.append(el("span", "tok-com", text));
+      return out;
+    }
+    let last = 0;
+    for (const found of text.matchAll(TOKENS)) {
+      const [all, str, com, num, call] = found;
+      if (found.index > last) out.append(document.createTextNode(text.slice(last, found.index)));
+      if (str) out.append(el("span", "tok-str", all));
+      else if (com) out.append(el("span", "tok-com", all));
+      else if (num) out.append(el("span", "tok-num", all));
+      else if (KEYWORDS.has(all)) out.append(el("span", "tok-key", all));
+      else if (call) out.append(el("span", "tok-fn", all));
+      else out.append(document.createTextNode(all));
+      last = found.index + all.length;
+    }
+    if (last < text.length) out.append(document.createTextNode(text.slice(last)));
+    return out;
+  }
+
+  async function view(path) {
+    let text;
+    try {
+      text = await invoke("open_file", { root, path });
+    } catch (reason) {
+      text = String(reason);
+    }
+
+    opened = path;
+    where.textContent = path;
+    where.title = path;
+
+    const change = touched.get(path);
+    marks.replaceChildren();
+    if (change) {
+      marks.append(el("span", "plus", `+${change.plus}`), el("span", "minus", `−${change.minus}`));
+    }
+
+    const hash = /\.(py|rb|sh|toml|ya?ml)$/i.test(path);
+    const drawn = document.createDocumentFragment();
+    text.split("\n").forEach((line, i) => {
+      const row = el("div", "line");
+      if (change && change.add.has(i + 1)) row.dataset.touched = "add";
+      const src = el("span", "src");
+      src.append(painted(line, hash));
+      row.append(el("span", "num", String(i + 1)), src);
+      drawn.append(row);
+    });
+
+    sourcePane.replaceChildren(drawn);
+    sourcePane.scrollTop = 0;
+    sourcePane.querySelector('[data-touched="add"]')?.scrollIntoView({ block: "center" });
+    paintFiles();
+  }
+
+  function remember(changed) {
+    for (const file of changed) {
+      touched.set(file.path, {
+        add: new Set(file.added.map((line) => line.line)),
+        plus: file.added.length,
+        minus: file.removed.length,
+      });
+    }
+    if (!changed.length) return;
+    body.dataset.code = "open";
+    view(changed[0].path);
+  }
+
+  async function loadFiles() {
+    files = await invoke("tree", { root });
+    paintFiles();
+  }
+
+  async function load(id) {
+    current = id;
+    saved = 0;
+    savedLabel.textContent = "";
+    inner.replaceChildren();
+
+    for (const entry of await invoke("replay", { root, id })) {
+      if (entry.kind === "task") turn("Tú", entry.text, true);
+      else if (entry.kind === "beat") renderStep(entry.step);
+      else if (entry.kind === "failed") turn("Motor", entry.reason);
+    }
+    if (!inner.childElementCount) {
+      turn("Motor", "Sesión nueva. El modelo propone, yo decido. Dime qué hacer.");
+    }
+    await paintSessions();
+  }
+
+  async function refresh() {
+    if (!root) return;
+    const status = await invoke("status", { root });
+    sealLabel.textContent = status.seal;
+    if (!status.indexed) {
+      health.dataset.fresh = "none";
+      indexState.textContent = "sin índice";
+      return;
+    }
+    health.dataset.fresh = String(status.fresh);
+    indexState.textContent = status.fresh
+      ? `${status.symbols} símbolos · ${status.files} ficheros`
+      : `índice obsoleto · ${status.symbols} símbolos`;
+  }
+
+  function idle(on) {
+    busy = !on;
+    stopping = false;
+    composerBox.dataset.busy = String(busy);
+    composerBox.dataset.stopping = "false";
+    taskInput.disabled = !on || !root || !current;
+    if (busy) reseedLap();
+    syncSend();
+  }
+
+  async function freshSession() {
+    current = await invoke("open_session", { root });
+    await load(current);
+    idle(true);
+    taskInput.focus();
+  }
+
+  const RECALL = "sens.choice";
+
+  let catalog = [];
+  let attached = [];
+  const choice = { provider: "", model: "", level: "", key: "", command: "" };
+
+  const chosenProvider = () =>
+    catalog.find((entry) => entry.id === choice.provider) || catalog[0];
+
+  const labelOf = (list, id, fallback) =>
+    (list.find((entry) => entry.id === id) || { label: fallback }).label;
+
+  const weigh = (bytes) =>
+    bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 1024)} KB`;
+
+  function option(label, hint, active, pick) {
+    const node = el("button", "opt");
+    node.append(document.createTextNode(label));
+    if (hint) node.append(el("span", "hint", ` · ${hint}`));
+    node.setAttribute("aria-pressed", String(active));
+    node.addEventListener("click", pick);
+    return node;
+  }
+
+  function paintPicker() {
+    const provider = chosenProvider();
+    if (!provider) return;
+
+    document.getElementById("opt-provider").replaceChildren(
+      ...catalog.map((entry) =>
+        option(entry.label, entry.hint, entry.id === provider.id, () => {
+          choice.provider = entry.id;
+          choice.model = entry.models.length ? entry.models[0].id : "";
+          choice.level = entry.levels[0].id;
+          syncChoice();
+        }),
+      ),
+    );
+
+    document.getElementById("opt-model").replaceChildren(
+      ...provider.models.map((card) =>
+        option(card.label, null, card.id === choice.model, () => {
+          choice.model = card.id;
+          syncChoice();
+        }),
+      ),
+    );
+    document.getElementById("group-model").hidden = provider.models.length < 2;
+
+    document.getElementById("opt-level").replaceChildren(
+      ...provider.levels.map((level) =>
+        option(level.label, null, level.id === choice.level, () => {
+          choice.level = level.id;
+          syncChoice();
+        }),
+      ),
+    );
+    document.getElementById("group-level").hidden = provider.levels.length < 2;
+  }
+
+  function syncChoice() {
+    const provider = chosenProvider();
+    if (!provider) return;
+
+    keyInput.hidden = !provider.needsKey;
+    commandInput.hidden = !provider.needsCommand;
+    choice.key = keyInput.value;
+    choice.command = commandInput.value;
+
+    const model = provider.needsCommand
+      ? commandInput.value.trim() || "sin comando"
+      : labelOf(provider.models, choice.model, provider.label);
+    crewLabel.textContent =
+      provider.levels.length > 1
+        ? `${model} · ${labelOf(provider.levels, choice.level, "directo")}`
+        : model;
+
+    try {
+      localStorage.setItem(
+        RECALL,
+        JSON.stringify({
+          provider: choice.provider,
+          model: choice.model,
+          level: choice.level,
+        }),
+      );
+    } catch (ignored) {}
+
+    paintPicker();
+  }
+
+  function recalled() {
+    try {
+      return JSON.parse(localStorage.getItem(RECALL) || "{}");
+    } catch (ignored) {
+      return {};
+    }
+  }
+
+  async function loadCatalog() {
+    catalog = await invoke("providers");
+    if (!catalog.length) return;
+
+    const saved = recalled();
+    const provider =
+      catalog.find((entry) => entry.id === saved.provider) || catalog[0];
+    const knows = (list, id) => list.some((entry) => entry.id === id);
+
+    choice.provider = provider.id;
+    choice.model = knows(provider.models, saved.model)
+      ? saved.model
+      : provider.models.length ? provider.models[0].id : "";
+    choice.level = knows(provider.levels, saved.level)
+      ? saved.level
+      : provider.levels[0].id;
+    syncChoice();
+  }
+
+  function paintClips() {
+    clipRow.hidden = attached.length === 0;
+    clipRow.replaceChildren(
+      ...attached.map((file) => {
+        const node = el("div", "clip");
+        node.append(el("span", null, file.path), el("b", null, weigh(file.bytes)));
+        const drop = el("button");
+        drop.title = `Quitar ${file.path}`;
+        drop.setAttribute("aria-label", drop.title);
+        drop.innerHTML =
+          '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+        drop.addEventListener("click", () => {
+          attached = attached.filter((other) => other.path !== file.path);
+          paintClips();
+        });
+        node.append(drop);
+        return node;
+      }),
+    );
+  }
+
+  function paintChip() {
+    branchBtn.hidden = !repo;
+    if (!repo) return;
+    branchLabel.textContent = repo.branch;
+    branchDot.hidden = repo.dirty === 0;
+    const pending = repo.dirty === 1 ? "1 fichero sin confirmar" : `${repo.dirty} ficheros sin confirmar`;
+    branchBtn.title = [
+      repo.detached ? `HEAD suelto en ${repo.branch}` : repo.branch,
+      repo.dirty ? pending : "",
+    ].filter(Boolean).join(" · ");
+  }
+
+  function branchRow(name, here) {
+    const row = el("button", "branch-row");
+    row.setAttribute("aria-current", String(here));
+    row.title = name;
+    row.append(el("span", "name", name));
+    const tip = el("span", "tip");
+    tip.innerHTML =
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+    row.append(tip);
+    row.addEventListener("click", () => (here ? branchSheet.shut() : switchTo(name)));
+    return row;
+  }
+
+  function paintBranches() {
+    if (!repo) return;
+    const needle = branchFilter.value.trim().toLowerCase();
+    const others = repo.branches.filter((name) => name !== repo.branch);
+    const shown = needle ? others.filter((name) => name.toLowerCase().includes(needle)) : others;
+
+    branchHere.replaceChildren(branchRow(repo.branch, true));
+    branchRows.replaceChildren(...shown.map((name) => branchRow(name, false)));
+    if (!shown.length) {
+      branchRows.append(el("p", "none", needle ? "Ninguna rama coincide." : "No hay más ramas."));
+    }
+  }
+
+  async function readRepo() {
+    repo = root ? await invoke("repo", { root }) : null;
+    paintChip();
+    if (!branchPanel.hidden) paintBranches();
+  }
+
+  async function switchTo(name) {
+    branchSheet.shut();
+    try {
+      repo = await invoke("checkout", { root, branch: name });
+    } catch (reason) {
+      tick([String(reason)], "warn");
+      return;
+    }
+    paintChip();
+    tick(["rama · ", bold(repo.branch)]);
+    touched.clear();
+    await refresh();
+    await loadFiles();
+    if (opened) await view(opened);
+  }
+
+  const canSend = () => Boolean(root && current && taskInput.value.trim());
+
+  function syncSend() {
+    sendBtn.disabled = busy ? stopping : !canSend();
+    const label = busy
+      ? (stopping ? "Parando…" : "Parar tras el paso en curso")
+      : "Enviar";
+    sendBtn.title = label;
+    sendBtn.setAttribute("aria-label", label);
+    attachBtn.disabled = !root || busy;
+    folderBtn.disabled = busy;
+    branchBtn.disabled = busy;
+  }
+
+  const HARMONICS = [1, 2, 3];
+  const SWELL = [0.04, 0.12];
+  const SAMPLES = 60;
+  const LAP = [2800, 4000];
+
+  const between = ([low, high]) => low + Math.random() * (high - low);
+
+  function lapSpeed() {
+    const waves = HARMONICS.map((turns) => ({
+      turns,
+      swell: between(SWELL) / turns,
+      phase: Math.random() * Math.PI * 2,
+    }));
+
+    return (at) =>
+      waves.reduce(
+        (speed, wave) =>
+          speed +
+          wave.swell *
+            (Math.sin(2 * Math.PI * wave.turns * at + wave.phase) -
+              Math.sin(wave.phase)),
+        1,
+      );
+  }
+
+  function lapKeyframes(name) {
+    const speed = lapSpeed();
+    const walked = [0];
+    for (let step = 1; step <= SAMPLES; step++) {
+      walked.push(walked[step - 1] + speed((step - 0.5) / SAMPLES));
+    }
+
+    const lap = walked[SAMPLES];
+    const rows = walked.map(
+      (far, step) =>
+        `${((step / SAMPLES) * 100).toFixed(2)}% { --spin: ${((far / lap) * 360).toFixed(2)}deg; }`,
+    );
+
+    return `@keyframes ${name} { ${rows.join(" ")} }`;
+  }
+
+  const laps = document.createElement("style");
+  document.head.append(laps);
+  let lapTurn = 0;
+
+  function reseedLap() {
+    lapTurn = 1 - lapTurn;
+    const name = `orbit-${lapTurn}`;
+    laps.textContent = lapKeyframes(name);
+    composerBox.style.setProperty("--lap-name", name);
+    composerBox.style.setProperty("--lap-time", `${Math.round(between(LAP))}ms`);
+  }
+
+  composerBox.addEventListener("animationiteration", (event) => {
+    if (event.pseudoElement !== "::after") return;
+    reseedLap();
+  });
+
+  async function halt() {
+    if (stopping) return;
+    stopping = true;
+    composerBox.dataset.stopping = "true";
+    syncSend();
+    tick(["parando · dejo que termine el paso en curso"], "warn");
+    try {
+      await invoke("stop");
+    } catch (reason) {
+      tick([String(reason)], "warn");
+      stopping = false;
+      composerBox.dataset.stopping = "false";
+      syncSend();
+    }
+  }
+
+  async function send() {
+    if (busy || !canSend()) return;
+    const task = taskInput.value.trim();
+    const carried = attached.map((file) => file.path);
+    taskInput.value = "";
+    attached = [];
+    paintClips();
+    turn("Tú", task, true);
+    if (carried.length) tick(["adjuntos · ", bold(carried.join(", "))]);
+    idle(false);
+
+    try {
+      await invoke("work", {
+        root,
+        task,
+        choice,
+        attachments: carried,
+        sessionId: current,
+      });
+    } catch (reason) {
+      turn("Motor", String(reason));
+      idle(true);
+    }
+  }
+
+  folderBtn.addEventListener("click", async () => {
+    const picked = await dialog.open({
+      directory: true,
+      title: "Elige la carpeta de trabajo",
+      defaultPath: root || undefined,
+    });
+    if (!picked) return;
+    root = picked;
+    rootLabel.textContent = stem(picked);
+    folderBtn.title = picked;
+    touched.clear();
+    opened = "";
+    where.textContent = "Ningún fichero abierto";
+    marks.replaceChildren();
+    sourcePane.replaceChildren(el("p", "empty", "Elige un fichero."));
+    await readRepo();
+    await refresh();
+    await loadFiles();
+    await freshSession();
+  });
+
+  document.getElementById("new-session").addEventListener("click", () => {
+    if (root && !busy) freshSession();
+  });
+
+  document.getElementById("toggle-files").addEventListener("click", () => {
+    body.dataset.code = body.dataset.code === "open" ? "closed" : "open";
+  });
+  document.getElementById("close-code").addEventListener("click", () => {
+    body.dataset.code = "closed";
+  });
+  document.getElementById("toggle-tree").addEventListener("click", (event) => {
+    const shown = codeBody.dataset.tree !== "hidden";
+    codeBody.dataset.tree = shown ? "hidden" : "shown";
+    event.currentTarget.setAttribute("aria-pressed", String(!shown));
+  });
+
+  filterInput.addEventListener("input", paintFiles);
+  commandInput.addEventListener("input", syncChoice);
+  keyInput.addEventListener("input", syncChoice);
+
+  const sheets = [];
+
+  function popover(sheet, anchor, before) {
+    const one = {
+      sheet,
+      anchor,
+      shut() {
+        sheet.hidden = true;
+        anchor.setAttribute("aria-expanded", "false");
+      },
+      open() {
+        for (const other of sheets) other.shut();
+        if (before) before();
+        sheet.hidden = false;
+        anchor.setAttribute("aria-expanded", "true");
+        sheet.querySelector("input")?.focus();
+      },
+    };
+    anchor.addEventListener("click", () => (sheet.hidden ? one.open() : one.shut()));
+    sheets.push(one);
+    return one;
+  }
+
+  popover(picker, pickBtn);
+  const branchSheet = popover(branchPanel, branchBtn, () => {
+    branchFilter.value = "";
+    paintBranches();
+  });
+
+  branchFilter.addEventListener("input", paintBranches);
+
+  document.addEventListener("pointerdown", (event) => {
+    for (const one of sheets) {
+      if (one.sheet.hidden || one.sheet.contains(event.target) || one.anchor.contains(event.target)) continue;
+      one.shut();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    for (const one of sheets) {
+      if (one.sheet.hidden) continue;
+      one.shut();
+      one.anchor.focus();
+    }
+  });
+
+  attachBtn.addEventListener("click", async () => {
+    if (!root) return;
+    const picked = await dialog.open({
+      multiple: true,
+      title: "Adjuntar ficheros de la carpeta",
+      defaultPath: root,
+    });
+    if (!picked) return;
+
+    const asked = [].concat(picked);
+    const found = await invoke("attach", { root, paths: asked });
+    const seen = new Set(attached.map((file) => file.path));
+    attached = attached.concat(found.filter((file) => !seen.has(file.path)));
+    paintClips();
+
+    if (found.length < asked.length) {
+      tick([`${asked.length - found.length} fichero(s) fuera de la carpeta · no los adjunto`], "warn");
+    }
+  });
+
+  const Dictation = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let listening = null;
+
+  if (!Dictation) {
+    dictateBtn.disabled = true;
+    dictateBtn.title = "Este sistema no trae dictado en el WebView";
+    dictateBtn.setAttribute("aria-label", dictateBtn.title);
+  }
+
+  function dictate() {
+    if (listening) {
+      listening.stop();
+      return;
+    }
+    const heard = new Dictation();
+    heard.lang = "es-ES";
+    heard.continuous = true;
+    heard.interimResults = true;
+
+    const before = taskInput.value.trim();
+    heard.addEventListener("result", (event) => {
+      let said = "";
+      for (const result of event.results) said += result[0].transcript;
+      taskInput.value = [before, said.trim()].filter(Boolean).join(" ");
+      syncSend();
+    });
+
+    const done = () => {
+      listening = null;
+      dictateBtn.setAttribute("aria-pressed", "false");
+      taskInput.focus();
+    };
+    heard.addEventListener("end", done);
+    heard.addEventListener("error", done);
+
+    heard.start();
+    listening = heard;
+    dictateBtn.setAttribute("aria-pressed", "true");
+  }
+
+  dictateBtn.addEventListener("click", () => Dictation && dictate());
+  sendBtn.addEventListener("click", () => (busy ? halt() : send()));
+  taskInput.addEventListener("input", syncSend);
+
+  taskInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    send();
+  });
+
+  listen("step", ({ payload }) => renderStep(payload));
+
+  listen("done", async () => {
+    idle(true);
+    await readRepo();
+    await refresh();
+    await loadFiles();
+    await paintSessions();
+  });
+
+  listen("failed", async ({ payload }) => {
+    turn("Motor", String(payload));
+    idle(true);
+    await paintSessions();
+  });
+
+  listen("stopped", async ({ payload }) => {
+    tick([String(payload)], "warn");
+    idle(true);
+    await paintSessions();
+  });
+
+  const winBar = document.getElementById("win");
+  const growBtn = document.getElementById("win-max");
+
+  async function syncFrame() {
+    const wide = await frame.isMaximized();
+    winBar.dataset.max = String(wide);
+    const label = wide ? "Restaurar" : "Maximizar";
+    growBtn.title = label;
+    growBtn.setAttribute("aria-label", label);
+  }
+
+  document.getElementById("win-min").addEventListener("click", () => frame.minimize());
+  growBtn.addEventListener("click", async () => {
+    await frame.toggleMaximize();
+    syncFrame();
+  });
+  document.getElementById("win-close").addEventListener("click", () => frame.close());
+  frame.onResized(syncFrame);
+
+  turn("Motor", "Elige la carpeta donde vamos a trabajar.");
+  paintClips();
+  syncSend();
+  loadCatalog();
+  syncFrame();
+</script>
+</body>
+</html>

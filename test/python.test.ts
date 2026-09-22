@@ -37,7 +37,6 @@ describe("python indexer", () => {
     const index = await buildIndex(fixture);
     const user = index.symbols.find((s) => s.name === "User")!;
     const refs = index.references[user.id];
-    // `User` is imported and constructed in service.py.
     expect(refs.some((r) => r.file.endsWith("service.py"))).toBe(true);
   });
 

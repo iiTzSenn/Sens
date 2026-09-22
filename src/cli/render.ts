@@ -1,10 +1,3 @@
-// Styled, human-facing renderers for query results. The terminal twin of
-// ../format.ts: same data, but with hierarchy, glyphs and color. Everything
-// visual comes from ./ui.ts, so the look stays consistent across commands.
-//
-// These are used ONLY by the CLI. The MCP server keeps using ../format.ts so
-// the model never sees ANSI or box characters.
-
 import { INDENT, c, sym, align, truncate, rowWidth } from "./ui.js";
 import type { SymbolInfo } from "../types.js";
 import type {
@@ -20,23 +13,20 @@ const I1 = INDENT;
 const I2 = INDENT + INDENT;
 const I3 = INDENT + INDENT + INDENT;
 
-/** The declared name inside a symbol id (`file#name#line`). */
 const symbolName = (id: string): string => id.split("#")[1] ?? id;
 
 const loc = (s: { file: string; line: number }): string => `${s.file}:${s.line}`;
 
 const bulletFor = (exported: boolean): string =>
-  exported ? c.brand(sym.file) : c.meta(sym.empty);
+  exported ? c.text(sym.file) : c.meta(sym.empty);
 
 const note = (msg: string): string => I1 + c.meta(msg);
 
-/** Directory prefix of a POSIX path, or "./" for a root-level file. */
 const dirOf = (file: string): string => {
   const slash = file.lastIndexOf("/");
   return slash === -1 ? "./" : file.slice(0, slash + 1);
 };
 
-// ── map ──────────────────────────────────────────────────────────────────
 const MAX_CHILDREN = 12;
 
 export function renderMap(entries: MapEntry[]): string {
@@ -68,7 +58,6 @@ function mapMeta(e: MapEntry): string {
   return parts.join(" · ");
 }
 
-// ── find / outline / exists ────────────────────────────────────────────────
 export function renderSymbols(syms: SymbolInfo[], emptyMsg: string): string {
   if (syms.length === 0) return note(emptyMsg);
   const lines: string[] = [];
@@ -81,7 +70,6 @@ export function renderSymbols(syms: SymbolInfo[], emptyMsg: string): string {
   return lines.join("\n");
 }
 
-// ── who ────────────────────────────────────────────────────────────────────
 const MAX_INLINE_REFS = 30;
 const MAX_GROUPED_FILES = 10;
 
@@ -93,7 +81,7 @@ export function renderWhoUses(
   const lines: string[] = [];
   for (const r of results) {
     const n = r.references.length;
-    const left = `${c.brand(sym.file)} ${c.text(r.symbol.name)}`;
+    const left = `${c.focus(sym.file)} ${c.text(r.symbol.name)}`;
     const right = `${c.meta(loc(r.symbol))} ${c.meta("·")} ${c.text(String(n))} ${c.meta(n === 1 ? "uso" : "usos")}`;
     lines.push(I1 + align(left, right, rowWidth(1)));
 
@@ -105,7 +93,6 @@ export function renderWhoUses(
       continue;
     }
 
-    // Partial summary — group by file, busiest first, and say so loudly.
     const byFile = new Map<string, number>();
     for (const ref of r.references) byFile.set(ref.file, (byFile.get(ref.file) ?? 0) + 1);
     const sorted = [...byFile.entries()].sort((a, b) => b[1] - a[1]);
@@ -122,7 +109,6 @@ export function renderWhoUses(
   return lines.join("\n");
 }
 
-// ── dead-code ───────────────────────────────────────────────────────────────
 const DEAD_TIERS: { tier: DeadCodeTier; label: string }[] = [
   { tier: "high", label: "alta confianza — interno, sin referencias" },
   { tier: "medium", label: "media — isla muerta interna" },
@@ -162,7 +148,6 @@ export function renderDeadCode(report: DeadCodeReport): string {
   return lines.join("\n");
 }
 
-// ── explain ─────────────────────────────────────────────────────────────────
 export function renderExplain(results: Neighborhood[]): string {
   if (results.length === 0) return note("símbolo no encontrado");
   const lines: string[] = [];
@@ -174,7 +159,7 @@ export function renderExplain(results: Neighborhood[]): string {
     }
   };
   for (const r of results) {
-    const left = `${c.brand(sym.file)} ${c.text(r.symbol.name)}`;
+    const left = `${c.focus(sym.file)} ${c.text(r.symbol.name)}`;
     lines.push(I1 + align(left, c.meta(loc(r.symbol)), rowWidth(1)));
     block(sym.branch, "llamado por", r.callers);
     block(sym.arrow, "llama a", r.callees);
@@ -182,7 +167,6 @@ export function renderExplain(results: Neighborhood[]): string {
   return lines.join("\n");
 }
 
-// ── path ────────────────────────────────────────────────────────────────────
 export function renderPath(
   path: SymbolInfo[] | null,
   from: string,
@@ -192,15 +176,14 @@ export function renderPath(
     return note(`sin ruta de ${from} a ${to}`);
   return path
     .map((s, i) => {
-      const prefix = i === 0 ? `${c.brand(sym.file)} ` : `${I1}${c.meta(sym.arrow)} `;
+      const prefix = i === 0 ? `${c.focus(sym.file)} ` : `${I1}${c.meta(sym.arrow)} `;
       return `${I1}${prefix}${c.text(s.name)}  ${c.meta(`(${loc(s)})`)}`;
     })
     .join("\n");
 }
 
-// ── deps ────────────────────────────────────────────────────────────────────
 export function renderFileDependencies(deps: FileDependencies): string {
-  const lines: string[] = [`${I1}${c.brand(sym.file)} ${c.text(deps.file)}`];
+  const lines: string[] = [`${I1}${c.focus(sym.file)} ${c.text(deps.file)}`];
   const block = (glyph: string, title: string, files: string[]): void => {
     if (files.length === 0) {
       lines.push(`${I2}${c.meta(`${title}: (ninguno)`)}`);

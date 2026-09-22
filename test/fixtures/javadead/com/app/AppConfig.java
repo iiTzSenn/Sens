@@ -1,7 +1,5 @@
 package com.app;
 
-// @Configuration class + @Bean/@EventListener methods are all invoked
-// reflectively by the framework — none must be flagged as dead.
 @Configuration
 public class AppConfig {
     @Bean

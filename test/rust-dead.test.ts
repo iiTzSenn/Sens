@@ -39,17 +39,15 @@ describe("rust dead-code", () => {
     const cands = await candidates();
     const live = (name: string) =>
       expect(cands.find((c) => c.symbol.name === name)).toBeUndefined();
-    live("run"); // alpha::run / beta::run — called via `alpha::run()` etc.
-    live("via_use"); // reached via `use crate::alpha::via_use` + call in worker
-    live("greet"); // widgets::greet(&w)
+    live("run");
+    live("via_use");
+    live("greet");
   });
 
   it("keeps an instance method and a trait method alive", async () => {
     const cands = await candidates();
-    // Widget::new and Widget::value are called on an instance.
     expect(cands.find((c) => c.symbol.name === "Widget.new")).toBeUndefined();
     expect(cands.find((c) => c.symbol.name === "Widget.value")).toBeUndefined();
-    // Speak::speak reached only via the trait bound in greet.
     expect(cands.find((c) => c.symbol.name === "Widget.speak")).toBeUndefined();
   });
 
@@ -63,9 +61,7 @@ describe("rust dead-code", () => {
     const cands = await candidates();
     const helper = (file: string) =>
       cands.find((c) => c.symbol.name === "helper" && c.symbol.file === file);
-    // alpha::helper is used by alpha::run -> alive.
     expect(helper("alpha.rs")).toBeUndefined();
-    // beta::helper shares the name but nobody uses it -> caught as HIGH.
     expect(helper("beta.rs")?.tier).toBe("high");
   });
 });

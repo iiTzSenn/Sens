@@ -3,6 +3,7 @@ import path from "node:path";
 import type {
   FunctionDeclaration,
   MethodDeclaration,
+  Project,
   VariableDeclaration,
   Node as TsNode,
 } from "ts-morph";
@@ -14,7 +15,7 @@ import type {
   ImportEdge,
   SymbolKind,
 } from "../../types.js";
-import type { LanguageParser, IndexContribution } from "./parser.js";
+import type { BuildOptions, LanguageParser, IndexContribution } from "./parser.js";
 
 function symbolId(file: string, name: string, line: number): string {
   return `${file}#${name}#${line}`;
@@ -33,15 +34,9 @@ function varSig(v: VariableDeclaration, kind: string): string {
   return `${kind} ${v.getName()}${t ? ": " + collapse(t) : ""}`;
 }
 
-/** Parse TypeScript/JavaScript files with ts-morph (semantic references).
- * ts-morph is imported lazily so a project without any JS/TS never loads it. */
-async function build(root: string, absFiles: string[]): Promise<IndexContribution> {
-  const { Project, Node, SyntaxKind } = await import("ts-morph");
+export async function openProject(root: string, absFiles: string[]): Promise<Project> {
+  const { Project: Ctor } = await import("ts-morph");
 
-  // Load the project's tsconfig/jsconfig (if any) so its `paths`/`baseUrl` are
-  // honored — otherwise alias imports like `@/utils` don't resolve and the code
-  // they pull in looks dead. We keep `skipAddingFilesFromTsConfig` and add files
-  // ourselves; our compilerOptions override just allowJs/checkJs on top.
   const configPath = ["tsconfig.json", "jsconfig.json"]
     .map((f) => path.join(root, f))
     .find((p) => existsSync(p));
@@ -52,22 +47,51 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
     compilerOptions: { allowJs: true, checkJs: false },
   } as const;
 
-  let project;
+  let project: Project;
   try {
-    project = configPath ? new Project({ ...options, tsConfigFilePath: configPath }) : new Project(options);
+    project = configPath ? new Ctor({ ...options, tsConfigFilePath: configPath }) : new Ctor(options);
   } catch {
-    // A malformed tsconfig must never break indexing — fall back to no config.
-    project = new Project(options);
+
+    project = new Ctor(options);
   }
-  for (const f of absFiles) project.addSourceFileAtPath(f);
+  for (const f of absFiles) {
+    if (existsSync(f)) project.addSourceFileAtPath(f);
+  }
+  return project;
+}
+
+export function syncProject(project: Project, absFiles: string[]): void {
+  for (const f of absFiles) {
+    const known = project.getSourceFile(f);
+    if (!existsSync(f)) {
+      if (known) project.removeSourceFile(known);
+      continue;
+    }
+    if (known) known.refreshFromFileSystemSync();
+    else project.addSourceFileAtPath(f);
+  }
+}
+
+async function build(
+  root: string,
+  absFiles: string[],
+  opts: BuildOptions = {},
+): Promise<IndexContribution> {
+  return extract(root, await openProject(root, absFiles), opts);
+}
+
+export async function extract(
+  root: string,
+  project: Project,
+  opts: BuildOptions = {},
+): Promise<IndexContribution> {
+  const { Node, SyntaxKind } = await import("ts-morph");
 
   const symbols: SymbolInfo[] = [];
   const files: FileInfo[] = [];
   const imports: ImportEdge[] = [];
   const references: Record<string, Reference[]> = {};
 
-  // Declaration node -> symbol id, plus the set of declaration name nodes to
-  // skip during the reference pass (so a definition is not counted as a use).
   const declToId = new Map<TsNode, string>();
   const nameNodes = new Set<TsNode>();
 
@@ -82,9 +106,6 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
     if (nameNode) nameNodes.add(nameNode);
   };
 
-  // The declared symbol whose body encloses `node` (its nearest declaration
-  // ancestor), or undefined at module/top-level scope. This is the "caller"
-  // side of a reference edge — see Reference.from.
   const enclosingSymbolId = (node: TsNode): string | undefined => {
     for (let n = node.getParent(); n; n = n.getParent()) {
       const id = declToId.get(n);
@@ -197,14 +218,16 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
     files.push({ path: file, mtimeMs: statSync(sf.getFilePath()).mtimeMs, exports: exportsList });
   }
 
-  // Single reference pass: resolve every identifier to its declaration.
+  const resolving = (file: string): boolean =>
+    !opts.referencesFrom || opts.referencesFrom.has(file);
+
   for (const sf of project.getSourceFiles()) {
     const file = rel(root, sf.getFilePath());
+    if (!resolving(file)) continue;
     for (const id of sf.getDescendantsOfKind(SyntaxKind.Identifier)) {
       if (nameNodes.has(id)) continue;
       let sym = id.getSymbol();
-      // Object shorthand `{ foo }`: the identifier resolves to the property,
-      // not the referenced variable. Use the value symbol so the use counts.
+
       const parent = id.getParent();
       if (
         parent &&
@@ -231,12 +254,11 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
     }
   }
 
-  // Extra passes for uses TypeScript's static resolver misses, so `dead_code`
-  // stops flagging code that IS used: (1) dynamic `import("./x")` — count the
-  // destructured / accessed exports; (2) a string literal equal to an exported
-  // name — reflective access (registries, DI, `obj["name"]`).
   const idByFileName = new Map<string, string>();
   const idsByExportedName = new Map<string, string[]>();
+  for (const [name, ids] of opts.exportsElsewhere ?? []) {
+    idsByExportedName.set(name, [...ids]);
+  }
   for (const s of symbols) {
     const key = `${s.file}::${s.name}`;
     if (!idByFileName.has(key)) idByFileName.set(key, s.id);
@@ -248,24 +270,6 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
   }
   const fileSet = new Set(files.map((f) => f.path));
 
-  /** Resolve a relative module specifier to a project file (POSIX, extensionless). */
-  const resolveModule = (fromFile: string, spec: string): string | null => {
-    if (!spec.startsWith(".")) return null;
-    const parts = fromFile.split("/").slice(0, -1);
-    for (const seg of spec.split("/")) {
-      if (seg === "" || seg === ".") continue;
-      if (seg === "..") parts.pop();
-      else parts.push(seg);
-    }
-    const base = parts.join("/").replace(/\.[cm]?[jt]sx?$/, "");
-    for (const ext of typescriptParser.extensions) {
-      if (fileSet.has(`${base}.${ext}`)) return `${base}.${ext}`;
-      if (fileSet.has(`${base}/index.${ext}`)) return `${base}/index.${ext}`;
-    }
-    return null;
-  };
-
-  /** The export names pulled out of a dynamic import, or null if not determinable. */
   const importedNames = (call: TsNode): string[] | null => {
     let node: TsNode | undefined = call.getParent();
     while (node && (Node.isAwaitExpression(node) || Node.isParenthesizedExpression(node))) {
@@ -286,11 +290,12 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
 
   for (const sf of project.getSourceFiles()) {
     const file = rel(root, sf.getFilePath());
+    if (!resolving(file)) continue;
     for (const call of sf.getDescendantsOfKind(SyntaxKind.CallExpression)) {
       if (call.getExpression().getKind() !== SyntaxKind.ImportKeyword) continue;
       const arg = call.getArguments()[0];
       if (!arg || !Node.isStringLiteral(arg)) continue;
-      const target = resolveModule(file, arg.getLiteralText());
+      const target = resolveImport(fileSet, file, arg.getLiteralText());
       if (!target) continue;
       const line = call.getStartLineNumber();
       const names = importedNames(call);
@@ -300,8 +305,7 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
           if (tid) references[tid].push({ file, line });
         }
       } else {
-        // Namespace import (`const m = await import(...)`): can't tell which
-        // exports are used, so conservatively mark them all as used.
+
         for (const s of symbols) {
           if (s.file === target && s.exported) references[s.id].push({ file, line });
         }
@@ -313,11 +317,9 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
       const ids = idsByExportedName.get(val);
       if (!ids) continue;
       const line = str.getStartLineNumber();
-      for (const tid of ids) references[tid].push({ file, line });
+      for (const tid of ids) (references[tid] ??= []).push({ file, line });
     }
-    // `export * from "./x"` (barrel re-export) re-publishes all of x's exports.
-    // Named re-exports (`export { y } from "./x"`) already resolve via the
-    // identifier pass; only the wildcard form needs propagating here.
+
     for (const exp of sf.getExportDeclarations()) {
       const targetSf = exp.getModuleSpecifierSourceFile();
       if (!targetSf || exp.getNamedExports().length > 0) continue;
@@ -330,6 +332,26 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
   }
 
   return { symbols, files, imports, references };
+}
+
+export function resolveImport(
+  files: Set<string>,
+  fromFile: string,
+  spec: string,
+): string | null {
+  if (!spec.startsWith(".")) return null;
+  const parts = fromFile.split("/").slice(0, -1);
+  for (const seg of spec.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") parts.pop();
+    else parts.push(seg);
+  }
+  const base = parts.join("/").replace(/\.[cm]?[jt]sx?$/, "");
+  for (const ext of typescriptParser.extensions) {
+    if (files.has(`${base}.${ext}`)) return `${base}.${ext}`;
+    if (files.has(`${base}/index.${ext}`)) return `${base}/index.${ext}`;
+  }
+  return null;
 }
 
 export const typescriptParser: LanguageParser = {

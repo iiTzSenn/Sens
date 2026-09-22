@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import path from "node:path";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { VERSION } from "./index.js";
-import { createEngine } from "./core.js";
+import { createEngine, refreshIndex } from "./core.js";
 import { analyzeDeadCode } from "./deadcode.js";
-import { sensDir } from "./paths.js";
 import { composeRules } from "./rules.js";
 import { loadConfig, activeRules, ruleModules } from "./config.js";
-import { readUsage, formatUsage, logUsage } from "./usage.js";
 import { supportedLanguages } from "./indexer/languages/parser.js";
-import { SKILL_MD, SKILL_NAME } from "./skill.js";
 import * as ui from "./cli/ui.js";
 import {
   renderMap,
@@ -23,6 +19,10 @@ import {
 } from "./cli/render.js";
 import * as suggest from "./cli/suggest.js";
 import type { Block } from "./cli/suggest.js";
+import { nativeQuery } from "./native-query.js";
+import type { QueryArgs, QueryName } from "./queries.js";
+import type { QueryEngine } from "./query/engine.js";
+import type { ProjectIndex } from "./types.js";
 
 const root = process.cwd();
 const program = new Command();
@@ -35,11 +35,17 @@ program
   .option("--verbose", "show full error stack traces on failure")
   .version(VERSION);
 
-/**
- * Build (or reuse) the engine with a live spinner. When `announce` is set the
- * spinner resolves into a persistent "index ready" line (for `map`/`index`);
- * otherwise it clears silently so a quick lookup stays clean.
- */
+async function ask<K extends QueryName, T>(
+  name: K,
+  args: QueryArgs[K],
+  fromEngine: (engine: QueryEngine) => T | Promise<T>,
+): Promise<T> {
+  const native = nativeQuery(root, name, args);
+  if (native !== null) return native as T;
+  const { engine } = await getEngine();
+  return fromEngine(engine);
+}
+
 async function getEngine(announce = false): ReturnType<typeof createEngine> {
   const sp = ui.spinner("Indexando proyecto…");
   const start = Date.now();
@@ -62,7 +68,6 @@ async function getEngine(announce = false): ReturnType<typeof createEngine> {
   return res;
 }
 
-/** Render a query body plus optional dynamic suggestions, padded with blanks. */
 function show(body: string, block?: Block): void {
   ui.blank();
   ui.print(body);
@@ -70,27 +75,60 @@ function show(body: string, block?: Block): void {
   ui.blank();
 }
 
+interface Summary {
+  files: number;
+  symbols: number;
+  said: string;
+}
+
+async function updateOnly(touched: string[]): Promise<Summary> {
+  const { index, incremental } = await refreshIndex(root, touched);
+  return {
+    files: index.files.length,
+    symbols: index.symbols.length,
+    said: incremental ? "Índice actualizado" : "Índice reconstruido",
+  };
+}
+
+async function indexAll(force?: boolean): Promise<Summary> {
+  const { index, fromCache } = await createEngine(root, { force });
+  return {
+    files: index.files.length,
+    symbols: index.symbols.length,
+    said: fromCache ? "El índice ya estaba al día" : "Índice reconstruido",
+  };
+}
+
+
+program
 program
   .command("index")
   .description("Build or update the project index")
   .option("-f, --force", "rebuild even if the cache looks fresh")
-  .action(async (opts: { force?: boolean }) => {
+  .option("--only <paths...>", "update just these files")
+  .action(async (opts: { force?: boolean; only?: string[] }) => {
     ui.header("index");
-    const sp = ui.spinner(opts.force ? "Reconstruyendo el índice…" : "Indexando proyecto…");
+    const touched = opts.only ?? [];
+    const sp = ui.spinner(
+      touched.length > 0
+        ? `Actualizando ${touched.length === 1 ? "1 archivo" : `${touched.length} archivos`}…`
+        : opts.force
+          ? "Reconstruyendo el índice…"
+          : "Indexando proyecto…",
+    );
     const start = Date.now();
-    let built: Awaited<ReturnType<typeof createEngine>>;
+    let done: Summary;
     try {
-      built = await createEngine(root, { force: opts.force });
+      done = touched.length > 0 ? await updateOnly(touched) : await indexAll(opts.force);
     } catch (err) {
       sp.fail("No se pudo indexar el proyecto");
       throw err;
     }
     const ms = Date.now() - start;
-    const { index, fromCache } = built;
     sp.succeed(
-      `${fromCache ? "El índice ya estaba al día" : "Índice reconstruido"}  ${ui.c.meta(`${ui.sym.branch} ${index.files.length} archivos · ${index.symbols.length} símbolos · ${ms}ms`)}`,
+      `${done.said}  ${ui.c.meta(`${ui.sym.branch} ${done.files} archivos · ${done.symbols} símbolos · ${ms}ms`)}`,
     );
-    if (index.files.length === 0) {
+    if (done.files === 0) {
       ui.warn("No se encontraron archivos para indexar.");
       ui.detail(`Sens indexa: ${supportedLanguages()}. Si este proyecto usa otro lenguaje, aún no está soportado.`);
     }
@@ -103,7 +141,6 @@ program
   .action(async (subdir?: string) => {
     ui.header(subdir ? `map ${subdir}` : "map");
     const { engine } = await getEngine(true);
-    logUsage(root, "project_map", { subdir });
     const entries = engine.map(subdir);
     show(renderMap(entries));
 
@@ -127,9 +164,7 @@ program
   .description("Find where a symbol is defined")
   .action(async (name: string) => {
     ui.header(`find ${name}`);
-    const { engine } = await getEngine();
-    logUsage(root, "find_symbol", { name });
-    const syms = engine.findSymbol(name);
+    const syms = await ask("find_symbol", { name }, (e) => e.findSymbol(name));
     show(renderSymbols(syms, `Sin coincidencias para “${name}”.`), suggest.find(name, syms.length));
   });
 
@@ -140,9 +175,7 @@ program
   .option("--full", "list every call site instead of a partial summary for heavily-used symbols")
   .action(async (name: string, opts: { full?: boolean }) => {
     ui.header(`who ${name}`);
-    const { engine } = await getEngine();
-    logUsage(root, "who_uses", { name, full: opts.full });
-    const results = engine.whoUses(name);
+    const results = await ask("who_uses", { name, full: opts.full }, (e) => e.whoUses(name));
     show(renderWhoUses(results, { full: opts.full }), suggest.who(name, results.length));
   });
 
@@ -152,9 +185,7 @@ program
   .description("Show a symbol's callers and callees (call graph neighborhood)")
   .action(async (name: string) => {
     ui.header(`explain ${name}`);
-    const { engine } = await getEngine();
-    logUsage(root, "explain_symbol", { name });
-    const results = engine.explain(name);
+    const results = await ask("explain_symbol", { name }, (e) => e.explain(name));
     show(renderExplain(results), suggest.explain(name, results.length));
   });
 
@@ -165,9 +196,7 @@ program
   .description("Shortest chain of calls/references connecting two symbols")
   .action(async (from: string, to: string) => {
     ui.header(`path ${from} → ${to}`);
-    const { engine } = await getEngine();
-    logUsage(root, "symbol_path", { from, to });
-    const p = engine.path(from, to);
+    const p = await ask("symbol_path", { from, to }, (e) => e.path(from, to));
     show(renderPath(p, from, to), suggest.path(from, to, !!(p && p.length)));
   });
 
@@ -177,9 +206,7 @@ program
   .description("Print a file's signatures, without its bodies")
   .action(async (file: string) => {
     ui.header(`outline ${file}`);
-    const { engine } = await getEngine();
-    logUsage(root, "file_outline", { file });
-    const syms = engine.fileOutline(file);
+    const syms = await ask("file_outline", { file }, (e) => e.fileOutline(file));
     show(renderSymbols(syms, `Sin símbolos en “${file}”.`), suggest.outline(file, syms.length));
   });
 
@@ -190,9 +217,7 @@ program
   .action(async (keywords: string[]) => {
     const query = keywords.join(" ");
     ui.header(`exists ${query}`);
-    const { engine } = await getEngine();
-    logUsage(root, "already_exists", { query });
-    const syms = engine.alreadyExists(query);
+    const syms = await ask("already_exists", { query }, (e) => e.alreadyExists(query));
     show(
       renderSymbols(syms, `Nada coincide con “${query}” — parece nuevo.`),
       suggest.exists(query, syms.length, syms[0]?.name),
@@ -205,9 +230,7 @@ program
   .description("List unused symbols/exports (candidates)")
   .action(async (subdir?: string) => {
     ui.header(subdir ? `dead-code ${subdir}` : "dead-code");
-    const { engine } = await getEngine();
-    logUsage(root, "dead_code", { subdir });
-    const report = await analyzeDeadCode(root, engine, subdir);
+    const report = await ask("dead_code", { subdir }, (e) => analyzeDeadCode(root, e, subdir));
     const top = report.candidates[0]?.symbol.name;
     show(renderDeadCode(report), suggest.deadCode(report.candidates.length + report.files.length, top));
   });
@@ -218,49 +241,8 @@ program
   .description("List a file's imports and importers (import graph)")
   .action(async (file: string) => {
     ui.header(`deps ${file}`);
-    const { engine } = await getEngine();
-    logUsage(root, "file_dependencies", { file });
-    show(renderFileDependencies(engine.fileDependencies(file)), suggest.deps(file));
-  });
-
-program
-  .command("report")
-  .description("Generate a static, self-contained HTML report")
-  .option("-o, --out <path>", "output file path")
-  .action(async (opts: { out?: string }) => {
-    ui.header("report");
-    const sp = ui.spinner("Generando el reporte HTML…");
-    let out: string;
-    try {
-      const { engine, index } = await createEngine(root);
-      const { renderReport } = await import("./report/html.js");
-      out = opts.out ?? path.join(sensDir(root), "report.html");
-      mkdirSync(path.dirname(out), { recursive: true });
-      writeFileSync(out, renderReport(index, engine), "utf8");
-    } catch (err) {
-      sp.fail("No se pudo generar el reporte");
-      throw err;
-    }
-    sp.succeed("Reporte generado");
-    ui.detail(out);
-  });
-
-program
-  .command("dashboard")
-  .description("Start the local web dashboard (graph, dead code, Claude Code setup)")
-  .option("-p, --port <port>", "port to listen on", "4319")
-  .option("-r, --root <dir>", "project directory to inspect", ".")
-  .option("--no-open", "do not open the browser automatically")
-  .option("--host", "expose on your local network (0.0.0.0), behind an access token")
-  .option("--tunnel", "also create a public URL via cloudflared or ngrok (if installed)")
-  .action(async (opts: { port: string; root: string; open: boolean; host?: boolean; tunnel?: boolean }) => {
-    const { startDashboard } = await import("./dashboard/server.js");
-    await startDashboard(path.resolve(opts.root), {
-      port: Number(opts.port),
-      open: opts.open,
-      host: opts.host,
-      tunnel: opts.tunnel,
-    });
+    const deps = await ask("file_dependencies", { file }, (e) => e.fileDependencies(file));
+    show(renderFileDependencies(deps), suggest.deps(file));
   });
 
 program
@@ -295,68 +277,6 @@ program
   });
 
 program
-  .command("skill")
-  .description("Print the sens skill (SKILL.md), or install it into .claude/skills/")
-  .option("-w, --write [dir]", "write the skill into a project's .claude/skills/ (default: ./.claude/skills)")
-  .action((opts: { write?: string | boolean }) => {
-    if (opts.write) {
-      const base = typeof opts.write === "string" ? opts.write : path.join(".claude", "skills");
-      const dir = path.join(base, SKILL_NAME);
-      mkdirSync(dir, { recursive: true });
-      const out = path.join(dir, "SKILL.md");
-      writeFileSync(out, SKILL_MD, "utf8");
-      ui.header("skill");
-      ui.success("Skill instalada");
-      ui.detail(`${out} — Claude Code la carga bajo demanda`);
-    } else {
-      ui.print(SKILL_MD);
-    }
-  });
-
-program
-  .command("usage")
-  .description("Show which Sens tools the model has actually called (from the MCP usage log)")
-  .action(() => {
-    ui.header("usage");
-    ui.blank();
-    ui.print(formatUsage(readUsage(root)));
-    ui.blank();
-  });
-
-program
-  .command("init")
-  .description("Set up sens here for an agent: index + rules, plus the skill/hooks on Claude Code")
-  .option("--agent <name>", "claude | codex | copilot | cursor | all", "claude")
-  .action(async (opts: { agent: string }) => {
-    ui.header(`init ${opts.agent}`);
-    const { initProject } = await import("./init.js");
-    const sp = ui.spinner("Indexando y preparando el agente…");
-    let results: Awaited<ReturnType<typeof initProject>>;
-    try {
-      results = await initProject(root, { agent: opts.agent });
-    } catch (err) {
-      sp.fail("No se pudo inicializar sens");
-      throw err;
-    }
-    sp.succeed(`Índice construido  ${ui.c.meta(`${ui.sym.branch} ${results[0].indexedFiles} archivo(s)`)}`);
-    for (const r of results) {
-      if (r.agent === "claude") {
-        ui.success(`Skill instalada  ${ui.c.meta(`${ui.sym.branch} ${r.skillPath ?? ""} [claude]`)}`);
-        if (r.hookWired === "skipped") {
-          ui.warn(`No se pudo leer ${r.settingsPath ?? ""} — añade los hooks a mano`);
-        } else {
-          const verb = r.hookWired === "added" ? "conectados en" : "ya estaban en";
-          ui.success(`Hooks ${verb}  ${ui.c.meta(`${ui.sym.branch} ${r.settingsPath ?? ""} [claude]`)}`);
-        }
-      } else {
-        ui.success(`Reglas ${r.instructionsWritten}  ${ui.c.meta(`${ui.sym.branch} ${r.instructionsPath ?? ""} [${r.agent}]`)}`);
-      }
-    }
-    ui.blank();
-    ui.detail("sens debe estar en el PATH (npm i -g sens-mcp) para que los agentes puedan invocarlo.");
-  });
-
-program
   .command("mcp")
   .description("Start the MCP server (stdio) for Claude Code")
   .action(async () => {
@@ -370,10 +290,10 @@ program
     "PreToolUse hook: nudge the model toward sens tools before it reads/greps (reads hook JSON from stdin)",
   )
   .action(async () => {
-    const { runHook } = await import("./hook.js");
-    await runHook();
-  });
 
+    const { runHookClient } = await import("./hook-client.js");
+    await runHookClient();
+  });
 program.parseAsync().catch((err) => {
   const message = err instanceof Error ? err.message : String(err);
   ui.error(message);

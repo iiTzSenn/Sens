@@ -6,7 +6,6 @@ import { BUILTIN_RULES, composeRules, AGENT_RULES } from "../src/rules";
 import { loadConfig, activeRules, ruleModules } from "../src/config";
 import { sessionStartContext } from "../src/hook";
 
-/** A tmp project root, optionally seeded with a sens.config.json. */
 function tmpRoot(cfg?: object): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), "sens-rules-"));
   if (cfg) writeFileSync(path.join(dir, "sens.config.json"), JSON.stringify(cfg), "utf8");
@@ -24,7 +23,7 @@ describe("rule modules", () => {
   it("AGENT_RULES carries the default-on modules and omits default-off ones", () => {
     expect(AGENT_RULES).toContain("search first, write second");
     expect(AGENT_RULES).toContain("Optimize what matters");
-    expect(AGENT_RULES).not.toContain("Cover new behavior with tests"); // default off
+    expect(AGENT_RULES).not.toContain("Cover new behavior with tests");
   });
 
   it("defaults to the default-on modules", () => {

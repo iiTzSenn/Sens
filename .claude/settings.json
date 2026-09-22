@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node dist/cli.js hook"
+            "command": "node dist/hook.js"
           }
         ]
       }

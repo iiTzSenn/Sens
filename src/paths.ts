@@ -1,6 +1,5 @@
 import path from "node:path";
 
-/** Project-root-relative path in POSIX form (stable across OSes). */
 export function rel(root: string, abs: string): string {
   return path.relative(root, abs).split(path.sep).join("/");
 }

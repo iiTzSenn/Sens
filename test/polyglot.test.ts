@@ -8,9 +8,6 @@ import type { ProjectIndex } from "../src/types";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.join(here, "fixtures", "polyglot");
 
-// One shared build for the whole file: loading a fresh tree-sitter grammar per
-// language is the expensive part, and web-tree-sitter caps how many grammars a
-// single process can load, so we never want more than one build per test file.
 let index: ProjectIndex;
 async function getIndex(): Promise<ProjectIndex> {
   if (!index) index = await buildIndex(fixture);

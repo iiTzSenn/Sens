@@ -9,8 +9,6 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 async function candidates(): Promise<DeadCodeCandidate[]> {
   const index = await buildIndex(path.join(here, "fixtures", "csharpdead"));
-  // No entry-point files passed: only `entry:true` symbols (Main, controllers,
-  // framework actions) seed roots — exactly what we want to exercise.
   return new QueryEngine(index).deadCodeReport().candidates;
 }
 
@@ -22,7 +20,6 @@ describe("C# dead-code accuracy", () => {
     const cands = await candidates();
     const secret = byName(cands, "Greeter.UnusedSecret");
     expect(secret).toBeDefined();
-    // Methods dispatch poorly under polymorphism, so never above LOW.
     expect(secret?.tier).toBe("low");
   });
 
@@ -41,7 +38,6 @@ describe("C# dead-code accuracy", () => {
   it("NO FALSE POSITIVE: an ASP.NET controller reached only by the framework", async () => {
     const cands = await candidates();
     expect(byName(cands, "UsersController")).toBeUndefined();
-    // Its framework-dispatched actions are entry points too.
     expect(byName(cands, "UsersController.GetAll")).toBeUndefined();
     expect(byName(cands, "UsersController.Create")).toBeUndefined();
   });
@@ -61,7 +57,6 @@ describe("C# dead-code accuracy", () => {
   it("NO FALSE POSITIVE: a class instantiated with `new` in another file stays alive", async () => {
     const cands = await candidates();
     expect(byName(cands, "Greeter")).toBeUndefined();
-    // A private method that IS called stays out of the list too.
     expect(byName(cands, "Greeter.Format")).toBeUndefined();
   });
 });

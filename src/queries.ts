@@ -1,16 +1,4 @@
-// The single source of truth for Sens's read-only queries.
-//
-// Every query is `format(engine.method(args))`. Before this module that pair was
-// duplicated once in the CLI and once in the MCP server; now the CLI, the MCP
-// server and the PreToolUse hook all go through `runQuery`, so usage telemetry
-// and output formatting stay identical no matter which transport asked.
-//
-// Query names are the canonical identifiers (matching the MCP tool names) and are
-// what gets written to the usage log — so a `sens who` from the terminal and a
-// `who_uses` MCP call are counted as the same thing.
-
 import { createEngine } from "./core.js";
-import { logUsage } from "./usage.js";
 import { analyzeDeadCode } from "./deadcode.js";
 import type { QueryEngine } from "./query/engine.js";
 import {
@@ -23,7 +11,6 @@ import {
   formatPath,
 } from "./format.js";
 
-/** Argument shape for each query, keyed by its canonical name. */
 export interface QueryArgs {
   project_map: { subdir?: string };
   find_symbol: { name: string };
@@ -44,7 +31,6 @@ type Runner<K extends QueryName> = (
   root: string,
 ) => string | Promise<string>;
 
-/** Maps each query to the engine call + formatter it runs. */
 const runners: { [K in QueryName]: Runner<K> } = {
   project_map: (e, a) => formatMap(e.map(a.subdir)),
   find_symbol: (e, a) => formatSymbols(e.findSymbol(a.name)),
@@ -57,16 +43,11 @@ const runners: { [K in QueryName]: Runner<K> } = {
   symbol_path: (e, a) => formatPath(e.path(a.from, a.to), a.from, a.to),
 };
 
-/**
- * Run a Sens query by name: record the call, build (or reuse) the engine, and
- * return the formatted text. The one path every transport shares.
- */
 export async function runQuery<K extends QueryName>(
   root: string,
   name: K,
   args: QueryArgs[K],
 ): Promise<string> {
-  logUsage(root, name, args as Record<string, unknown>);
   const { engine } = await createEngine(root);
   return (runners[name] as Runner<K>)(engine, args, root);
 }

@@ -1,6 +1,9 @@
+import { statSync } from "node:fs";
+import { comparePaths } from "../order.js";
+import path from "node:path";
 import { globby } from "globby";
 import { INDEX_SCHEMA_VERSION } from "../types.js";
-import type { ProjectIndex } from "../types.js";
+import type { ProjectIndex, WatchedPath } from "../types.js";
 import {
   PARSERS,
   parserForFile,
@@ -19,7 +22,37 @@ const DEFAULT_IGNORE = [
   "**/venv/**",
 ];
 
-/** Resolve the set of source files under `root` (respecting .gitignore). */
+export async function resolveWatched(
+  root: string,
+  ignore: string[] = [],
+): Promise<WatchedPath[]> {
+  const opts = {
+    cwd: root,
+    gitignore: true,
+    absolute: false,
+    ignore: [...DEFAULT_IGNORE, ...ignore],
+  };
+  const [dirs, ignoreFiles] = await Promise.all([
+    globby("**/", { ...opts, onlyDirectories: true }),
+    globby("**/.gitignore", { ...opts, dot: true }),
+  ]);
+
+  const watched: WatchedPath[] = [];
+  for (const p of ["", ...dirs, ...ignoreFiles]) {
+
+    const clean = p.replace(/\/$/, "");
+    try {
+      watched.push({
+        path: clean,
+        mtimeMs: statSync(path.join(root, clean)).mtimeMs,
+      });
+    } catch {
+
+    }
+  }
+  return watched.sort((a, b) => comparePaths(a.path, b.path));
+}
+
 export async function resolveFiles(
   root: string,
   ignore: string[] = [],
@@ -33,17 +66,12 @@ export async function resolveFiles(
   return files.sort();
 }
 
-/**
- * Build a serializable project index by dispatching each source file to the
- * language parser that owns it, then merging every parser's contribution.
- */
 export async function buildIndex(
   root: string,
   opts: { ignore?: string[] } = {},
 ): Promise<ProjectIndex> {
   const absFiles = await resolveFiles(root, opts.ignore);
 
-  // Group files by the parser that claims their extension.
   const byParser = new Map<string, string[]>();
   for (const f of absFiles) {
     const parser = parserForFile(f);
@@ -61,8 +89,7 @@ export async function buildIndex(
       contributions.push(await parser.build(root, files));
     }
   } finally {
-    // Release tree-sitter grammars once indexing is done (frees the emscripten
-    // heap; the WASM modules themselves stay compiled until the process ends).
+
     await disposeParsers();
   }
 
@@ -88,6 +115,6 @@ function mergeContributions(
     index.imports.push(...p.imports);
     Object.assign(index.references, p.references);
   }
-  index.files.sort((a, b) => a.path.localeCompare(b.path));
+  index.files.sort((a, b) => comparePaths(a.path, b.path));
   return index;
 }
