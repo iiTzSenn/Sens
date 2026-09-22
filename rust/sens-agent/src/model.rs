@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-pub const WRITER: &str = "claude-sonnet-5";
-pub const DIETER: &str = "claude-haiku-4-5-20251001";
-
 pub const SYSTEM_SLOT: &str = "{system}";
 
 pub const CLAUDE_CODE: &str = "claude -p --system-prompt {system} --disallowedTools Bash Edit Write Read Glob Grep Task TodoWrite WebFetch WebSearch NotebookEdit";
@@ -42,20 +39,15 @@ pub trait Model {
 pub struct Anthropic {
     pub key: String,
     pub model: String,
+    pub think: u32,
 }
 
 impl Anthropic {
-    pub fn writer(key: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, model: impl Into<String>, think: u32) -> Self {
         Self {
             key: key.into(),
-            model: WRITER.into(),
-        }
-    }
-
-    pub fn dieter(key: impl Into<String>) -> Self {
-        Self {
-            key: key.into(),
-            model: DIETER.into(),
+            model: model.into(),
+            think,
         }
     }
 }
@@ -66,12 +58,15 @@ impl Model for Anthropic {
     }
 
     fn propose(&self, system: &str, user: &str) -> Result<Proposal, String> {
-        let body = json!({
+        let mut body = json!({
             "model": self.model,
-            "max_tokens": MAX_TOKENS,
+            "max_tokens": MAX_TOKENS + self.think,
             "system": system,
             "messages": [{ "role": "user", "content": user }]
         });
+        if self.think > 0 {
+            body["thinking"] = json!({ "type": "enabled", "budget_tokens": self.think });
+        }
 
         let mut response = ureq::post(ENDPOINT)
             .header("x-api-key", self.key.as_str())
@@ -85,12 +80,18 @@ impl Model for Anthropic {
             .read_json()
             .map_err(|error| format!("respuesta ilegible: {error}"))?;
 
-        let text = value["content"][0]["text"]
-            .as_str()
-            .ok_or_else(|| format!("respuesta sin texto: {value}"))?;
+        let text = said(&value).ok_or_else(|| format!("respuesta sin texto: {value}"))?;
 
         parse_proposal(text)
     }
+}
+
+fn said(value: &Value) -> Option<&str> {
+    value["content"]
+        .as_array()?
+        .iter()
+        .find(|block| block["type"] == "text")
+        .and_then(|block| block["text"].as_str())
 }
 
 pub fn parse_proposal(text: &str) -> Result<Proposal, String> {

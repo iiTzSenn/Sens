@@ -52,6 +52,7 @@ fn claude_code_drives_the_whole_loop() {
         &root,
         "Crea src/boot.rs con una función boot que lea la configuración de un &str y devuelva Config.",
         &crew,
+        &sens_agent::Halt::default(),
         &mut |step| {
             println!("  {}", describe(&step));
             seen.push(name_of(&step));
@@ -87,6 +88,7 @@ fn parse_config_never_ends_up_defined_twice() {
         &root,
         "Crea src/boot.rs con una función llamada parse_config que recorte los espacios de un &str.",
         &crew,
+        &sens_agent::Halt::default(),
         &mut |step| println!("  {}", describe(&step)),
     );
 

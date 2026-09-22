@@ -68,7 +68,12 @@ fn two_files_land_together_and_the_diff_covers_both() {
     };
 
     let mut written: Vec<String> = Vec::new();
-    let landed = sens_agent::run(&root, "añade resta", &crew, &mut |step| {
+    let landed = sens_agent::run(
+        &root,
+        "añade resta",
+        &crew,
+        &sens_agent::Halt::default(),
+        &mut |step| {
         if let Step::Applied { files, .. } = &step {
             written = files.iter().map(|file| file.path.clone()).collect();
         }
@@ -94,7 +99,12 @@ fn a_broken_pair_is_undone_whole_leaving_no_half_written_file() {
     };
 
     let mut stopped_by = String::new();
-    let landed = sens_agent::run(&root, "añade resta", &crew, &mut |step| {
+    let landed = sens_agent::run(
+        &root,
+        "añade resta",
+        &crew,
+        &sens_agent::Halt::default(),
+        &mut |step| {
         if let Step::Repairing { gate, .. } = &step {
             stopped_by = gate.clone();
         }

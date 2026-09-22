@@ -76,7 +76,12 @@ fn a_patch_that_breaks_the_tests_is_undone_and_sent_back() {
 
     let mut steps: Vec<String> = Vec::new();
     let mut stopped_by = String::new();
-    let landed = sens_agent::run(&root, "haz que suma sume", &crew, &mut |step| {
+    let landed = sens_agent::run(
+        &root,
+        "haz que suma sume",
+        &crew,
+        &sens_agent::Halt::default(),
+        &mut |step| {
         if let Step::Repairing { gate, .. } = &step {
             stopped_by = gate.clone();
         }
@@ -104,7 +109,12 @@ fn a_broken_patch_that_never_gets_fixed_leaves_the_file_untouched() {
     };
 
     let mut gave_up = false;
-    let landed = sens_agent::run(&root, "haz que suma sume", &crew, &mut |step| {
+    let landed = sens_agent::run(
+        &root,
+        "haz que suma sume",
+        &crew,
+        &sens_agent::Halt::default(),
+        &mut |step| {
         if matches!(step, Step::GaveUp { .. }) {
             gave_up = true;
         }

@@ -1,9 +1,11 @@
 pub mod apply;
+pub mod catalog;
 pub mod context;
 pub mod model;
 pub mod session;
 
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use sens_hook::gate::patch::{LineChange, diff_lines};
 use sens_hook::gate::{self, FilePatch, Gauntlet, Outcome, Patch, Ruling, Verdict};
@@ -13,6 +15,32 @@ use context::Briefing;
 use model::{Model, Proposal};
 
 pub const MAX_REPAIRS: u8 = 2;
+
+pub const HALTED: &str = "Lo paré antes del siguiente paso.";
+
+#[derive(Default)]
+pub struct Halt(AtomicBool);
+
+impl Halt {
+    pub fn raise(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    pub fn clear(&self) {
+        self.0.store(false, Ordering::Relaxed);
+    }
+
+    pub fn raised(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+
+    fn checkpoint(&self) -> Result<(), String> {
+        if self.raised() {
+            return Err(HALTED.into());
+        }
+        Ok(())
+    }
+}
 
 const IDENTITY: &str = "Eres el motor de Sens. Tienes una sola idea: el mejor parche es el más pequeño que funciona.
 
@@ -117,8 +145,10 @@ pub fn run(
     root: &Path,
     task: &str,
     crew: &Crew,
+    halt: &Halt,
     emit: &mut dyn FnMut(Step),
 ) -> Result<Landed, String> {
+    halt.checkpoint()?;
     let briefing = context::brief(root, task)
         .ok_or("El proyecto no está indexado. Reconstruye el índice antes de pedirme nada.")?;
     emit(Step::Oriented {
@@ -127,9 +157,11 @@ pub fn run(
     });
 
     let mut proposal = crew.writer.propose(IDENTITY, &opening(task, &briefing))?;
+    halt.checkpoint()?;
     let mut kept: Option<Kept> = None;
 
     for attempt in 0..=MAX_REPAIRS {
+        halt.checkpoint()?;
         emit(Step::Proposed {
             paths: proposal.paths().into_iter().map(str::to_string).collect(),
             model: crew.writer.name().to_string(),
@@ -175,15 +207,18 @@ pub fn run(
             gate: refusal.gate.clone(),
             attempt: attempt + 1,
         });
+        halt.checkpoint()?;
         proposal = crew
             .writer
             .propose(IDENTITY, &repair(task, &proposal, &refusal))?;
+        halt.checkpoint()?;
     }
 
     let Some(kept) = kept else {
         return Err("ningún parche pasó los controles".into());
     };
 
+    halt.checkpoint()?;
     let landed = slim(root, crew, kept, emit);
     let files = diffs_of(&landed);
     let net = total_net(&files);
@@ -461,7 +496,12 @@ mod tests {
         };
         let mut steps = Vec::new();
 
-        let outcome = run(&scratch("unindexed"), "haz algo", &crew, &mut |step| {
+        let outcome = run(
+            &scratch("unindexed"),
+            "haz algo",
+            &crew,
+            &Halt::default(),
+            &mut |step| {
             steps.push(step)
         });
 

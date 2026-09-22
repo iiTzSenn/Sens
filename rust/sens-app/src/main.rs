@@ -1,14 +1,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::path::PathBuf;
+mod git;
 
-use sens_agent::model::{Anthropic, Cli, Model};
-use sens_agent::{Crew, Step, session};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use sens_agent::catalog::{self, Choice};
+use sens_agent::{Crew, HALTED, Halt, Step, session};
 use sens_hook::engine;
 use sens_hook::freshness::{self, Freshness};
 use sens_hook::gate::{self, Gauntlet, Outcome, Patch};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
+
+const ATTACH_CAP: usize = 24_000;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,58 +88,74 @@ fn tree(root: String) -> Vec<FileRow> {
 }
 
 #[tauri::command]
-fn open_file(root: String, path: String) -> Result<String, String> {
-    let base = PathBuf::from(&root)
+fn repo(root: String) -> Option<git::Repo> {
+    git::read(&PathBuf::from(root))
+}
+
+#[tauri::command]
+fn checkout(root: String, branch: String) -> Result<git::Repo, String> {
+    git::checkout(&PathBuf::from(root), &branch)
+}
+
+struct Held {
+    full: PathBuf,
+    relative: String,
+}
+
+fn inside(root: &str, path: &str) -> Result<Held, String> {
+    let base = PathBuf::from(root)
         .canonicalize()
         .map_err(|error| format!("proyecto ilegible: {error}"))?;
-    let target = base
-        .join(&path)
+    let full = base
+        .join(path)
         .canonicalize()
         .map_err(|_| format!("{path} no existe"))?;
 
-    if !target.starts_with(&base) {
-        return Err("ese fichero está fuera del proyecto".into());
-    }
-    std::fs::read_to_string(&target).map_err(|error| format!("no pude leer {path}: {error}"))
+    let relative = full
+        .strip_prefix(&base)
+        .map_err(|_| format!("{path} está fuera del proyecto"))?
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    Ok(Held { full, relative })
 }
 
-enum Hands {
-    Api(String),
-    Command(String),
+#[tauri::command]
+fn open_file(root: String, path: String) -> Result<String, String> {
+    let held = inside(&root, &path)?;
+    std::fs::read_to_string(&held.full).map_err(|error| format!("no pude leer {path}: {error}"))
 }
 
-impl Hands {
-    fn pick(provider: &str, key: &str) -> Result<Self, String> {
-        if provider.trim() != "api" {
-            return Ok(Hands::Command(provider.trim().to_string()));
-        }
-        match key.trim() {
-            "" => std::env::var("ANTHROPIC_API_KEY")
-                .map(Hands::Api)
-                .map_err(|_| "Sin clave: pégala arriba o define ANTHROPIC_API_KEY.".to_string()),
-            given => Ok(Hands::Api(given.to_string())),
-        }
-    }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Attachment {
+    path: String,
+    bytes: usize,
+}
 
-    fn crew(&self) -> Result<(Box<dyn Model>, Box<dyn Model>), String> {
-        Ok(match self {
-            Hands::Api(key) => (
-                Box::new(Anthropic::writer(key.clone())),
-                Box::new(Anthropic::dieter(key.clone())),
-            ),
-            Hands::Command(command) => (
-                Box::new(Self::launcher(command)?),
-                Box::new(Self::launcher(command)?),
-            ),
+#[tauri::command]
+fn attach(root: String, paths: Vec<String>) -> Vec<Attachment> {
+    paths
+        .iter()
+        .filter_map(|given| {
+            let held = inside(&root, given).ok()?;
+            let bytes = std::fs::metadata(&held.full).ok()?.len() as usize;
+            Some(Attachment {
+                path: held.relative,
+                bytes,
+            })
         })
-    }
+        .collect()
+}
 
-    fn launcher(command: &str) -> Result<Cli, String> {
-        match command {
-            "claude" => Ok(Cli::claude()),
-            given => Cli::parse(given),
-        }
-    }
+#[tauri::command]
+fn providers() -> &'static [catalog::Provider] {
+    catalog::PROVIDERS
+}
+
+#[tauri::command]
+fn stop(halt: State<Arc<Halt>>) {
+    halt.raise();
 }
 
 #[tauri::command]
@@ -152,16 +173,45 @@ fn replay(root: String, id: String) -> Vec<session::Entry> {
     session::read(&PathBuf::from(root), &id)
 }
 
+fn clip(text: &str, cap: usize) -> (&str, bool) {
+    if text.len() <= cap {
+        return (text, false);
+    }
+    let end = (0..=cap)
+        .rev()
+        .find(|at| text.is_char_boundary(*at))
+        .unwrap_or_default();
+    (&text[..end], true)
+}
+
+fn briefed(root: &Path, task: &str, attachments: &[String]) -> String {
+    let mut out = task.to_string();
+    for path in attachments {
+        let Ok(text) = std::fs::read_to_string(root.join(path)) else {
+            continue;
+        };
+        let (body, clipped) = clip(&text, ATTACH_CAP);
+        out.push_str(&format!("\n\n--- {path} ---\n{body}"));
+        if clipped {
+            out.push_str("\n[recortado]");
+        }
+    }
+    out
+}
+
 #[tauri::command]
 fn work(
     app: AppHandle,
+    halt: State<Arc<Halt>>,
     root: String,
     task: String,
-    key: String,
-    provider: String,
+    choice: Choice,
+    attachments: Vec<String>,
     session_id: String,
 ) -> Result<(), String> {
-    let hands = Hands::pick(&provider, &key)?;
+    catalog::vet(&choice)?;
+    let halt = halt.inner().clone();
+    halt.clear();
 
     std::thread::spawn(move || {
         let here = PathBuf::from(&root);
@@ -169,12 +219,14 @@ fn work(
             let _ = session::append(&here, &session_id, &entry);
         };
 
+        let asked = briefed(&here, &task, &attachments);
+
         keep(session::Entry::Task {
             at: session::now(),
-            text: task.clone(),
+            text: asked.clone(),
         });
 
-        let (writer, dieter) = match hands.crew() {
+        let pair = match catalog::hire(&choice) {
             Ok(pair) => pair,
             Err(reason) => {
                 keep(session::Entry::Failed {
@@ -187,8 +239,8 @@ fn work(
         };
 
         let crew = Crew {
-            writer: writer.as_ref(),
-            dieter: dieter.as_ref(),
+            writer: pair.writer.as_ref(),
+            dieter: pair.dieter.as_ref(),
         };
 
         let mut emit = |step: Step| {
@@ -199,7 +251,7 @@ fn work(
             let _ = app.emit("step", step);
         };
 
-        match sens_agent::run(&here, &task, &crew, &mut emit) {
+        match sens_agent::run(&here, &asked, &crew, &halt, &mut emit) {
             Ok(landed) => {
                 let _ = app.emit("done", (landed.paths, landed.net));
             }
@@ -208,7 +260,8 @@ fn work(
                     at: session::now(),
                     reason: reason.clone(),
                 });
-                let _ = app.emit("failed", reason);
+                let event = if reason == HALTED { "stopped" } else { "failed" };
+                let _ = app.emit(event, reason);
             }
         }
     });
@@ -219,7 +272,22 @@ fn work(
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![status, judge, work, open_session, sessions, replay, tree, open_file])
+        .manage(Arc::new(Halt::default()))
+        .invoke_handler(tauri::generate_handler![
+            status,
+            judge,
+            work,
+            stop,
+            providers,
+            attach,
+            open_session,
+            sessions,
+            replay,
+            tree,
+            open_file,
+            repo,
+            checkout
+        ])
         .run(tauri::generate_context!())
         .expect("sens app");
 }
