@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { hookViaDaemon, ensureDaemon } from "./daemon/client.js";
 
 export async function runHookClient(): Promise<void> {
   let raw: string;
@@ -9,15 +8,7 @@ export async function runHookClient(): Promise<void> {
     return;
   }
 
-  const root = process.cwd();
-  const answer = await hookViaDaemon(root, raw);
-  if (answer !== null) {
-    if (answer) process.stdout.write(answer);
-    return;
-  }
-
-  ensureDaemon(root);
   const { runHookPayload } = await import("./hook.js");
-  const output = await runHookPayload(root, raw);
+  const output = await runHookPayload(process.cwd(), raw);
   if (output) process.stdout.write(output);
 }

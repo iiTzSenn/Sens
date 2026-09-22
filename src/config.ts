@@ -124,49 +124,6 @@ export function activeRules(config: SensConfig): RuleModule[] {
     .map((r) => r.module);
 }
 
-export function setRuleState(config: SensConfig, id: string, active: boolean): RulesConfig {
-  const enabled = new Set(config.rules.enabled);
-  const disabled = new Set(config.rules.disabled);
-  const mod = [...BUILTIN_RULES, ...config.rules.custom].find((m) => m.id === id);
-  const def = mod ? mod.default : true;
-  enabled.delete(id);
-  disabled.delete(id);
-  if (active && !def) enabled.add(id);
-  if (!active && def) disabled.add(id);
-  return { enabled: [...enabled], disabled: [...disabled], custom: config.rules.custom };
-}
-
-export function addCustomRule(
-  config: SensConfig,
-  module: { id: string; title: string; body: string },
-): RulesConfig {
-  const custom = config.rules.custom
-    .filter((m) => m.id !== module.id)
-    .concat({ id: module.id, title: module.title, body: module.body, default: true });
-  return { ...config.rules, custom };
-}
-
-export function removeCustomRule(config: SensConfig, id: string): RulesConfig {
-  return {
-    enabled: config.rules.enabled.filter((x) => x !== id),
-    disabled: config.rules.disabled.filter((x) => x !== id),
-    custom: config.rules.custom.filter((m) => m.id !== id),
-  };
-}
-
-export function saveRules(root: string, rules: RulesConfig): void {
-  const p = path.join(root, "sens.config.json");
-  let raw: Record<string, unknown> = {};
-  if (existsSync(p)) {
-    try {
-      raw = JSON.parse(readFileSync(p, "utf8")) as Record<string, unknown>;
-    } catch {
-      raw = {};
-    }
-  }
-  raw.rules = rules;
-  writeFileSync(p, JSON.stringify(raw, null, 2) + "\n", "utf8");
-}
 
 export async function entryPointFiles(
   root: string,

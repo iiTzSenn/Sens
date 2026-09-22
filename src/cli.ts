@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import path from "node:path";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { VERSION } from "./index.js";
 import { createEngine, refreshIndex } from "./core.js";
 import { analyzeDeadCode } from "./deadcode.js";
-import { sensDir } from "./paths.js";
 import { composeRules } from "./rules.js";
 import { loadConfig, activeRules, ruleModules } from "./config.js";
-import { readUsage, formatUsage, logUsage } from "./usage.js";
 import { supportedLanguages } from "./indexer/languages/parser.js";
-import { SKILL_MD, SKILL_NAME } from "./skill.js";
 import * as ui from "./cli/ui.js";
 import {
   renderMap,
@@ -44,7 +40,6 @@ async function ask<K extends QueryName, T>(
   args: QueryArgs[K],
   fromEngine: (engine: QueryEngine) => T | Promise<T>,
 ): Promise<T> {
-  logUsage(root, name, args as Record<string, unknown>);
   const native = nativeQuery(root, name, args);
   if (native !== null) return native as T;
   const { engine } = await getEngine();
@@ -87,18 +82,7 @@ interface Summary {
 }
 
 async function updateOnly(touched: string[]): Promise<Summary> {
-  const { reindexViaDaemon, ensureDaemon } = await import("./daemon/client.js");
-  const served = await reindexViaDaemon(root, touched);
-  if (served) {
-    const done = JSON.parse(served) as Summary & { incremental: boolean };
-    return {
-      files: done.files,
-      symbols: done.symbols,
-      said: done.incremental ? "Índice actualizado · daemon" : "Índice reconstruido · daemon",
-    };
-  }
   const { index, incremental } = await refreshIndex(root, touched);
-  ensureDaemon(root, true);
   return {
     files: index.files.length,
     symbols: index.symbols.length,
@@ -157,7 +141,6 @@ program
   .action(async (subdir?: string) => {
     ui.header(subdir ? `map ${subdir}` : "map");
     const { engine } = await getEngine(true);
-    logUsage(root, "project_map", { subdir });
     const entries = engine.map(subdir);
     show(renderMap(entries));
 
@@ -263,46 +246,6 @@ program
   });
 
 program
-  .command("report")
-  .description("Generate a static, self-contained HTML report")
-  .option("-o, --out <path>", "output file path")
-  .action(async (opts: { out?: string }) => {
-    ui.header("report");
-    const sp = ui.spinner("Generando el reporte HTML…");
-    let out: string;
-    try {
-      const { engine, index } = await createEngine(root);
-      const { renderReport } = await import("./report/html.js");
-      out = opts.out ?? path.join(sensDir(root), "report.html");
-      mkdirSync(path.dirname(out), { recursive: true });
-      writeFileSync(out, renderReport(index, engine), "utf8");
-    } catch (err) {
-      sp.fail("No se pudo generar el reporte");
-      throw err;
-    }
-    sp.succeed("Reporte generado");
-    ui.detail(out);
-  });
-
-program
-  .command("dashboard")
-  .description("Start the local web dashboard (graph, dead code, Claude Code setup)")
-  .option("-p, --port <port>", "port to listen on", "4319")
-  .option("-r, --root <dir>", "project directory to inspect", ".")
-  .option("--no-open", "do not open the browser automatically")
-  .option("--host", "expose on your local network (0.0.0.0), behind an access token")
-  .option("--tunnel", "also create a public URL via cloudflared or ngrok (if installed)")
-  .action(async (opts: { port: string; root: string; open: boolean; host?: boolean; tunnel?: boolean }) => {
-    const { startDashboard } = await import("./dashboard/server.js");
-    await startDashboard(path.resolve(opts.root), {
-      port: Number(opts.port),
-      open: opts.open,
-      host: opts.host,
-      tunnel: opts.tunnel,
-    });
-  });
-
-program
   .command("rules")
   .description("Print the working rules currently active for this project (reuse, minimal, no orphans, …)")
   .option("-w, --write [file]", "write the rules to a file instead of printing (default: SENS_RULES.md)")
@@ -334,68 +277,6 @@ program
   });
 
 program
-  .command("skill")
-  .description("Print the sens skill (SKILL.md), or install it into .claude/skills/")
-  .option("-w, --write [dir]", "write the skill into a project's .claude/skills/ (default: ./.claude/skills)")
-  .action((opts: { write?: string | boolean }) => {
-    if (opts.write) {
-      const base = typeof opts.write === "string" ? opts.write : path.join(".claude", "skills");
-      const dir = path.join(base, SKILL_NAME);
-      mkdirSync(dir, { recursive: true });
-      const out = path.join(dir, "SKILL.md");
-      writeFileSync(out, SKILL_MD, "utf8");
-      ui.header("skill");
-      ui.success("Skill instalada");
-      ui.detail(`${out} — Claude Code la carga bajo demanda`);
-    } else {
-      ui.print(SKILL_MD);
-    }
-  });
-
-program
-  .command("usage")
-  .description("Show which Sens tools the model has actually called (from the MCP usage log)")
-  .action(() => {
-    ui.header("usage");
-    ui.blank();
-    ui.print(formatUsage(readUsage(root)));
-    ui.blank();
-  });
-
-program
-  .command("init")
-  .description("Set up sens here for an agent: index + rules, plus the skill/hooks on Claude Code")
-  .option("--agent <name>", "claude | codex | copilot | cursor | all", "claude")
-  .action(async (opts: { agent: string }) => {
-    ui.header(`init ${opts.agent}`);
-    const { initProject } = await import("./init.js");
-    const sp = ui.spinner("Indexando y preparando el agente…");
-    let results: Awaited<ReturnType<typeof initProject>>;
-    try {
-      results = await initProject(root, { agent: opts.agent });
-    } catch (err) {
-      sp.fail("No se pudo inicializar sens");
-      throw err;
-    }
-    sp.succeed(`Índice construido  ${ui.c.meta(`${ui.sym.branch} ${results[0].indexedFiles} archivo(s)`)}`);
-    for (const r of results) {
-      if (r.agent === "claude") {
-        ui.success(`Skill instalada  ${ui.c.meta(`${ui.sym.branch} ${r.skillPath ?? ""} [claude]`)}`);
-        if (r.hookWired === "skipped") {
-          ui.warn(`No se pudo leer ${r.settingsPath ?? ""} — añade los hooks a mano`);
-        } else {
-          const verb = r.hookWired === "added" ? "conectados en" : "ya estaban en";
-          ui.success(`Hooks ${verb}  ${ui.c.meta(`${ui.sym.branch} ${r.settingsPath ?? ""} [claude]`)}`);
-        }
-      } else {
-        ui.success(`Reglas ${r.instructionsWritten}  ${ui.c.meta(`${ui.sym.branch} ${r.instructionsPath ?? ""} [${r.agent}]`)}`);
-      }
-    }
-    ui.blank();
-    ui.detail("sens debe estar en el PATH (npm i -g sens-mcp) para que los agentes puedan invocarlo.");
-  });
-
-program
   .command("mcp")
   .description("Start the MCP server (stdio) for Claude Code")
   .action(async () => {
@@ -413,47 +294,6 @@ program
     const { runHookClient } = await import("./hook-client.js");
     await runHookClient();
   });
-program
-  .command("daemon")
-  .description(
-    "Manage the resident query process that keeps the index warm between calls",
-  )
-  .option("--serve", "run the daemon in this process (used by the auto-start)")
-  .option("--warm", "build the TypeScript program up front, for reindexing")
-  .option("--stop", "shut down the daemon for this project")
-  .option("--status", "report whether a daemon is running for this project")
-  .action(async (opts: { serve?: boolean; stop?: boolean; status?: boolean; warm?: boolean }) => {
-    const { startDaemon } = await import("./daemon/server.js");
-    const { stopDaemon, daemonRunning } = await import("./daemon/client.js");
-    const { socketPath } = await import("./daemon/protocol.js");
-
-    if (opts.stop) {
-      ui.header("daemon stop");
-      ui.success(
-        (await stopDaemon(root))
-          ? "Daemon detenido."
-          : "No había ningún daemon en marcha.",
-      );
-      return;
-    }
-    if (opts.status) {
-      ui.header("daemon status");
-      const running = await daemonRunning(root);
-      ui.success(running ? "En marcha." : "Parado.");
-      ui.detail(socketPath(root));
-      return;
-    }
-    if (opts.serve) {
-
-      await startDaemon(root, { warm: opts.warm });
-      return;
-    }
-    ui.header("daemon");
-    const { address } = await startDaemon(root);
-    ui.success("Daemon en marcha. Ctrl-C para pararlo.");
-    ui.detail(address);
-  });
-
 program.parseAsync().catch((err) => {
   const message = err instanceof Error ? err.message : String(err);
   ui.error(message);

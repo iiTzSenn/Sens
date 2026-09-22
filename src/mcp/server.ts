@@ -213,25 +213,6 @@ export async function startMcpServer(root: string): Promise<void> {
   );
 
   server.registerPrompt(
-    "dashboard",
-    {
-      title: "Sens: open web dashboard",
-      description: "Launch the local web dashboard with the interactive project graph.",
-    },
-    () => ({
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text: "Open the Sens web dashboard so I can see the project graph. Run the `sens dashboard` command (it starts a local web server) as a BACKGROUND process — do not wait on it — then tell me the http://localhost:4319 URL to open. If `sens` is not on PATH, run the installed Sens build's `dist/cli.js dashboard` with node instead.",
-          },
-        },
-      ],
-    }),
-  );
-
-  server.registerPrompt(
     "rules",
     {
       title: "Sens: working rules",

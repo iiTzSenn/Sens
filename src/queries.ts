@@ -1,5 +1,4 @@
 import { createEngine } from "./core.js";
-import { logUsage } from "./usage.js";
 import { analyzeDeadCode } from "./deadcode.js";
 import type { QueryEngine } from "./query/engine.js";
 import {
@@ -49,7 +48,6 @@ export async function runQuery<K extends QueryName>(
   name: K,
   args: QueryArgs[K],
 ): Promise<string> {
-  logUsage(root, name, args as Record<string, unknown>);
   const { engine } = await createEngine(root);
   return (runners[name] as Runner<K>)(engine, args, root);
 }
