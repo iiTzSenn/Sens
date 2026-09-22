@@ -13,3 +13,6 @@ CLAUDE.md
 
 .DS_Store
 Thumbs.db
+
+rust/*/target/
+rust/sens-app/gen/
