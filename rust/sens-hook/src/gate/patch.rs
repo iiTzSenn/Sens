@@ -51,7 +51,7 @@ impl FilePatch {
         diff_lines(&self.before, &self.after).0
     }
 
-    pub fn introduced_symbols(&self) -> Option<Vec<String>> {
+    pub fn introduced(&self) -> Option<Vec<EmitSymbol>> {
         let after = symbols_in(&self.path, &self.after)?;
         let before: HashSet<String> = symbols_in(&self.path, &self.before)
             .unwrap_or_default()
@@ -62,11 +62,92 @@ impl FilePatch {
         Some(
             after
                 .into_iter()
-                .map(|symbol| symbol.name)
-                .filter(|name| !before.contains(name) && seen.insert(name.clone()))
+                .filter(|symbol| {
+                    !before.contains(&symbol.name) && seen.insert(symbol.name.clone())
+                })
                 .collect(),
         )
     }
+
+    pub fn introduced_symbols(&self) -> Option<Vec<String>> {
+        Some(
+            self.introduced()?
+                .into_iter()
+                .map(|symbol| symbol.name)
+                .collect(),
+        )
+    }
+}
+
+pub struct Usage<'a> {
+    patch: &'a Patch,
+    declared: Vec<Declared>,
+}
+
+struct Declared {
+    file: String,
+    tail: String,
+}
+
+impl<'a> Usage<'a> {
+    pub fn of(patch: &'a Patch) -> Self {
+        let declared = patch
+            .files
+            .iter()
+            .flat_map(|file| {
+                symbols_in(&file.path, &file.after)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(move |symbol| Declared {
+                        file: file.path.clone(),
+                        tail: tail_of(&symbol.name).to_string(),
+                    })
+            })
+            .collect();
+        Self { patch, declared }
+    }
+
+    pub fn uses(&self, name: &str) -> bool {
+        let tail = tail_of(name);
+        let mentions: usize = self
+            .patch
+            .files
+            .iter()
+            .map(|file| word_hits(&file.after, tail))
+            .sum();
+        mentions > self.declared.iter().filter(|entry| entry.tail == tail).count()
+    }
+
+    pub fn declares(&self, file: &str, name: &str) -> bool {
+        let tail = tail_of(name);
+        self.declared
+            .iter()
+            .any(|entry| entry.file == file && entry.tail == tail)
+    }
+}
+
+fn tail_of(name: &str) -> &str {
+    match name.rfind('.') {
+        Some(dot) => &name[dot + 1..],
+        None => name,
+    }
+}
+
+fn word_hits(text: &str, needle: &str) -> usize {
+    if needle.is_empty() {
+        return 0;
+    }
+    text.match_indices(needle)
+        .filter(|(at, _)| {
+            let before = text[..*at].chars().next_back();
+            let after = text[at + needle.len()..].chars().next();
+            !before.is_some_and(is_word) && !after.is_some_and(is_word)
+        })
+        .count()
+}
+
+fn is_word(letter: char) -> bool {
+    letter.is_alphanumeric() || letter == '_'
 }
 
 fn language_for(path: &str) -> Option<(tree_sitter::Language, Extract)> {

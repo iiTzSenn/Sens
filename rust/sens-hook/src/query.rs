@@ -44,6 +44,11 @@ pub struct WhoUses<'a> {
     pub references: Vec<Reference>,
 }
 
+pub struct OnlyUsedIn<'a> {
+    pub symbol: &'a SymbolInfo,
+    pub sites: Vec<(&'a str, u32)>,
+}
+
 pub struct MapEntry<'a> {
     pub file: &'a str,
     pub exported: Vec<&'a SymbolInfo>,
@@ -172,6 +177,33 @@ impl<'a> Engine<'a> {
                 symbol,
             })
             .collect()
+    }
+
+    pub fn used_only_in(&self, files: &HashSet<&str>) -> Vec<OnlyUsedIn<'a>> {
+        let path_of = |slot: u32| self.index.files.get(slot as usize).map(|file| file.path.as_str());
+        let mut found = Vec::new();
+        for si in 0..self.index.symbols.len() {
+            let refs = self.index.raw_references(si);
+            let inside = !refs.is_empty()
+                && refs
+                    .iter()
+                    .all(|&(slot, _, _)| path_of(slot).is_some_and(|path| files.contains(path)));
+            if !inside {
+                continue;
+            }
+            found.push(OnlyUsedIn {
+                symbol: self.symbol(si),
+                sites: refs
+                    .iter()
+                    .filter_map(|&(slot, line, _)| Some((path_of(slot)?, line)))
+                    .collect(),
+            });
+        }
+        found
+    }
+
+    pub fn is_entry_point(&self, file: &str) -> bool {
+        self.entry_points.contains(file)
     }
 
     pub fn file_outline(&self, file: &str) -> Vec<&'a SymbolInfo> {

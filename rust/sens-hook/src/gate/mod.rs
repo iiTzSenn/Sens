@@ -1,6 +1,7 @@
 pub mod comments;
 pub mod duplication;
 pub mod growth;
+pub mod orphans;
 pub mod patch;
 pub mod trial;
 
@@ -106,6 +107,7 @@ impl Gauntlet {
         Self {
             gates: vec![
                 Box::new(duplication::Duplication),
+                Box::new(orphans::Orphans),
                 Box::new(growth::Growth::sealed()),
                 Box::new(comments::Comments),
             ],
@@ -152,15 +154,36 @@ pub mod fixture {
     use crate::binindex::{self, BinIndex};
 
     pub fn index(symbols: &str) -> BinIndex {
+        index_with("", symbols, "")
+    }
+
+    pub fn index_with(files: &str, symbols: &str, references: &str) -> BinIndex {
         let raw = format!(
-            "{{\"schemaVersion\":6,\"createdAt\":0,\"files\":[],\"symbols\":[{symbols}],\"imports\":[],\"references\":{{}}}}"
+            "{{\"schemaVersion\":6,\"createdAt\":0,\"files\":[{files}],\"symbols\":[{symbols}],\"imports\":[],\"references\":{{{references}}}}}"
         );
         binindex::from_json(raw.as_bytes()).expect("fixture index")
     }
 
+    pub fn file(path: &str) -> String {
+        format!("{{\"path\":\"{path}\",\"mtimeMs\":0,\"exports\":[]}}")
+    }
+
+    pub fn id(name: &str, file: &str, line: u32) -> String {
+        format!("{file}#{name}#{line}")
+    }
+
+    pub fn used_at(symbol_id: &str, sites: &[(&str, u32)]) -> String {
+        let places: Vec<String> = sites
+            .iter()
+            .map(|(file, line)| format!("{{\"file\":\"{file}\",\"line\":{line}}}"))
+            .collect();
+        format!("\"{symbol_id}\":[{}]", places.join(","))
+    }
+
     pub fn symbol(name: &str, file: &str, line: u32, signature: &str) -> String {
         format!(
-            "{{\"id\":\"{file}#{name}#{line}\",\"kind\":\"function\",\"name\":\"{name}\",\"file\":\"{file}\",\"line\":{line},\"signature\":\"{signature}\",\"exported\":true}}"
+            "{{\"id\":\"{}\",\"kind\":\"function\",\"name\":\"{name}\",\"file\":\"{file}\",\"line\":{line},\"signature\":\"{signature}\",\"exported\":true}}",
+            id(name, file, line)
         )
     }
 }
@@ -175,6 +198,7 @@ mod tests {
         let loosened = Gauntlet {
             gates: vec![
                 Box::new(duplication::Duplication),
+                Box::new(orphans::Orphans),
                 Box::new(growth::Growth { budget: 4000 }),
                 Box::new(comments::Comments),
             ],
