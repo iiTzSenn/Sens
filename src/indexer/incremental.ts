@@ -33,22 +33,26 @@ export async function updateIndex(
   root: string,
   previous: ProjectIndex,
   touched: string[],
-  opts: { keepWarm?: boolean } = {},
+  opts: { keepWarm?: boolean; present?: Set<string> } = {},
 ): Promise<ProjectIndex | null> {
   if (previous.schemaVersion !== INDEX_SCHEMA_VERSION) return null;
 
-  const paths = [...new Set(touched.map((file) => relativeTo(root, file)))];
-  if (paths.length === 0 || paths.length > MAX_TOUCHED) return null;
+  const named = [...new Set(touched.map((file) => relativeTo(root, file)))];
+  if (named.length === 0 || named.length > MAX_TOUCHED) return null;
+
+  const indexed = new Set(previous.files.map((file) => file.path));
+  const paths = named.filter((file) => indexed.has(file) || opts.present?.has(file));
+  if (paths.length === 0) return { ...previous, createdAt: Date.now() };
   if (paths.some((file) => parserForFile(file) !== typescriptParser)) return null;
 
   const edited = new Set(paths);
   if (movedWithoutUs(root, previous, edited)) return null;
 
   const alive = paths.filter((file) => existsSync(path.join(root, file)));
-  const part = !alive.length
+  const part = !alive.length && !opts.keepWarm
     ? { symbols: [], files: [], imports: [], references: {} }
     : opts.keepWarm
-      ? await fromWarmProject(root, previous, alive)
+      ? await fromWarmProject(root, previous, paths, alive)
       : await fromImportClosure(root, previous, alive);
 
   if (namedElsewhere(root, previous, edited, exportsSwappedBy(previous, part, edited))) {
@@ -81,10 +85,11 @@ async function heldProject(root: string, previous: ProjectIndex): Promise<Projec
 async function fromWarmProject(
   root: string,
   previous: ProjectIndex,
+  touched: string[],
   alive: string[],
 ): Promise<IndexContribution> {
   const project = await heldProject(root, previous);
-  syncProject(project, alive.map((file) => absolute(root, file)));
+  syncProject(project, touched.map((file) => absolute(root, file)));
   return extract(root, project, { referencesFrom: new Set(alive) });
 }
 
@@ -166,6 +171,7 @@ function namedElsewhere(
   const quoted = names.map((name) => [`"${name}"`, `'${name}'`, "`" + name + "`"]);
   for (const file of previous.files) {
     if (touched.has(file.path)) continue;
+    if (parserForFile(file.path) !== typescriptParser) continue;
     let source: string;
     try {
       source = readFileSync(path.join(root, file.path), "utf8");
@@ -177,7 +183,7 @@ function namedElsewhere(
   return false;
 }
 
-function relativeTo(root: string, file: string): string {
+export function relativeTo(root: string, file: string): string {
   const clean = file.split(path.sep).join("/");
   if (!path.isAbsolute(file)) return clean.replace(/^\.\//, "");
   return path.relative(root, file).split(path.sep).join("/");

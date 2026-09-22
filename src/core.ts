@@ -1,10 +1,14 @@
 import { mkdirSync } from "node:fs";
-import { buildIndex, resolveWatched } from "./indexer/indexer.js";
-import { dropWarmProject, updateIndex } from "./indexer/incremental.js";
+import { buildIndex, resolveFiles, resolveWatched } from "./indexer/indexer.js";
+import {
+  dropWarmProject,
+  relativeTo,
+  updateIndex,
+} from "./indexer/incremental.js";
 import { loadIndex, saveIndex, isFresh } from "./store/store.js";
 import { loadMeta, saveMeta, buildMeta, structureUnchanged } from "./store/meta.js";
 import { loadConfig, entryPointFiles, type SensConfig } from "./config.js";
-import { sensDir } from "./paths.js";
+import { rel, sensDir } from "./paths.js";
 import { QueryEngine } from "./query/engine.js";
 import type { ProjectIndex, WatchedPath } from "./types.js";
 
@@ -51,20 +55,68 @@ export async function refreshIndex(
 ): Promise<{ index: ProjectIndex; incremental: boolean }> {
   const config = loadConfig(root);
   const ignore = [...(opts.ignore ?? []), ...config.ignore];
-  const previous = loadIndex(root);
-  const meta = previous && loadMeta(root, previous.createdAt);
-  if (previous && meta && structureUnchanged(root, meta.watched)) {
-    const updated = await updateIndex(root, previous, touched, {
-      keepWarm: opts.keepWarm,
-    });
-    if (updated) {
-      return {
-        index: persist(root, updated, meta.watched, meta.entryPoints),
-        incremental: true,
-      };
-    }
+  const done = await updateOnDisk(root, touched, config, ignore, opts.keepWarm === true);
+  if (done) {
+    return {
+      index: persist(root, done.index, done.watched, done.entryPoints),
+      incremental: true,
+    };
   }
   return { index: await rebuild(root, config, ignore), incremental: false };
+}
+
+interface Refreshed {
+  index: ProjectIndex;
+  watched: WatchedPath[];
+  entryPoints: Iterable<string>;
+}
+
+async function updateOnDisk(
+  root: string,
+  touched: string[],
+  config: SensConfig,
+  ignore: string[],
+  keepWarm: boolean,
+): Promise<Refreshed | null> {
+  const previous = loadIndex(root);
+  const meta = previous && loadMeta(root, previous.createdAt);
+  if (!previous || !meta) return null;
+
+  if (structureUnchanged(root, meta.watched)) {
+    const index = await updateIndex(root, previous, touched, { keepWarm });
+    return index && { index, watched: meta.watched, entryPoints: meta.entryPoints };
+  }
+
+  const present = new Set(
+    (await resolveFiles(root, ignore)).map((file) => rel(root, file)),
+  );
+  if (!onlyWeMovedTheSet(root, previous, present, touched)) return null;
+
+  const index = await updateIndex(root, previous, touched, { keepWarm, present });
+  return (
+    index && {
+      index,
+      watched: await resolveWatched(root, ignore),
+      entryPoints: await entryPointFiles(root, config),
+    }
+  );
+}
+
+function onlyWeMovedTheSet(
+  root: string,
+  previous: ProjectIndex,
+  present: Set<string>,
+  touched: string[],
+): boolean {
+  const ours = new Set(touched.map((file) => relativeTo(root, file)));
+  const known = new Set(previous.files.map((file) => file.path));
+  for (const file of present) {
+    if (!known.has(file) && !ours.has(file)) return false;
+  }
+  for (const file of known) {
+    if (!present.has(file) && !ours.has(file)) return false;
+  }
+  return true;
 }
 
 export async function ensureIndex(

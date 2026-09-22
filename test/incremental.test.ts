@@ -152,22 +152,62 @@ describe("incremental index", { timeout: 30000 }, () => {
     await ensureIndex(root);
     unlinkSync(path.join(root, "src/extra.ts"));
 
-    const updated = await updateIndex(root, loadIndex(root) as ProjectIndex, ["src/extra.ts"]);
-    const full = (await ensureIndex(root, { force: true })).index;
+    const { incremental, full, tookFastPath } = await updatedAndRebuilt(["src/extra.ts"]);
 
-    expect(updated).not.toBeNull();
-    expect(normalize(updated as ProjectIndex)).toEqual(normalize(full));
-    expect((updated as ProjectIndex).files.some((f) => f.path === "src/extra.ts")).toBe(false);
+    expect(tookFastPath).toBe(true);
+    expect(normalize(incremental)).toEqual(normalize(full));
+    expect(incremental.files.some((f) => f.path === "src/extra.ts")).toBe(false);
   });
 
-  it("rebuilds in full when a file appears", async () => {
+  it("takes in a file that appeared, and the import that reaches it", async () => {
     await ensureIndex(root);
-    write("src/extra.ts", "export function extra(): number { return 1; }\n");
+    write("src/extra.ts", "export function extra(raw: string): string {\n  return raw;\n}\n");
+    write(
+      "src/boot.ts",
+      [
+        'import { parseRow, widen } from "./rows.js";',
+        'import { extra } from "./extra.js";',
+        "export function boot(raw: string): string {",
+        "  return extra(widen(parseRow(raw)));",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const { incremental, full, tookFastPath } = await updatedAndRebuilt([
+      "src/extra.ts",
+      "src/boot.ts",
+    ]);
+
+    expect(tookFastPath).toBe(true);
+    expect(normalize(incremental)).toEqual(normalize(full));
+
+    const born = incremental.symbols.find((s) => s.name === "extra");
+    expect(born).toBeDefined();
+    expect(incremental.references[born!.id]?.some((r) => r.file === "src/boot.ts")).toBe(true);
+  });
+
+  it("rebuilds in full when a file appeared that nobody mentioned", async () => {
+    await ensureIndex(root);
+    write("src/extra.ts", "export function extra(): number {\n  return 1;\n}\n");
+    write("src/other.ts", "export function other(): number {\n  return 2;\n}\n");
 
     const { incremental, tookFastPath } = await updatedAndRebuilt(["src/extra.ts"]);
 
     expect(tookFastPath).toBe(false);
-    expect(incremental.files.some((f) => f.path === "src/extra.ts")).toBe(true);
+    expect(incremental.files.some((f) => f.path === "src/other.ts")).toBe(true);
+  });
+
+  it("leaves the index alone when what appeared is not code it indexes", async () => {
+    await ensureIndex(root);
+    const before = (await ensureIndex(root)).index;
+    write("notas.md", "# notas\n");
+
+    const { incremental, tookFastPath } = await updatedAndRebuilt(["notas.md"]);
+
+    expect(tookFastPath).toBe(true);
+    expect(incremental.symbols.length).toBe(before.symbols.length);
+    expect(incremental.files.some((f) => f.path === "notas.md")).toBe(false);
   });
 
   it("rebuilds in full when the touched file is not TypeScript", async () => {
@@ -286,5 +326,65 @@ describe("incremental index", { timeout: 30000 }, () => {
     const updated = await updateIndex(root, loadIndex(root) as ProjectIndex, ["src/rows.ts"]);
 
     expect(updated).toBeNull();
+  });
+  it("forgets a deleted file on the warm path, and still matches a full rebuild", async () => {
+    write(
+      "src/extra.ts",
+      "export function extra(raw: string): string {\n  return raw + raw;\n}\n",
+    );
+    write(
+      "src/boot.ts",
+      [
+        'import { parseRow, widen } from "./rows.js";',
+        'import { extra } from "./extra.js";',
+        "export function boot(raw: string): string {",
+        "  return extra(widen(parseRow(raw)));",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    await ensureIndex(root);
+
+    unlinkSync(path.join(root, "src/extra.ts"));
+    write(
+      "src/boot.ts",
+      [
+        'import { parseRow, widen } from "./rows.js";',
+        "export function boot(raw: string): string {",
+        "  return widen(parseRow(raw));",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const gone = await updateIndex(
+      root,
+      loadIndex(root) as ProjectIndex,
+      ["src/extra.ts", "src/boot.ts"],
+      { keepWarm: true, present: new Set(["src/rows.ts", "src/boot.ts"]) },
+    );
+    expect(gone).not.toBeNull();
+    expect((gone as ProjectIndex).symbols.some((s) => s.name === "extra")).toBe(false);
+
+    write(
+      "src/rows.ts",
+      [
+        "export function parseRow(raw: string): string {",
+        "  return raw.trim();",
+        "}",
+        "export function widen(raw: string): string {",
+        "  return raw + raw + raw;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const after = await updateIndex(root, gone as ProjectIndex, ["src/rows.ts"], {
+      keepWarm: true,
+    });
+    const full = (await ensureIndex(root, { force: true })).index;
+
+    expect(after).not.toBeNull();
+    expect(normalize(after as ProjectIndex)).toEqual(normalize(full));
   });
 });

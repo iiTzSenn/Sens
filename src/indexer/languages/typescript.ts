@@ -54,7 +54,9 @@ export async function openProject(root: string, absFiles: string[]): Promise<Pro
 
     project = new Ctor(options);
   }
-  for (const f of absFiles) project.addSourceFileAtPath(f);
+  for (const f of absFiles) {
+    if (existsSync(f)) project.addSourceFileAtPath(f);
+  }
   return project;
 }
 
