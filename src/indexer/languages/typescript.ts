@@ -14,7 +14,7 @@ import type {
   ImportEdge,
   SymbolKind,
 } from "../../types.js";
-import type { LanguageParser, IndexContribution } from "./parser.js";
+import type { BuildOptions, LanguageParser, IndexContribution } from "./parser.js";
 
 function symbolId(file: string, name: string, line: number): string {
   return `${file}#${name}#${line}`;
@@ -33,7 +33,11 @@ function varSig(v: VariableDeclaration, kind: string): string {
   return `${kind} ${v.getName()}${t ? ": " + collapse(t) : ""}`;
 }
 
-async function build(root: string, absFiles: string[]): Promise<IndexContribution> {
+async function build(
+  root: string,
+  absFiles: string[],
+  opts: BuildOptions = {},
+): Promise<IndexContribution> {
   const { Project, Node, SyntaxKind } = await import("ts-morph");
 
   const configPath = ["tsconfig.json", "jsconfig.json"]
@@ -186,8 +190,12 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
     files.push({ path: file, mtimeMs: statSync(sf.getFilePath()).mtimeMs, exports: exportsList });
   }
 
+  const resolving = (file: string): boolean =>
+    !opts.referencesFrom || opts.referencesFrom.has(file);
+
   for (const sf of project.getSourceFiles()) {
     const file = rel(root, sf.getFilePath());
+    if (!resolving(file)) continue;
     for (const id of sf.getDescendantsOfKind(SyntaxKind.Identifier)) {
       if (nameNodes.has(id)) continue;
       let sym = id.getSymbol();
@@ -220,6 +228,9 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
 
   const idByFileName = new Map<string, string>();
   const idsByExportedName = new Map<string, string[]>();
+  for (const [name, ids] of opts.exportsElsewhere ?? []) {
+    idsByExportedName.set(name, [...ids]);
+  }
   for (const s of symbols) {
     const key = `${s.file}::${s.name}`;
     if (!idByFileName.has(key)) idByFileName.set(key, s.id);
@@ -230,22 +241,6 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
     }
   }
   const fileSet = new Set(files.map((f) => f.path));
-
-  const resolveModule = (fromFile: string, spec: string): string | null => {
-    if (!spec.startsWith(".")) return null;
-    const parts = fromFile.split("/").slice(0, -1);
-    for (const seg of spec.split("/")) {
-      if (seg === "" || seg === ".") continue;
-      if (seg === "..") parts.pop();
-      else parts.push(seg);
-    }
-    const base = parts.join("/").replace(/\.[cm]?[jt]sx?$/, "");
-    for (const ext of typescriptParser.extensions) {
-      if (fileSet.has(`${base}.${ext}`)) return `${base}.${ext}`;
-      if (fileSet.has(`${base}/index.${ext}`)) return `${base}/index.${ext}`;
-    }
-    return null;
-  };
 
   const importedNames = (call: TsNode): string[] | null => {
     let node: TsNode | undefined = call.getParent();
@@ -267,11 +262,12 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
 
   for (const sf of project.getSourceFiles()) {
     const file = rel(root, sf.getFilePath());
+    if (!resolving(file)) continue;
     for (const call of sf.getDescendantsOfKind(SyntaxKind.CallExpression)) {
       if (call.getExpression().getKind() !== SyntaxKind.ImportKeyword) continue;
       const arg = call.getArguments()[0];
       if (!arg || !Node.isStringLiteral(arg)) continue;
-      const target = resolveModule(file, arg.getLiteralText());
+      const target = resolveImport(fileSet, file, arg.getLiteralText());
       if (!target) continue;
       const line = call.getStartLineNumber();
       const names = importedNames(call);
@@ -293,7 +289,7 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
       const ids = idsByExportedName.get(val);
       if (!ids) continue;
       const line = str.getStartLineNumber();
-      for (const tid of ids) references[tid].push({ file, line });
+      for (const tid of ids) (references[tid] ??= []).push({ file, line });
     }
 
     for (const exp of sf.getExportDeclarations()) {
@@ -308,6 +304,26 @@ async function build(root: string, absFiles: string[]): Promise<IndexContributio
   }
 
   return { symbols, files, imports, references };
+}
+
+export function resolveImport(
+  files: Set<string>,
+  fromFile: string,
+  spec: string,
+): string | null {
+  if (!spec.startsWith(".")) return null;
+  const parts = fromFile.split("/").slice(0, -1);
+  for (const seg of spec.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") parts.pop();
+    else parts.push(seg);
+  }
+  const base = parts.join("/").replace(/\.[cm]?[jt]sx?$/, "");
+  for (const ext of typescriptParser.extensions) {
+    if (files.has(`${base}.${ext}`)) return `${base}.${ext}`;
+    if (files.has(`${base}/index.${ext}`)) return `${base}/index.${ext}`;
+  }
+  return null;
 }
 
 export const typescriptParser: LanguageParser = {

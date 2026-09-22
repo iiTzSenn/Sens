@@ -12,12 +12,23 @@ export interface IndexContribution {
   references: Record<string, Reference[]>;
 }
 
+export interface BuildOptions {
+
+  referencesFrom?: Set<string>;
+
+  exportsElsewhere?: Map<string, string[]>;
+}
+
 export interface LanguageParser {
 
   name: string;
 
   extensions: string[];
-  build(root: string, files: string[]): Promise<IndexContribution>;
+  build(
+    root: string,
+    files: string[],
+    opts?: BuildOptions,
+  ): Promise<IndexContribution>;
 }
 import { typescriptParser } from "./typescript.js";
 import { pythonParser } from "./python.js";

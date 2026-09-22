@@ -1,15 +1,34 @@
 import { mkdirSync } from "node:fs";
 import { buildIndex, resolveWatched } from "./indexer/indexer.js";
+import { updateIndex } from "./indexer/incremental.js";
 import { loadIndex, saveIndex, isFresh } from "./store/store.js";
-import { loadMeta, saveMeta, buildMeta } from "./store/meta.js";
+import { loadMeta, saveMeta, buildMeta, structureUnchanged } from "./store/meta.js";
 import { loadConfig, entryPointFiles, type SensConfig } from "./config.js";
 import { sensDir } from "./paths.js";
 import { QueryEngine } from "./query/engine.js";
-import type { ProjectIndex } from "./types.js";
+import type { ProjectIndex, WatchedPath } from "./types.js";
+
+const engineCache = new Map<
+  string,
+  { index: ProjectIndex; engine: QueryEngine }
+>();
 
 export interface EnsureOptions {
   force?: boolean;
   ignore?: string[];
+}
+
+function persist(
+  root: string,
+  index: ProjectIndex,
+  watched: WatchedPath[],
+  entryPoints: Iterable<string>,
+): ProjectIndex {
+  mkdirSync(sensDir(root), { recursive: true });
+  saveIndex(root, index);
+  saveMeta(root, buildMeta(index.createdAt, watched, entryPoints));
+  engineCache.delete(root);
+  return index;
 }
 
 async function rebuild(
@@ -20,9 +39,28 @@ async function rebuild(
   mkdirSync(sensDir(root), { recursive: true });
   const watched = await resolveWatched(root, ignore);
   const index = await buildIndex(root, { ignore });
-  saveIndex(root, index);
-  saveMeta(root, buildMeta(index.createdAt, watched, await entryPointFiles(root, config)));
-  return index;
+  return persist(root, index, watched, await entryPointFiles(root, config));
+}
+
+export async function refreshIndex(
+  root: string,
+  touched: string[],
+  opts: EnsureOptions = {},
+): Promise<{ index: ProjectIndex; incremental: boolean }> {
+  const config = loadConfig(root);
+  const ignore = [...(opts.ignore ?? []), ...config.ignore];
+  const previous = loadIndex(root);
+  const meta = previous && loadMeta(root, previous.createdAt);
+  if (previous && meta && structureUnchanged(root, meta.watched)) {
+    const updated = await updateIndex(root, previous, touched);
+    if (updated) {
+      return {
+        index: persist(root, updated, meta.watched, meta.entryPoints),
+        incremental: true,
+      };
+    }
+  }
+  return { index: await rebuild(root, config, ignore), incremental: false };
 }
 
 export async function ensureIndex(
@@ -53,10 +91,7 @@ async function entryPointsFor(
   saveMeta(root, buildMeta(index.createdAt, watched, eps));
   return eps;
 }
-const engineCache = new Map<
-  string,
-  { index: ProjectIndex; engine: QueryEngine }
->();
+
 
 export async function createEngine(
   root: string,

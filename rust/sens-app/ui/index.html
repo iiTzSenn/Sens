@@ -513,7 +513,9 @@
         for (const file of step.files) diffCard(file);
         break;
       case "reindexed":
-        tick(["índice al día · ", bold(`${step.millis} ms`), step.delegated ? " · vía Node" : " · nativo"]);
+        tick(step.millis === 0
+          ? ["índice al día · ", bold("ya lo estaba")]
+          : ["índice al día · ", bold(`${step.millis} ms`), step.delegated ? " · vía Node" : " · nativo"]);
         break;
       case "reindexFailed":
         tick([step.reason], "warn");

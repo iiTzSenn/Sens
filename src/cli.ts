@@ -3,7 +3,7 @@ import { Command } from "commander";
 import path from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { VERSION } from "./index.js";
-import { createEngine } from "./core.js";
+import { createEngine, refreshIndex } from "./core.js";
 import { analyzeDeadCode } from "./deadcode.js";
 import { sensDir } from "./paths.js";
 import { composeRules } from "./rules.js";
@@ -26,6 +26,7 @@ import type { Block } from "./cli/suggest.js";
 import { nativeQuery } from "./native-query.js";
 import type { QueryArgs, QueryName } from "./queries.js";
 import type { QueryEngine } from "./query/engine.js";
+import type { ProjectIndex } from "./types.js";
 
 const root = process.cwd();
 const program = new Command();
@@ -83,21 +84,38 @@ program
   .command("index")
   .description("Build or update the project index")
   .option("-f, --force", "rebuild even if the cache looks fresh")
-  .action(async (opts: { force?: boolean }) => {
+  .option("--only <paths...>", "update just these files")
+  .action(async (opts: { force?: boolean; only?: string[] }) => {
     ui.header("index");
-    const sp = ui.spinner(opts.force ? "Reconstruyendo el índice…" : "Indexando proyecto…");
+    const touched = opts.only ?? [];
+    const sp = ui.spinner(
+      touched.length > 0
+        ? `Actualizando ${touched.length === 1 ? "1 archivo" : `${touched.length} archivos`}…`
+        : opts.force
+          ? "Reconstruyendo el índice…"
+          : "Indexando proyecto…",
+    );
     const start = Date.now();
-    let built: Awaited<ReturnType<typeof createEngine>>;
+    let index: ProjectIndex;
+    let fromCache = false;
+    let incremental = false;
     try {
-      built = await createEngine(root, { force: opts.force });
+      if (touched.length > 0) {
+        const updated = await refreshIndex(root, touched);
+        index = updated.index;
+        incremental = updated.incremental;
+      } else {
+        const built = await createEngine(root, { force: opts.force });
+        index = built.index;
+        fromCache = built.fromCache;
+      }
     } catch (err) {
       sp.fail("No se pudo indexar el proyecto");
       throw err;
     }
     const ms = Date.now() - start;
-    const { index, fromCache } = built;
     sp.succeed(
-      `${fromCache ? "El índice ya estaba al día" : "Índice reconstruido"}  ${ui.c.meta(`${ui.sym.branch} ${index.files.length} archivos · ${index.symbols.length} símbolos · ${ms}ms`)}`,
+      `${fromCache ? "El índice ya estaba al día" : incremental ? "Índice actualizado" : "Índice reconstruido"}  ${ui.c.meta(`${ui.sym.branch} ${index.files.length} archivos · ${index.symbols.length} símbolos · ${ms}ms`)}`,
     );
     if (index.files.length === 0) {
       ui.warn("No se encontraron archivos para indexar.");

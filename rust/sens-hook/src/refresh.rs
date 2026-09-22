@@ -8,6 +8,7 @@ use crate::{binindex, index, indexer};
 
 #[derive(Debug, PartialEq)]
 pub enum Refreshed {
+    Untouched,
     Native { files: usize, millis: u128 },
     Delegated { millis: u128 },
 }
@@ -15,14 +16,26 @@ pub enum Refreshed {
 impl Refreshed {
     pub fn millis(&self) -> u128 {
         match self {
+            Refreshed::Untouched => 0,
             Refreshed::Native { millis, .. } | Refreshed::Delegated { millis } => *millis,
         }
     }
 }
 
 pub fn rebuild(root: &Path) -> Result<Refreshed, String> {
-    let started = Instant::now();
+    refresh(root, &[] as &[&str])
+}
 
+pub fn update(root: &Path, touched: &[impl AsRef<str>]) -> Result<Refreshed, String> {
+    refresh(root, touched)
+}
+
+fn refresh(root: &Path, touched: &[impl AsRef<str>]) -> Result<Refreshed, String> {
+    if reads_as_fresh(root) {
+        return Ok(Refreshed::Untouched);
+    }
+
+    let started = Instant::now();
     match indexer::build(root) {
         Some(built) => {
             let files = built.files.len();
@@ -33,13 +46,20 @@ pub fn rebuild(root: &Path) -> Result<Refreshed, String> {
             })
         }
         None => {
-            delegate(root)?;
+            delegate(root, touched)?;
             drop_cache(root);
             Ok(Refreshed::Delegated {
                 millis: started.elapsed().as_millis(),
             })
         }
     }
+}
+
+fn reads_as_fresh(root: &Path) -> bool {
+    let Some((index, meta)) = crate::engine::load(root) else {
+        return false;
+    };
+    crate::freshness::check(root, &index.files, &meta) == crate::freshness::Freshness::Fresh
 }
 
 fn write_native(root: &Path, built: indexer::Built) -> Result<(), String> {
@@ -103,11 +123,17 @@ fn blank_meta(root: &Path) -> Value {
     })
 }
 
-fn delegate(root: &Path) -> Result<(), String> {
+fn delegate(root: &Path, touched: &[impl AsRef<str>]) -> Result<(), String> {
     let script = node_cli(root).ok_or("no encuentro el indexador de Node para este proyecto")?;
-    let finished = Command::new("node")
-        .arg(&script)
-        .arg("index")
+    let mut command = Command::new("node");
+    command.arg(&script).arg("index");
+    if !touched.is_empty() {
+        command.arg("--only");
+        for path in touched {
+            command.arg(path.as_ref());
+        }
+    }
+    let finished = command
         .current_dir(root)
         .output()
         .map_err(|error| format!("no pude lanzar node: {error}"))?;
@@ -229,6 +255,23 @@ mod tests {
             crate::freshness::Freshness::Fresh
         );
         assert_eq!(index.symbols.len(), 1);
+    }
+
+    #[test]
+    fn an_index_that_is_already_fresh_is_left_alone() {
+        let root = temp_root("fresh");
+        write_meta(&root);
+        std::fs::write(root.join("boot.rs"), "pub fn boot() {}
+").unwrap();
+
+        assert!(matches!(rebuild(&root).unwrap(), Refreshed::Native { .. }));
+        assert_eq!(rebuild(&root).unwrap(), Refreshed::Untouched);
+
+        std::fs::write(root.join("boot.rs"), "pub fn boot() {}
+pub fn start() {}
+").unwrap();
+
+        assert!(matches!(rebuild(&root).unwrap(), Refreshed::Native { .. }));
     }
 
     #[test]

@@ -104,7 +104,13 @@ pub struct Refusal {
 struct Kept {
     proposal: Proposal,
     net: i64,
-    origins: Vec<(String, String)>,
+    origins: Vec<Origin>,
+}
+
+struct Origin {
+    path: String,
+    text: String,
+    written_at: Option<std::time::SystemTime>,
 }
 
 pub fn run(
@@ -186,12 +192,10 @@ pub fn run(
         net,
         files: files.clone(),
     });
-    emit(reindex(root));
+    let paths: Vec<String> = files.into_iter().map(|file| file.path).collect();
+    emit(reindex(root, &paths));
 
-    Ok(Landed {
-        paths: files.into_iter().map(|file| file.path).collect(),
-        net,
-    })
+    Ok(Landed { paths, net })
 }
 
 fn slim(root: &Path, crew: &Crew, kept: Kept, emit: &mut dyn FnMut(Step)) -> Kept {
@@ -261,8 +265,8 @@ fn declined(reason: String, kept: Kept, emit: &mut dyn FnMut(Step)) -> Kept {
     kept
 }
 
-fn reindex(root: &Path) -> Step {
-    match sens_hook::refresh::rebuild(root) {
+fn reindex(root: &Path, touched: &[String]) -> Step {
+    match sens_hook::refresh::update(root, touched) {
         Ok(refreshed) => Step::Reindexed {
             millis: refreshed.millis() as u64,
             delegated: matches!(refreshed, sens_hook::refresh::Refreshed::Delegated { .. }),
@@ -276,7 +280,7 @@ fn weigh(
     proposal: &Proposal,
     emit: &mut dyn FnMut(Step),
 ) -> Result<Outcome, String> {
-    if let Err(reason) = sens_hook::refresh::rebuild(root) {
+    if let Err(reason) = sens_hook::refresh::update(root, &proposal.paths()) {
         emit(Step::ReindexFailed { reason });
     }
     let mut patch = as_patch(proposal);
@@ -284,38 +288,51 @@ fn weigh(
         .ok_or_else(|| "el índice está obsoleto: no juzgo con datos viejos".into())
 }
 
-fn origins_of(root: &Path, proposal: &Proposal) -> Vec<(String, String)> {
+fn origins_of(root: &Path, proposal: &Proposal) -> Vec<Origin> {
     proposal
         .files
         .iter()
         .map(|edit| {
-            let was = std::fs::read_to_string(root.join(&edit.path)).unwrap_or_default();
-            (edit.path.clone(), was)
+            let target = root.join(&edit.path);
+            Origin {
+                path: edit.path.clone(),
+                text: std::fs::read_to_string(&target).unwrap_or_default(),
+                written_at: std::fs::metadata(&target).and_then(|meta| meta.modified()).ok(),
+            }
         })
         .collect()
 }
 
-fn restore_all(root: &Path, origins: &[(String, String)]) -> Result<(), String> {
-    for (path, origin) in origins {
-        let target = root.join(path);
-        if origin.is_empty() {
+fn restore_all(root: &Path, origins: &[Origin]) -> Result<(), String> {
+    for origin in origins {
+        let target = root.join(&origin.path);
+        if origin.text.is_empty() {
             let _ = std::fs::remove_file(&target);
             continue;
         }
-        std::fs::write(&target, origin)
-            .map_err(|error| format!("no pude deshacer {path}: {error}"))?;
+        std::fs::write(&target, &origin.text)
+            .map_err(|error| format!("no pude deshacer {}: {error}", origin.path))?;
+        restamp(&target, origin.written_at);
     }
     Ok(())
+}
+
+fn restamp(target: &Path, written_at: Option<std::time::SystemTime>) {
+    let Some(when) = written_at else { return };
+    let Ok(handle) = std::fs::OpenOptions::new().write(true).open(target) else {
+        return;
+    };
+    let _ = handle.set_times(std::fs::FileTimes::new().set_modified(when));
 }
 
 fn diffs_of(kept: &Kept) -> Vec<FileDiff> {
     kept.origins
         .iter()
-        .filter_map(|(path, origin)| {
-            let edit = kept.proposal.touches(path)?;
-            let (added, removed) = diff_lines(origin, &edit.after);
+        .filter_map(|origin| {
+            let edit = kept.proposal.touches(&origin.path)?;
+            let (added, removed) = diff_lines(&origin.text, &edit.after);
             Some(FileDiff {
-                path: path.clone(),
+                path: origin.path.clone(),
                 added,
                 removed,
             })
@@ -330,12 +347,12 @@ fn total_net(files: &[FileDiff]) -> i64 {
         .sum()
 }
 
-fn net_against(origins: &[(String, String)], proposal: &Proposal) -> i64 {
+fn net_against(origins: &[Origin], proposal: &Proposal) -> i64 {
     origins
         .iter()
-        .filter_map(|(path, origin)| {
-            let edit = proposal.touches(path)?;
-            let (added, removed) = diff_lines(origin, &edit.after);
+        .filter_map(|origin| {
+            let edit = proposal.touches(&origin.path)?;
+            let (added, removed) = diff_lines(&origin.text, &edit.after);
             Some(added.len() as i64 - removed.len() as i64)
         })
         .sum()
@@ -453,31 +470,50 @@ mod tests {
         assert_eq!(writer.replies.borrow().len(), 1);
     }
 
+    fn origin(path: &str, text: &str) -> Origin {
+        Origin {
+            path: path.into(),
+            text: text.into(),
+            written_at: None,
+        }
+    }
+
     #[test]
     fn restoring_puts_every_file_back_as_it_was() {
         let root = scratch("restore-many");
         std::fs::write(root.join("a.rs"), "roto\n").unwrap();
         std::fs::write(root.join("b.rs"), "tambien roto\n").unwrap();
 
-        restore_all(
-            &root,
-            &[
-                ("a.rs".into(), "bueno\n".into()),
-                ("b.rs".into(), String::new()),
-            ],
-        )
-        .unwrap();
+        restore_all(&root, &[origin("a.rs", "bueno\n"), origin("b.rs", "")]).unwrap();
 
         assert_eq!(std::fs::read_to_string(root.join("a.rs")).unwrap(), "bueno\n");
         assert!(!root.join("b.rs").exists());
     }
 
     #[test]
+    fn restoring_leaves_the_file_looking_untouched() {
+        let root = scratch("restore-stamp");
+        let target = root.join("a.rs");
+        std::fs::write(&target, "bueno\n").unwrap();
+        let stamp = std::fs::metadata(&target).unwrap().modified().unwrap();
+
+        std::fs::write(&target, "roto\n").unwrap();
+        restore_all(
+            &root,
+            &[Origin {
+                path: "a.rs".into(),
+                text: "bueno\n".into(),
+                written_at: Some(stamp),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(std::fs::metadata(&target).unwrap().modified().unwrap(), stamp);
+    }
+
+    #[test]
     fn the_net_of_a_patch_adds_up_across_its_files() {
-        let origins = vec![
-            ("a.rs".into(), "uno\ndos\ntres\n".into()),
-            ("b.rs".into(), String::new()),
-        ];
+        let origins = vec![origin("a.rs", "uno\ndos\ntres\n"), origin("b.rs", "")];
         let proposal = Proposal {
             files: vec![
                 Edit {
