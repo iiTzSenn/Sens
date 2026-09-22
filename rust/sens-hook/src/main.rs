@@ -1,30 +1,22 @@
-mod fallback;
-mod binindex;
-mod cli;
-mod format;
-mod freshness;
-mod hook;
-mod index;
-mod indexer;
-mod json;
-mod lang;
-mod query;
-mod reflective;
-mod testfile;
-
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use std::time::Instant;
 
-use freshness::Freshness;
-use hook::HookPayload;
+use sens_hook::freshness::{self, Freshness};
+use sens_hook::hook::{self, HookPayload};
+use sens_hook::{cli, daemon, engine, fallback, gate, index, indexer, json, query};
 
 const CANNOT_ANSWER: i32 = 2;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+
+    if args.first().map(String::as_str) == Some("daemon") {
+        daemon_mode(&args[1..]);
+        return;
+    }
 
     if args.first().map(String::as_str) == Some("index") {
         match index_mode(&args[1..]) {
@@ -35,7 +27,19 @@ fn main() {
         return;
     }
 
+    if args.first().map(String::as_str) == Some("gate") {
+        match gate_mode() {
+            Some(json) => println!("{json}"),
+            None => std::process::exit(CANNOT_ANSWER),
+        }
+        return;
+    }
+
     if args.first().map(String::as_str) == Some("query") {
+        if let Some(text) = try_daemon("query", args[1..].to_vec()) {
+            println!("{text}");
+            return;
+        }
         match query_mode(&args[1..]) {
             Some(text) => println!("{text}"),
             None => std::process::exit(CANNOT_ANSWER),
@@ -45,6 +49,13 @@ fn main() {
 
     let mut raw = String::new();
     if std::io::stdin().read_to_string(&mut raw).is_err() || raw.trim().is_empty() {
+        return;
+    }
+
+    if let Some(text) = try_daemon("hook", vec![raw.clone()]) {
+        if !text.is_empty() {
+            print!("{text}");
+        }
         return;
     }
 
@@ -68,12 +79,22 @@ fn stage(t: &mut Instant, label: &str) {
 
 fn query_mode(args: &[String]) -> Option<String> {
     let root = std::env::current_dir().ok()?;
-    let (index, meta) = load_engine_index(&root)?;
+    let (index, meta) = engine::load(&root)?;
     if freshness::check(&root, &index.files, &meta) != Freshness::Fresh {
         return None;
     }
     let engine = query::Engine::new(&index, &meta.entry_points);
     cli::run(&engine, &root, args)
+}
+
+fn gate_mode() -> Option<String> {
+    let root = std::env::current_dir().ok()?;
+    let mut raw = String::new();
+    std::io::stdin().read_to_string(&mut raw).ok()?;
+
+    let mut patch: gate::Patch = serde_json::from_str(&raw).ok()?;
+    let outcome = gate::judge(&root, &mut patch)?;
+    serde_json::to_string(&outcome).ok()
 }
 
 fn answer(root: &Path, raw: &str) -> Option<String> {
@@ -85,7 +106,7 @@ fn answer(root: &Path, raw: &str) -> Option<String> {
         return None;
     }
 
-    let (index, meta) = load_engine_index(root)?;
+    let (index, meta) = engine::load(root)?;
     stage(&mut t, "cargar índice");
     if freshness::check(root, &index.files, &meta) != Freshness::Fresh {
         return None;
@@ -146,24 +167,51 @@ fn index_mode(args: &[String]) -> Option<String> {
     Some(json::encode(&document))
 }
 
-fn load_engine_index(root: &Path) -> Option<(binindex::BinIndex, index::IndexMeta)> {
-    let json_path = index::sens_dir(root).join("index.json");
-    let json_len = std::fs::metadata(&json_path).ok()?.len();
 
-    let use_cache = std::env::var_os("SENS_NO_BINCACHE").is_none();
-    if let Some(cached) = use_cache.then(|| binindex::load(root, json_len)).flatten() {
-        let meta = index::load_meta(root, cached.created_at)?;
-        return Some((cached, meta));
+fn daemon_mode(args: &[String]) -> bool {
+    let Ok(root) = std::env::current_dir() else { return true };
+    if args.iter().any(|a| a == "--stop") {
+        println!("{}", if daemon::shutdown(&root) { "detenido" } else { "no estaba en marcha" });
+        return true;
+    }
+    if args.iter().any(|a| a == "--status") {
+        println!("{}", if daemon::running(&root) { "en marcha" } else { "parado" });
+        return true;
     }
 
-    let buffer = std::fs::read(&json_path).ok()?;
-    let built = binindex::from_json(&buffer)?;
-    if built.schema_version != index::INDEX_SCHEMA_VERSION {
-        return None;
+    let Some((index, meta)) = engine::load(&root) else { return true };
+    let engine = query::Engine::new(&index, &meta.entry_points);
+    let stale = std::sync::atomic::AtomicBool::new(false);
+
+    let _ = daemon::serve(&root, &stale, |req| {
+        if freshness::check(&root, &index.files, &meta) != Freshness::Fresh {
+            stale.store(true, std::sync::atomic::Ordering::Relaxed);
+            return None;
+        }
+        match req.kind.as_str() {
+            "hook" => {
+                let payload: hook::HookPayload = serde_json::from_str(req.args.first()?).ok()?;
+                let action = hook::decide(&engine, &root.to_string_lossy(), &payload)?;
+                if action.once {
+                    return None;
+                }
+                Some(hook::render(&action))
+            }
+            "query" => cli::run(&engine, &root, &req.args),
+            _ => None,
+        }
+    });
+    true
+}
+
+fn try_daemon(kind: &str, args: Vec<String>) -> Option<String> {
+    let root = std::env::current_dir().ok()?;
+    match daemon::request(&root, &daemon::Request { kind: kind.to_string(), args }) {
+        daemon::Answer::Served(text) => Some(text),
+        daemon::Answer::Declined => None,
+        daemon::Answer::Unreachable => {
+            daemon::ensure(&root);
+            None
+        }
     }
-    let meta = index::load_meta(root, built.created_at)?;
-    if use_cache {
-        binindex::save(root, &built);
-    }
-    Some((built, meta))
 }

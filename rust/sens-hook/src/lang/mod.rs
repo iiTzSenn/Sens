@@ -8,3 +8,4 @@ pub mod python;
 pub mod ruby;
 pub mod rust;
 pub mod treesitter;
+pub mod typescript;

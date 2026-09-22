@@ -6,6 +6,8 @@ use serde_json::value::RawValue;
 
 pub const INDEX_SCHEMA_VERSION: u32 = 6;
 
+pub const VERSION_TAG: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Deserialize, Serialize)]
 pub struct SymbolInfo {
     pub id: String,
