@@ -1,0 +1,22 @@
+[package]
+name = "sens-app"
+version = "0.1.0"
+edition = "2024"
+
+[build-dependencies]
+tauri-build = "2"
+
+[dependencies]
+sens-agent = { path = "../sens-agent" }
+sens-hook = { path = "../sens-hook" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tauri = "2"
+tauri-plugin-dialog = "2"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
