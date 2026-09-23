@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod artifacts;
 mod git;
 mod profile;
 mod projects;
@@ -15,6 +16,7 @@ use sens_hook::freshness::{self, Freshness};
 use sens_hook::gate::{self, Gauntlet, Outcome, Patch};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 
 const ATTACH_CAP: usize = 24_000;
 
@@ -201,6 +203,32 @@ fn last_project(app: AppHandle) -> Result<Option<String>, String> {
     Ok(projects::last(&registry(&app)?))
 }
 
+#[tauri::command(async)]
+fn artifacts(app: AppHandle) -> Result<Vec<artifacts::Artifact>, String> {
+    Ok(artifacts::all(&registry(&app)?))
+}
+
+#[tauri::command(async)]
+fn artifact_data(app: AppHandle, path: String) -> Result<String, String> {
+    artifacts::data(&registry(&app)?, &path)
+}
+
+#[tauri::command(async)]
+fn artifact_text(app: AppHandle, path: String) -> Result<String, String> {
+    artifacts::text(&registry(&app)?, &path)
+}
+
+#[tauri::command]
+fn open_external(app: AppHandle, target: String) -> Result<(), String> {
+    let opener = app.opener();
+    match artifacts::destination(&registry(&app)?, &target)? {
+        artifacts::Outside::Web(url) => opener.open_url(url, None::<&str>),
+        artifacts::Outside::File(path) => opener.open_path(path, None::<&str>),
+        artifacts::Outside::Folder(path) => opener.reveal_item_in_dir(path),
+    }
+    .map_err(|error| format!("no pude abrir {target}: {error}"))
+}
+
 #[tauri::command]
 fn profile(app: AppHandle) -> Result<profile::Profile, String> {
     Ok(profile::load(&data_dir(&app)?))
@@ -310,6 +338,7 @@ fn work(
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(Halt::default()))
         .invoke_handler(tauri::generate_handler![
             status,
@@ -329,7 +358,11 @@ fn main() {
             remember,
             last_project,
             profile,
-            save_profile
+            save_profile,
+            artifacts,
+            artifact_data,
+            artifact_text,
+            open_external
         ])
         .run(tauri::generate_context!())
         .expect("sens app");
