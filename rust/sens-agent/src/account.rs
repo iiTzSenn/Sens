@@ -103,15 +103,19 @@ fn judge(reported: Reported, bearer: bool) -> Account {
 }
 
 pub fn version() -> Result<String, String> {
-    let answer = claude()
-        .arg("--version")
-        .output()
-        .map_err(|_| format!("no encuentro {CLAUDE}: instala Claude Code y vuelve a comprobarlo"))?;
+    let answer = claude().arg("--version").output().map_err(unlaunched)?;
     let said = String::from_utf8_lossy(&answer.stdout);
     let version = said.split_whitespace().next().unwrap_or_default();
     match answer.status.success() && !version.is_empty() {
         true => Ok(version.to_string()),
         false => Err(format!("{CLAUDE} no dijo su versión")),
+    }
+}
+
+fn unlaunched(error: std::io::Error) -> String {
+    match error.kind() {
+        std::io::ErrorKind::NotFound => format!("no encuentro {CLAUDE}: instala Claude Code y vuelve a comprobarlo"),
+        _ => format!("no pude lanzar {CLAUDE}: {error}"),
     }
 }
 
@@ -157,6 +161,16 @@ mod tests {
 
     fn seen(raw: &str) -> Reported {
         serde_json::from_str(raw).unwrap()
+    }
+
+    #[test]
+    fn only_a_missing_program_reads_as_not_installed() {
+        let missing = unlaunched(std::io::Error::from(std::io::ErrorKind::NotFound));
+        let refused = unlaunched(std::io::Error::from_raw_os_error(5));
+
+        assert!(missing.starts_with("no encuentro claude"), "{missing}");
+        assert!(refused.starts_with("no pude lanzar claude: "), "{refused}");
+        assert!(!refused.contains("instala"), "{refused}");
     }
 
     #[test]
