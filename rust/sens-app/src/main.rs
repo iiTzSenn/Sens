@@ -1,6 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod git;
+mod profile;
+mod projects;
+mod store;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -11,7 +14,7 @@ use sens_hook::engine;
 use sens_hook::freshness::{self, Freshness};
 use sens_hook::gate::{self, Gauntlet, Outcome, Patch};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 const ATTACH_CAP: usize = 24_000;
 
@@ -173,6 +176,41 @@ fn replay(root: String, id: String) -> Vec<session::Entry> {
     session::read(&PathBuf::from(root), &id)
 }
 
+fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map_err(|error| format!("no encuentro la carpeta de datos: {error}"))
+}
+
+fn registry(app: &AppHandle) -> Result<projects::Registry, String> {
+    Ok(projects::load(&data_dir(app)?))
+}
+
+#[tauri::command]
+fn workspaces(app: AppHandle) -> Result<Vec<projects::Workspace>, String> {
+    Ok(projects::workspaces(&registry(&app)?))
+}
+
+#[tauri::command]
+fn remember(app: AppHandle, root: String) -> Result<(), String> {
+    projects::remember(&data_dir(&app)?, &root)
+}
+
+#[tauri::command]
+fn last_project(app: AppHandle) -> Result<Option<String>, String> {
+    Ok(projects::last(&registry(&app)?))
+}
+
+#[tauri::command]
+fn profile(app: AppHandle) -> Result<profile::Profile, String> {
+    Ok(profile::load(&data_dir(&app)?))
+}
+
+#[tauri::command]
+fn save_profile(app: AppHandle, name: String) -> Result<(), String> {
+    profile::save(&data_dir(&app)?, &profile::Profile { name })
+}
+
 fn clip(text: &str, cap: usize) -> (&str, bool) {
     if text.len() <= cap {
         return (text, false);
@@ -286,7 +324,12 @@ fn main() {
             tree,
             open_file,
             repo,
-            checkout
+            checkout,
+            workspaces,
+            remember,
+            last_project,
+            profile,
+            save_profile
         ])
         .run(tauri::generate_context!())
         .expect("sens app");
