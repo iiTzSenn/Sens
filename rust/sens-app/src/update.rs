@@ -66,8 +66,7 @@ pub fn install(base: &Path, report: impl Fn(&str, Stage)) -> Result<(), String> 
     }
     let release = latest(current())?.ok_or("ya tienes la última versión")?;
     report(&release.version, Stage::Downloading);
-    let signature = web::text(&release.signature, SIGNATURE_CAP)?;
-    let installer = web::bytes(&release.installer, &[], INSTALLER_CAP)?;
+    let (installer, signature) = download(&release)?;
     report(&release.version, Stage::Verifying);
     verify(PUBLIC_KEY, &installer, &signature, &release.version)?;
     let path = keep(base, &release.version, &installer)?;
@@ -92,6 +91,12 @@ fn newest(listed: &Value, current: &str) -> Option<Release> {
         .filter(|(version, _)| *version > installed)
         .max_by_key(|(version, _)| *version)
         .map(|(_, release)| release)
+}
+
+fn download(release: &Release) -> Result<(Vec<u8>, String), String> {
+    let signature = web::text(&release.signature, SIGNATURE_CAP)?;
+    let installer = web::bytes(&release.installer, &[], INSTALLER_CAP)?;
+    Ok((installer, signature))
 }
 
 fn offered(entry: &Value) -> Option<(Number, Release)> {
@@ -294,5 +299,16 @@ mod tests {
     fn the_real_releases() {
         let found = latest("0.0.0").unwrap();
         println!("{found:?}");
+    }
+
+    #[test]
+    #[ignore]
+    fn the_real_latest_installer_downloads_and_passes_its_signature() {
+        let release = latest("0.0.0").unwrap().unwrap();
+        let (installer, signature) = download(&release).unwrap();
+
+        assert_eq!(installer.len() as u64, release.size);
+        assert_eq!(verify(PUBLIC_KEY, &installer, &signature, &release.version), Ok(()));
+        println!("{} descargada y verificada, {} bytes", release.version, installer.len());
     }
 }
