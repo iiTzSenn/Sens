@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <b>A desktop editor where the model has to get past the gates.</b><br>
-  It indexes your project, writes the smallest patch that does the job, and refuses its own work when the patch duplicates, orphans, bloats or breaks something.
+  <b>A desktop coding agent over Claude Code, on your own subscription.</b><br>
+  It chats with your project, shows every step the agent takes, and lets you pick the plugins, skills and MCP servers each project may use.
 </p>
 
 <p align="center">
@@ -26,45 +26,27 @@
 
 ## What it is
 
-Most coding agents are generous. Ask for a field and you get a helper, a wrapper, a second way to do something the project already did, and four comments explaining it. The code works, the repo rots.
+A window around the unmodified `claude` CLI. Sens never touches your Claude credentials: you sign in to Claude Code yourself, and Sens drives it over its own stream protocol — one process per session, resumed when you come back to it.
 
-Sens is the opposite bet. One engine, in Rust, that knows your codebase because it indexes it, and that judges every patch **before** it reaches your files. The model proposes. The gates decide.
+## How a session goes
 
-What you get out of it is not speed. It is that the diff you read at the end is one you would have written.
+1. **You open a folder.** Sessions live next to it, in `.sens/sessions`, and the sidebar groups them by project.
+2. **You pick the model, effort, thinking and permissions.** The model list is the one Claude Code itself offers, read from it for free every day.
+3. **You ask.** Text, pasted images and attached files. The reply streams in, and every tool call gets its own card: terminal output, search results, diffs, checklists, web sources, background tasks you can stop.
+4. **You answer when it asks.** Permission requests, questions and plans arrive as prompts in the thread.
+5. **The session names itself** after the first reply. Rename it from its `⋯` menu whenever you like.
 
-## How a run goes
+## Capabilities
 
-1. **You open a folder.** Sens indexes it — symbols, references, imports, entry points — and tells you how fresh the index is and which gates are armed.
-2. **You pick who writes.** Claude Code on your subscription, with any model it offers you.
-3. **You say what to do.** The task goes out with a briefing built from the index, not from the whole repo.
-4. **The gates judge the patch.** Duplication, orphans, growth and comments, all before a single byte is written to disk.
-5. **The patch lands as a transaction and the suite runs.** Every original is saved and verified first; if the tests go red, the whole thing rolls back byte for byte and the model is told what broke. Two repairs, then it gives up rather than insist.
-6. **A second model shortens it.** Same behaviour, fewer lines, or it keeps the original.
-7. **The index updates** with only what changed.
+**Capacidades → Explorar** is a market of what Claude Code can load:
 
-## The gates
+| Source | What |
+| --- | --- |
+| Anthropic | the official plugin directory, the knowledge-work, financial-services and life-sciences plugins, Anthropic's skills and its MCP connectors |
+| Community | the third-party plugins Anthropic reviewed and pinned to a commit |
+| skills.sh | the open skills index, searched as you type |
 
-Each one can pass, abstain or stop. A stop means the patch never touches your files.
-
-| Gate | Rule | Stops when |
-| --- | --- | --- |
-| **G1** | duplication | The patch adds something the index says already exists. It names it. |
-| **G2** | orphans | The patch leaves code that nothing reaches, or strands code that used to be reached. |
-| **G3** | growth | The patch is over budget — 40 net lines — for what you asked. |
-| **G4** | tests | Your suite fails. Auto-detected: `cargo test`, `go test`, `npm test` or `pytest`. |
-| **G5** | comments | The patch writes comments instead of naming things properly. |
-
-Above them all there is a **seal**: an FNV hash of every gate's fingerprint, shown in the status bar. If the seal changes, the rules changed — and you can see it without reading any config.
-
-## Who writes
-
-| Provider | What it uses | Models |
-| --- | --- | --- |
-| **Claude Code** | your subscription, through the CLI | discovered, not hard-coded |
-
-Sens never ships a model list. It asks Claude Code which model answers for each family — Fable, Opus, Sonnet, Haiku — so a new release shows up on its own. **Refresh models** asks again; **Edit models** hides the ones you never want to see or use.
-
-Every run uses the chosen model twice: once to write, and once to put the patch on a diet afterwards.
+Every entry has a page with its readme, every file it ships and **what it runs** — hooks, MCP servers, executables and the variables it will ask for — before you install it. Installing downloads it once, pinned to a commit; enabling it is per project. Plugins reach the agent with `--plugin-dir`, never through your own Claude Code configuration.
 
 <p align="center">
   <img src="docs/app-models.png" alt="Picking the model" width="900">
@@ -74,7 +56,7 @@ Every run uses the chosen model twice: once to write, and once to put the patch 
 
 Sens walks your source respecting `.gitignore`, extracts top-level symbols with compact signatures, resolves references and imports, and caches the result in `.sens/`. Only what changed gets rebuilt.
 
-- **Go, Python, Rust, Java, C#, C, C++, PHP, Ruby, Kotlin** — indexed natively, in Rust, via [tree-sitter](https://tree-sitter.github.io/). References resolve by name, which over-counts rather than misses, so the orphan gate stays conservative.
+- **Go, Python, Rust, Java, C#, C, C++, PHP, Ruby, Kotlin** — indexed natively, in Rust, via [tree-sitter](https://tree-sitter.github.io/). References resolve by name, which over-counts rather than misses.
 - **JavaScript / TypeScript** — resolved semantically with [ts-morph](https://ts-morph.com), which follows your imports properly. This path still runs through Node, so a JS/TS project needs Node 18+ on your machine.
 
 A mixed repo is one project: a TypeScript frontend and a Go backend land in the same index.
@@ -101,14 +83,16 @@ It will refuse to build an unsigned one by accident. Give it a certificate from 
 ```bash
 npm install
 npm test                 # vitest, the indexer side
-npm run test:native      # cargo test, the engine and the gates
+npm run test:native      # cargo test, the index engine and the gates
+cargo test --manifest-path rust/sens-agent/Cargo.toml   # the chat engine
+cargo test --manifest-path rust/sens-app/Cargo.toml     # the app: capabilities, market, sessions
 npm run typecheck
 npm run brand            # regenerate logo, icons and banner
 ```
 
 Anything visual — interface, asset, terminal output, marketing — follows [the Sens visual identity](docs/brand/identity.md). Colours live in `src/brand/tokens.ts` and the mark's geometry in `src/brand/mark.ts`: import the token instead of retyping a hex, and edit the generator rather than the generated asset.
 
-This repository does not take comments. Code explains itself with names and structure, or it gets extracted until it does. G5 enforces it on the model; the same applies to you.
+This repository does not take comments. Code explains itself with names and structure, or it gets extracted until it does.
 
 ## License
 

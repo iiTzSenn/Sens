@@ -25,15 +25,9 @@ use sens_agent::chat::{self, Decision, Engine, Event, Message, Settings, Sink};
 use sens_agent::session;
 use sens_agent::title;
 use sens_hook::engine;
-use sens_hook::gate::{self, Outcome, Patch};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_opener::OpenerExt;
-
-#[tauri::command]
-fn judge(root: String, mut patch: Patch) -> Option<Outcome> {
-    gate::judge(&PathBuf::from(root), &mut patch)
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -255,11 +249,6 @@ fn open_session(root: String, id: Option<String>) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn sessions(root: String) -> Vec<session::Summary> {
-    session::list(&PathBuf::from(root))
-}
-
-#[tauri::command]
 fn archive_session(root: String, id: String, archived: bool) -> Result<(), String> {
     session::archive(&PathBuf::from(root), &id, archived)
 }
@@ -446,7 +435,6 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            judge,
             chat_send,
             chat_stop,
             chat_answer,
@@ -462,7 +450,6 @@ fn main() {
             claude_sign_in,
             attach,
             open_session,
-            sessions,
             archive_session,
             delete_session,
             title_session,

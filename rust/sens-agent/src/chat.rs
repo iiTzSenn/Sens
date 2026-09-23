@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::catalog::{self, Thinking};
-use crate::model::{Cli, hidden};
+use crate::process::{CLAUDE, hidden};
 use crate::session::{self, Entry};
 
 pub const MODES: &[&str] = &["default", "acceptEdits", "auto", "plan", "bypassPermissions"];
@@ -392,7 +392,7 @@ pub struct Engine {
 
 impl Default for Engine {
     fn default() -> Self {
-        Self::launching(vec![Cli::claude().program])
+        Self::launching(vec![CLAUDE.to_string()])
     }
 }
 

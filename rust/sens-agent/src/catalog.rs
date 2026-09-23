@@ -6,7 +6,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::model::{Cli, hidden};
+use crate::process::{CLAUDE, hidden};
 
 #[derive(Serialize, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -93,7 +93,7 @@ pub fn traits(model: &str) -> Traits {
 
 pub fn discover(id: &str) -> Result<Vec<Card>, String> {
     provider(id).ok_or_else(|| format!("no conozco el proveedor {id}"))?;
-    let offered = offered(&Cli::claude().program)?;
+    let offered = offered(CLAUDE)?;
     let found = cards(&offered);
     match found.is_empty() {
         true => Err("Claude Code no ofreció ningún modelo".into()),

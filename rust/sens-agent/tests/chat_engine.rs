@@ -59,6 +59,7 @@ fn kinds(root: &Path, id: &str) -> Vec<String> {
         .map(|entry| match entry {
             Entry::Opened { .. } => "opened".to_string(),
             Entry::Task { .. } => "task".to_string(),
+            Entry::Titled { .. } => "titled".to_string(),
             Entry::Agent { event, .. } => serde_json::to_value(event).unwrap()["kind"].as_str().unwrap().to_string(),
         })
         .collect()

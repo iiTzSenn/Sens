@@ -2,7 +2,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Cli, hidden};
+use crate::process::{CLAUDE, hidden};
 
 const FIRST_PARTY: &str = "firstParty";
 const BEARER: &str = "ANTHROPIC_AUTH_TOKEN";
@@ -38,7 +38,7 @@ struct Reported {
 }
 
 pub fn read() -> Result<Account, String> {
-    let program = Cli::claude().program;
+    let program = CLAUDE.to_string();
     let answer = hidden(&mut Command::new(&program))
         .args(["auth", "status", "--json"])
         .output()
@@ -88,7 +88,7 @@ fn judge(reported: Reported, bearer: bool) -> Account {
 }
 
 pub fn sign_in() -> Result<(), String> {
-    let program = Cli::claude().program;
+    let program = CLAUDE.to_string();
     login_window(&program)?
         .spawn()
         .map(drop)
