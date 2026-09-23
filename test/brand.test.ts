@@ -96,10 +96,13 @@ describe("the desktop shell", () => {
       "50%",
       "999px",
       "1px",
+      "0",
       "inherit",
     ]);
     for (const [, value] of shell.matchAll(/border-radius: ([^;}]+)/g)) {
-      expect(allowed, value).toContain(value.trim());
+      for (const corner of value.trim().split(/\s+/)) {
+        expect(allowed, corner).toContain(corner);
+      }
     }
   });
 
@@ -131,7 +134,7 @@ describe("the desktop shell", () => {
       expect(shell, control).toContain(`id="${control}"`);
     }
     expect(shell).toContain('.composer .box[data-busy="true"] .send .halt');
-    expect(shell).toContain('invoke("stop")');
+    expect(shell).toContain('invoke("chat_stop", { sessionId: current })');
     expect(shell).toContain('composerBox.dataset.stopping = "true";');
   });
 
@@ -141,6 +144,7 @@ describe("the desktop shell", () => {
 
   it("builds the model picker from the backend catalogue", () => {
     expect(shell).toContain('invoke("providers")');
+    expect(shell).toContain('invoke("models", { provider: provider.id })');
     expect(shell).not.toContain("claude-sonnet-5");
     expect(shell).not.toContain("claude-haiku");
   });
@@ -179,10 +183,16 @@ describe("the desktop shell", () => {
     }
   });
 
-  it("pairs every verdict colour with a glyph", () => {
-    for (const verdict of ["stop", "pass", "abstain"]) {
-      expect(shell, verdict).toContain(`.gate[data-v="${verdict}"]::before`);
-    }
+  it("never lets colour alone carry a state", () => {
+    const paired = [
+      ['.step[data-state="stopped"] .step-state { border:', "a stopped step is a ring, not a colour"],
+      ["if (error) node.open = true;", "a failed step opens on its error"],
+      ['run.failed ? "Terminó con error"', "a failed command says so"],
+      ['answersText(answers) || "Permitido" : "Rechazado"', "a settled permission names its outcome"],
+      ['note.textContent = "Sin respuesta";', "an expired question says it went unanswered"],
+      ['el("span", "state", file.state)', "a changed file carries its status letter"],
+    ];
+    for (const [snippet, why] of paired) expect(shell, why).toContain(snippet);
   });
 });
 
@@ -240,6 +250,15 @@ describe("generated assets", () => {
       expect(existsSync(path.join(root, file))).toBe(true);
     });
   }
+
+  it("leads the windows icon with its largest size and carries every size the shell asks for", () => {
+    const ico = readFileSync(path.join(root, "rust/sens-app/icons/icon.ico"));
+    const sizes = Array.from({ length: ico.readUInt16LE(4) }, (_, i) => ico.readUInt8(6 + i * 16) || 256);
+    expect(sizes[0]).toBe(256);
+    for (const size of [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 128, 256]) {
+      expect(sizes, `${size} px`).toContain(size);
+    }
+  });
 
   it("packs the windows icon as a multi-size png container", () => {
     const ico = readFileSync(path.join(root, "rust/sens-app/icons/icon.ico"));

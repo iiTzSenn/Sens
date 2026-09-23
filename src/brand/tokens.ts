@@ -22,6 +22,12 @@ export const palette = {
   warning: "#e7b84b",
   danger: "#e7655f",
   info: "#6fa7d8",
+  "lang-amber": "#d8b24a",
+  "lang-azure": "#5b8fc9",
+  "lang-ember": "#d08248",
+  "lang-moss": "#5aa86f",
+  "lang-iris": "#9b87c4",
+  "lang-stone": "#8a918d",
 } as const;
 
 export type PaletteToken = keyof typeof palette;
@@ -93,7 +99,7 @@ export const brandTokensCss = (): string =>
   ].join("\n");
 
 export const fontSans =
-  "Geist, Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+  "Space Grotesk, Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
 
 export const fontMono =
   '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';

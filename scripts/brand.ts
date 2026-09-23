@@ -15,15 +15,18 @@ import {
   fontSans,
   fontMono,
 } from "../src/brand/tokens.js";
+import { claimType, sensType, taglineType } from "../src/brand/wordmark.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const assets = path.join(root, "assets");
 const png = path.join(assets, "png");
 const appIcons = path.join(root, "rust", "sens-app", "icons");
+const appIconSource = path.join(root, "src", "brand", "app-icon.png");
 
 const markPngSizes = [16, 32, 48, 64, 128, 256, 512, 1024];
 const monoPngSizes = [128, 256, 512, 1024];
-const icoSizes = [16, 32, 48, 64, 128, 256];
+const icoSizes = [256, 16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 128];
+const crispUpTo = 64;
 const appIconFiles: [string, number][] = [
   ["32x32.png", 32],
   ["128x128.png", 128],
@@ -32,8 +35,6 @@ const appIconFiles: [string, number][] = [
 ];
 
 const written: string[] = [];
-
-const svgFont = (stack: string): string => stack.replace(/"/g, "'");
 
 function write(file: string, contents: string | Buffer): void {
   mkdirSync(path.dirname(file), { recursive: true });
@@ -44,6 +45,17 @@ function write(file: string, contents: string | Buffer): void {
 async function rasterize(svg: string, size: number): Promise<Buffer> {
   return sharp(Buffer.from(svg), { density: 512 })
     .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+}
+
+async function appIcon(size: number): Promise<Buffer> {
+  const resized = sharp(appIconSource).resize(size, size, {
+    kernel: "lanczos3",
+    fit: "contain",
+    background: { r: 0, g: 0, b: 0, alpha: 0 },
+  });
+  return (size <= crispUpTo ? resized.sharpen({ sigma: 0.5 }) : resized)
     .png({ compressionLevel: 9 })
     .toBuffer();
 }
@@ -83,7 +95,7 @@ function wordmarkSvg(): string {
     `<g clip-path="url(#sens-wordmark-body)">`,
     markFace(),
     `</g>`,
-    `<text x="${markSize + gap}" y="35" font-family="${svgFont(fontSans)}" font-size="34" font-weight="600" letter-spacing="-0.7" fill="${hex("carbon-950")}">sens</text>`,
+    sensType(markSize + gap, 35, 34, hex("carbon-950")),
     `</svg>`,
   ].join("");
 }
@@ -99,10 +111,10 @@ function bannerSvg(): string {
     `<g clip-path="url(#sens-banner-body)" transform="translate(96 90) scale(${markScale})">`,
     markFace(hex("carbon-800")),
     `</g>`,
-    `<text x="212" y="156" font-family="${svgFont(fontSans)}" font-size="62" font-weight="600" letter-spacing="-1.6" fill="${hex("bone-50")}">sens</text>`,
-    `<text x="212" y="200" font-family="${svgFont(fontSans)}" font-size="26" font-weight="400" fill="${hex("alloy-400")}">Understand more. Read less.</text>`,
+    sensType(212, 156, 62, hex("bone-50")),
+    taglineType(212, 200, 26, hex("alloy-400")),
     `<rect x="96" y="252" width="1008" height="1" fill="${hex("carbon-700")}"/>`,
-    `<text x="96" y="292" font-family="${svgFont(fontMono)}" font-size="19" fill="${hex("alloy-500")}">a project index for coding agents — query the codebase instead of reading it all</text>`,
+    claimType(96, 292, 19, hex("alloy-500")),
     `</svg>`,
   ].join("");
 }
@@ -177,15 +189,12 @@ async function main(): Promise<void> {
   }
 
   for (const [file, size] of appIconFiles) {
-    write(path.join(appIcons, file), await rasterize(markSvg({ size, id: `a${size}` }), size));
+    write(path.join(appIcons, file), await appIcon(size));
   }
 
   const icoEntries = [];
   for (const size of icoSizes) {
-    icoEntries.push({
-      size,
-      data: await rasterize(markSvg({ size, micro: size <= 32, id: `i${size}` }), size),
-    });
+    icoEntries.push({ size, data: await appIcon(size) });
   }
   write(path.join(appIcons, "icon.ico"), icoFrom(icoEntries));
 
