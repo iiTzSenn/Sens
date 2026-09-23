@@ -1,12 +1,12 @@
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::mpsc;
 use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::process::{CLAUDE, hidden};
+use crate::process::{CLAUDE, claude};
 
 #[derive(Serialize, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -93,7 +93,7 @@ pub fn traits(model: &str) -> Traits {
 
 pub fn discover(id: &str) -> Result<Vec<Card>, String> {
     provider(id).ok_or_else(|| format!("no conozco el proveedor {id}"))?;
-    let offered = offered(CLAUDE)?;
+    let offered = offered()?;
     let found = cards(&offered);
     match found.is_empty() {
         true => Err("Claude Code no ofreció ningún modelo".into()),
@@ -101,14 +101,14 @@ pub fn discover(id: &str) -> Result<Vec<Card>, String> {
     }
 }
 
-fn offered(program: &str) -> Result<Value, String> {
-    let mut child = hidden(&mut Command::new(program))
+fn offered() -> Result<Value, String> {
+    let mut child = claude()
         .args(LISTING)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|error| format!("no pude lanzar {program}: {error}"))?;
+        .map_err(|error| format!("no pude lanzar {CLAUDE}: {error}"))?;
 
     let mut input = child.stdin.take().ok_or("Claude Code no acepta entrada")?;
     let output = child.stdout.take().ok_or("Claude Code no da salida")?;

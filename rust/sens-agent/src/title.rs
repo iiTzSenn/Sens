@@ -3,7 +3,7 @@ use std::path::Path;
 use serde_json::Value;
 
 use crate::chat::Event;
-use crate::process::{CLAUDE, run};
+use crate::process::{claude, run};
 use crate::session::{self, Entry, Namer};
 
 const ASKING: &[&str] = &[
@@ -39,7 +39,9 @@ pub fn suggest(root: &Path, id: &str) -> Result<Option<String>, String> {
     let mut args: Vec<String> = ASKING.iter().map(|arg| arg.to_string()).collect();
     args.push(BRIEF.to_string());
 
-    let answer: Value = serde_json::from_str(&run(CLAUDE, &args, &opening)?)
+    let mut asking = claude();
+    asking.args(&args);
+    let answer: Value = serde_json::from_str(&run(asking, &opening)?)
         .map_err(|error| format!("respuesta ilegible al pedir el título: {error}"))?;
     if answer["is_error"] == true {
         return Err("Claude Code no pudo poner título a la sesión".into());

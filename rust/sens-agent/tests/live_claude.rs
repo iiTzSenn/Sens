@@ -10,8 +10,10 @@ fn scratch(name: &str) -> PathBuf {
 #[test]
 #[ignore]
 fn the_installed_claude_says_who_pays_for_it() {
+    let version = sens_agent::account::version().expect("leer la versión de Claude Code");
     let account = sens_agent::account::read().expect("leer la cuenta de Claude Code");
-    println!("{account:?}");
+    println!("{version} · {account:?}");
+    assert!(version.chars().next().is_some_and(|first| first.is_ascii_digit()));
 }
 
 #[test]

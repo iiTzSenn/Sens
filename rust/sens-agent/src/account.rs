@@ -2,7 +2,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
-use crate::process::{CLAUDE, hidden};
+use crate::process::{CLAUDE, claude, hidden};
 
 const FIRST_PARTY: &str = "firstParty";
 const BEARER: &str = "ANTHROPIC_AUTH_TOKEN";
@@ -17,7 +17,7 @@ pub enum Billing {
     SignedOut,
 }
 
-#[derive(Serialize, PartialEq, Debug)]
+#[derive(Serialize, Clone, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Account {
     pub billing: Billing,
@@ -37,16 +37,31 @@ struct Reported {
     subscription_type: Option<String>,
 }
 
+#[derive(Serialize, Clone, Copy, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum Door {
+    Subscription,
+    Console,
+}
+
+impl Door {
+    fn flag(self) -> &'static str {
+        match self {
+            Door::Subscription => "--claudeai",
+            Door::Console => "--console",
+        }
+    }
+}
+
 pub fn read() -> Result<Account, String> {
-    let program = CLAUDE.to_string();
-    let answer = hidden(&mut Command::new(&program))
+    let answer = claude()
         .args(["auth", "status", "--json"])
         .output()
-        .map_err(|error| format!("no pude lanzar {program}: {error}"))?;
+        .map_err(|error| format!("no pude lanzar {CLAUDE}: {error}"))?;
 
     let reported: Reported = serde_json::from_slice(&answer.stdout).map_err(|_| {
         let complaint = String::from_utf8_lossy(&answer.stderr);
-        format!("{program} no dijo con qué cuenta entra: {}", complaint.trim())
+        format!("{CLAUDE} no dijo con qué cuenta entra: {}", complaint.trim())
     })?;
 
     let bearer = std::env::var_os(BEARER).is_some_and(|value| !value.is_empty());
@@ -87,28 +102,49 @@ fn judge(reported: Reported, bearer: bool) -> Account {
     }
 }
 
-pub fn sign_in() -> Result<(), String> {
-    let program = CLAUDE.to_string();
-    login_window(&program)?
+pub fn version() -> Result<String, String> {
+    let answer = claude()
+        .arg("--version")
+        .output()
+        .map_err(|_| format!("no encuentro {CLAUDE}: instala Claude Code y vuelve a comprobarlo"))?;
+    let said = String::from_utf8_lossy(&answer.stdout);
+    let version = said.split_whitespace().next().unwrap_or_default();
+    match answer.status.success() && !version.is_empty() {
+        true => Ok(version.to_string()),
+        false => Err(format!("{CLAUDE} no dijo su versión")),
+    }
+}
+
+pub fn sign_in(door: Door) -> Result<(), String> {
+    login_window(door)?
         .spawn()
         .map(drop)
-        .map_err(|error| format!("no pude abrir el inicio de sesión de {program}: {error}"))
+        .map_err(|error| format!("no pude abrir el inicio de sesión de {CLAUDE}: {error}"))
+}
+
+pub fn sign_out() -> Result<(), String> {
+    let answer = claude()
+        .args(["auth", "logout"])
+        .output()
+        .map_err(|error| format!("no pude lanzar {CLAUDE}: {error}"))?;
+    match answer.status.success() {
+        true => Ok(()),
+        false => Err(format!("{CLAUDE} no cerró la sesión: {}", String::from_utf8_lossy(&answer.stderr).trim())),
+    }
 }
 
 #[cfg(windows)]
-fn login_window(program: &str) -> Result<Command, String> {
+fn login_window(door: Door) -> Result<Command, String> {
     use std::os::windows::process::CommandExt;
 
     let mut command = Command::new("cmd");
-    hidden(&mut command).raw_arg(format!("/c start \"Claude Code\" {program} auth login --claudeai"));
+    hidden(&mut command).raw_arg(format!("/c start \"Claude Code\" {CLAUDE} auth login {}", door.flag()));
     Ok(command)
 }
 
 #[cfg(not(windows))]
-fn login_window(program: &str) -> Result<Command, String> {
-    Err(format!(
-        "abre una terminal y ejecuta {program} auth login --claudeai"
-    ))
+fn login_window(door: Door) -> Result<Command, String> {
+    Err(format!("abre una terminal y ejecuta {CLAUDE} auth login {}", door.flag()))
 }
 
 #[cfg(test)]

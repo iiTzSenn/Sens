@@ -10,6 +10,7 @@ mod market;
 mod preview;
 mod profile;
 mod projects;
+mod providers;
 mod snapshot;
 mod store;
 mod web;
@@ -110,9 +111,51 @@ fn claude_account() -> Result<account::Account, String> {
     account::read()
 }
 
+#[tauri::command(async)]
+fn providers_state(app: AppHandle) -> Result<Vec<providers::State>, String> {
+    Ok(providers::state(&data_dir(&app)?))
+}
+
+fn share_environment(base: &Path) {
+    sens_agent::process::set_environment(providers::environment(base));
+}
+
 #[tauri::command]
-fn claude_sign_in() -> Result<(), String> {
-    account::sign_in()
+fn set_provider_method(app: AppHandle, id: String, method: providers::Method) -> Result<(), String> {
+    let base = data_dir(&app)?;
+    providers::set_method(&base, &id, method)?;
+    share_environment(&base);
+    Ok(())
+}
+
+#[tauri::command]
+fn save_api_key(app: AppHandle, id: String, key: String) -> Result<(), String> {
+    let base = data_dir(&app)?;
+    providers::save_key(&base, &id, &key)?;
+    share_environment(&base);
+    Ok(())
+}
+
+#[tauri::command]
+fn forget_api_key(app: AppHandle, id: String) -> Result<(), String> {
+    let base = data_dir(&app)?;
+    providers::forget_key(&base, &id)?;
+    share_environment(&base);
+    Ok(())
+}
+
+#[tauri::command]
+fn provider_sign_in(method: providers::Method) -> Result<(), String> {
+    match method {
+        providers::Method::Subscription => account::sign_in(account::Door::Subscription),
+        providers::Method::Console => account::sign_in(account::Door::Console),
+        providers::Method::ApiKey => Err("con una clave de API no hace falta iniciar sesión".into()),
+    }
+}
+
+#[tauri::command(async)]
+fn provider_sign_out() -> Result<(), String> {
+    account::sign_out()
 }
 
 #[derive(Serialize, Clone)]
@@ -157,9 +200,11 @@ fn chat_warm(app: AppHandle, engine: State<Arc<Engine>>, root: String, session_i
 }
 
 fn equip(app: &AppHandle, root: &str, settings: &mut Settings) -> Result<(), String> {
-    let launch = capabilities::launch(&data_dir(app)?, root)?;
+    let base = data_dir(app)?;
+    let launch = capabilities::launch(&base, root)?;
     settings.extra = launch.args;
     settings.env = launch.env;
+    settings.env.extend(providers::environment(&base));
     Ok(())
 }
 
@@ -432,6 +477,9 @@ fn main() {
         .manage(preview::Site::default())
         .setup(|app| {
             icon::sharpen(app);
+            if let Ok(base) = data_dir(app.handle()) {
+                share_environment(&base);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -447,7 +495,12 @@ fn main() {
             providers,
             models,
             claude_account,
-            claude_sign_in,
+            providers_state,
+            set_provider_method,
+            save_api_key,
+            forget_api_key,
+            provider_sign_in,
+            provider_sign_out,
             attach,
             open_session,
             archive_session,

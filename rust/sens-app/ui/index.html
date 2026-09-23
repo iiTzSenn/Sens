@@ -508,6 +508,51 @@
   .tool-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .tool-chips code { padding: 2px 6px; border-radius: var(--r-key); background: var(--raise); font-family: var(--mono); font-size: 11px; color: var(--faint); }
   .confirm-runs { display: grid; gap: 6px; max-height: 200px; overflow: auto; }
+
+  .settings-body { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 24px; margin-top: 24px; }
+  .settings-nav { display: grid; align-content: start; gap: 2px; }
+  @container (max-width: 560px) {
+    .settings-body { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .settings-nav { display: flex; }
+  }
+  .settings-link {
+    height: 30px; padding: 0 10px; border-radius: var(--r-control); text-align: left;
+    font-size: 13px; color: var(--faint);
+    transition: background var(--fast) var(--curve), color var(--fast) var(--curve);
+  }
+  .settings-link:hover { background: var(--card); color: var(--text); }
+  .settings-link[aria-current="true"] { background: var(--raise); color: var(--text); }
+  .settings-pane { display: grid; align-content: start; gap: 16px; min-width: 0; }
+  .settings-pane > .label { margin: 0; }
+  .settings-pane .pair { display: grid; gap: 8px; }
+  .settings-pane .field { width: 100%; height: 32px; font-family: var(--ui); font-size: 13px; color: var(--text); }
+  .settings-pane .field.verbatim { font-family: var(--mono); font-size: 12px; }
+  .settings-pane .note { margin: 0; font-size: 12px; line-height: 16px; color: var(--faint); }
+  .settings-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .settings-row .field { flex: 1 1 220px; width: auto; }
+  .provider { display: grid; gap: 14px; }
+  .provider-head { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  .provider-head .name { font-size: 15px; line-height: 22px; font-weight: 600; color: var(--text); }
+  .provider-head .version { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--ghost); }
+  .provider-state { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; line-height: 19px; color: var(--dim); overflow-wrap: anywhere; }
+  .provider-state::before { content: ''; width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--ghost); }
+  .provider-state[data-state="on"]::before { background: var(--focus); }
+  .provider-state[data-state="fault"] { color: var(--red); }
+  .provider-state[data-state="fault"]::before { background: var(--red); }
+  .choices { display: grid; gap: 4px; margin: 0; padding: 0; border: 0; min-width: 0; }
+  .choices legend { padding: 0; margin-bottom: 6px; }
+  .choice {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px;
+    padding: 8px 10px; border: 1px solid var(--hair); border-radius: var(--r-control); cursor: pointer;
+    transition: border-color var(--fast) var(--curve), background var(--fast) var(--curve);
+  }
+  .choice:hover { border-color: var(--edge); }
+  .choice:has(input:checked) { border-color: var(--edge); background: var(--raise); }
+  .choice input { margin: 3px 0 0; accent-color: var(--focus); }
+  .choice-text { display: grid; gap: 2px; min-width: 0; }
+  .choice-text b { font-size: 13px; font-weight: 500; color: var(--text); }
+  .choice-text span { font-size: 12px; line-height: 16px; color: var(--faint); }
+  .settings-later { margin: 0; font-size: 12px; color: var(--ghost); }
   .stream { position: relative; display: grid; min-height: 0; min-width: 0; }
   .fade {
     position: absolute; inset-inline: 0; height: 64px; z-index: 1;
@@ -1579,6 +1624,24 @@
       </div>
     </section>
 
+    <section class="view" id="settings-view" aria-label="Ajustes" hidden>
+      <div class="view-inner">
+        <header class="view-top">
+          <div>
+            <h1 class="label">Ajustes</h1>
+            <p>Tu perfil y los proveedores con los que trabaja Sens.</p>
+          </div>
+        </header>
+        <div class="settings-body">
+          <nav class="settings-nav" id="settings-nav" aria-label="Secciones de ajustes">
+            <button class="settings-link" data-section="general">General</button>
+            <button class="settings-link" data-section="providers">Proveedores</button>
+          </nav>
+          <div class="settings-pane" id="settings-pane" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
     <div class="split" id="panel-split" role="separator" aria-orientation="vertical" aria-label="Ancho del panel de herramientas" tabindex="0"></div>
     <aside class="code" id="code" data-tool="files">
       <section class="tool" data-tool="files" aria-label="Ficheros">
@@ -1769,6 +1832,9 @@
   const shelfFoot = document.getElementById("shelf-foot");
   const capsBtn = document.getElementById("capabilities");
   const capsView = document.getElementById("capabilities-view");
+  const settingsView = document.getElementById("settings-view");
+  const settingsNav = document.getElementById("settings-nav");
+  const settingsPane = document.getElementById("settings-pane");
   const capsBar = document.getElementById("caps-tabs");
   const capsList = document.getElementById("caps-list");
   const capsProject = document.getElementById("caps-project");
@@ -3084,7 +3150,7 @@
     );
     if (!spaces.length) sessionList.append(emptyRail());
     newBtn.setAttribute("aria-current", String(Boolean(root) && !current && !showing));
-    for (const [name, one] of Object.entries(VIEWS)) one.button.setAttribute("aria-current", String(showing === name));
+    for (const [name, one] of Object.entries(VIEWS)) one.button?.setAttribute("aria-current", String(showing === name));
   }
 
   function emptyRail() {
@@ -4385,6 +4451,7 @@ void main(){
   const VIEWS = {
     capabilities: { button: capsBtn, node: capsView, icon: ICONS.shapes, load: enterCapabilities },
     artifacts: { button: shelfBtn, node: shelf, icon: ICONS.files, load: loadShelf },
+    settings: { button: null, node: settingsView, icon: "", load: loadSettings },
   };
 
   function showView(name) {
@@ -6125,7 +6192,7 @@ void main(){
   const BILLED = {
     subscription: ({ plan, source, email }) => [`Suscripción ${PLANS[plan] || plan}`.trim(), source, email],
     noPlan: ({ email }) => [email, "sin plan Pro ni Max"],
-    elsewhere: ({ source }) => [`Claude Code usa ${source}, no tu suscripción`],
+    elsewhere: ({ source }) => [source === API_KEY_SOURCE ? "Clave de API de la Consola" : `Claude Code usa ${source}, no tu suscripción`],
     signedOut: () => ["Claude Code no tiene sesión"],
   };
 
@@ -6142,11 +6209,11 @@ void main(){
     if (account?.billing === "subscription") said.push(usageText());
     accountLine.textContent = said.filter(Boolean).join(" · ");
     accountLine.hidden = !accountLine.textContent;
-    accountLine.classList.toggle("warn", Boolean(accountFault) || account?.billing !== "subscription");
+    accountLine.classList.toggle("warn", Boolean(accountFault) || (account?.billing !== "subscription" && !keyed(account)));
 
     connectBtn.hidden = !signInOffered();
     connectBtn.disabled = connecting;
-    paintTool(connectBtn, ICONS.logIn, connecting ? "Esperando al inicio de sesión…" : "Conectar tu suscripción de Claude…");
+    paintTool(connectBtn, ICONS.logIn, connecting ? "Esperando al inicio de sesión…" : "Conectar Claude Code…");
   }
 
   async function readAccount() {
@@ -6171,21 +6238,6 @@ void main(){
       const now = await readAccount();
       if (now?.billing === "subscription" || JSON.stringify(now) !== before) return;
     }
-  }
-
-  async function connect() {
-    if (connecting) return;
-    connecting = true;
-    paintAccount();
-    try {
-      await invoke("claude_sign_in");
-      await awaitSignIn();
-    } catch (reason) {
-      accountFault = String(reason);
-    }
-    connecting = false;
-    paintAccount();
-    if (account?.billing === "subscription") refreshModels();
   }
 
   const PASTEABLE = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -6471,6 +6523,7 @@ void main(){
   newBtn.querySelector(".nav-icon").innerHTML = ICONS.pen;
   newBtn.addEventListener("click", fresh);
   for (const [name, one] of Object.entries(VIEWS)) {
+    if (!one.button) continue;
     one.button.querySelector(".nav-icon").innerHTML = one.icon;
     one.button.addEventListener("click", () => showView(name));
   }
@@ -6637,7 +6690,17 @@ void main(){
     paintKnobs();
   });
 
-  connectBtn.addEventListener("click", connect);
+  connectBtn.addEventListener("click", () => {
+    modelSheet.shut();
+    openSettingsView("providers");
+  });
+  for (const link of settingsNav.querySelectorAll("[data-section]")) {
+    link.addEventListener("click", () => {
+      settingsSection = link.dataset.section;
+      store(SETTINGS_SECTION, settingsSection);
+      loadSettings();
+    });
+  }
   refreshBtn.addEventListener("click", refreshModels);
   editBtn.addEventListener("click", () => {
     editingModels = !editingModels;
@@ -6855,17 +6918,245 @@ void main(){
     showPanel(title, form);
   }
 
-  function openSettings() {
+  const SETTINGS_SECTION = "sens.settings.section";
+  const API_KEY_SOURCE = "ANTHROPIC_API_KEY";
+  const SETUP_URL = "https://code.claude.com/docs/en/setup";
+  const PROVIDER_METHODS = [
+    { id: "subscription", label: "Suscripción de Claude", said: "Pro o Max. Inicias sesión en el navegador con tu cuenta de Claude." },
+    { id: "console", label: "Consola de Anthropic", said: "Facturación por uso. Inicias sesión con tu cuenta de la Consola." },
+    { id: "apiKey", label: "Clave de API", said: "Pegas una clave de la Consola. Se factura por uso y tiene prioridad sobre la suscripción." },
+  ];
+
+  let settingsSection = ["general", "providers"].includes(stored(SETTINGS_SECTION, "")) ? stored(SETTINGS_SECTION, "") : "general";
+  let providerStates = null;
+  let providersFault = "";
+  const choosing = new Map();
+  const providerFaults = new Map();
+
+  const keyed = (found) => found?.billing === "elsewhere" && found.source === API_KEY_SOURCE;
+
+  function openSettingsView(section) {
+    settingsSection = section;
+    store(SETTINGS_SECTION, section);
+    showView("settings");
+  }
+
+  function loadSettings() {
+    paintSettings();
+    if (settingsSection === "providers") loadProviders();
+  }
+
+  function paintSettings() {
+    for (const link of settingsNav.querySelectorAll("[data-section]")) {
+      link.setAttribute("aria-current", String(link.dataset.section === settingsSection));
+    }
+    settingsPane.replaceChildren(...SETTINGS_SECTIONS[settingsSection]());
+  }
+
+  function generalSection() {
     const input = el("input", "field");
+    input.id = "settings-name";
     input.value = person.name || "";
-    input.autofocus = true;
-    panelForm({
-      title: "Ajustes",
-      fields: [pair("profile-input", "Nombre", input)],
-      submit: el("button", "primary", "Guardar"),
-      act: () => invoke("save_profile", { name: input.value }),
-      after: paintProfile,
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    const label = el("label", "label", "Nombre");
+    label.htmlFor = input.id;
+    const save = el("button", "primary", "Guardar");
+    const said = el("p", "note");
+    said.setAttribute("role", "status");
+    const form = el("form", "settings-row");
+    form.append(input, save);
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      save.disabled = true;
+      said.classList.remove("fault");
+      try {
+        await invoke("save_profile", { name: input.value });
+        await paintProfile();
+        said.textContent = "Guardado.";
+      } catch (reason) {
+        said.textContent = String(reason);
+        said.classList.add("fault");
+      }
+      save.disabled = false;
     });
+    const box = el("div", "pair");
+    box.append(label, form, said);
+    return [el("h2", "label", "General"), box];
+  }
+
+  function providersSection() {
+    const nodes = [
+      el("h2", "label", "Proveedores"),
+      el("p", "note", "Con quién trabaja Sens. Sens nunca ve tus credenciales: el inicio de sesión lo hace cada herramienta."),
+    ];
+    if (providersFault) nodes.push(el("p", "none fault", providersFault));
+    else if (!providerStates) nodes.push(el("p", "none", "Comprobando…"));
+    else nodes.push(...providerStates.map(providerCard));
+    nodes.push(el("p", "settings-later", "Más proveedores, pronto."));
+    return nodes;
+  }
+
+  const SETTINGS_SECTIONS = { general: generalSection, providers: providersSection };
+
+  async function loadProviders() {
+    try {
+      providerStates = await invoke("providers_state");
+      providersFault = "";
+    } catch (reason) {
+      providersFault = String(reason);
+    }
+    if (showing === "settings" && settingsSection === "providers") paintSettings();
+  }
+
+  function providerLine(state) {
+    if (state.error) return [state.error, "fault"];
+    const found = state.account;
+    if (!found || found.billing === "signedOut") return ["Sin sesión", "off"];
+    if (keyed(found)) return ["Conectado con clave de API", "on"];
+    if (found.billing === "elsewhere") return [`Claude Code usa ${found.source}`, "on"];
+    const plan = found.billing === "subscription" ? `Suscripción ${PLANS[found.plan] || found.plan}`.trim() : "sin plan Pro ni Max";
+    return [["Conectado", plan, found.email].filter(Boolean).join(" · "), "on"];
+  }
+
+  function providerCard(state) {
+    const head = el("div", "provider-head");
+    head.append(el("span", "label", state.vendor), el("span", "name", state.label));
+    if (state.version) head.append(el("span", "version", `v${state.version}`));
+    const [text, mood] = providerLine(state);
+    const line = el("p", "provider-state", text);
+    line.dataset.state = mood;
+
+    const card = el("div", "card provider");
+    card.append(head, line);
+    if (!state.version) {
+      const install = el("button", "quiet");
+      install.innerHTML = ICONS.external;
+      install.append("Cómo instalar Claude Code");
+      install.addEventListener("click", () => outward(SETUP_URL));
+      const again = el("button", "quiet", "Comprobar otra vez");
+      again.addEventListener("click", loadProviders);
+      const row = el("div", "settings-row");
+      row.append(install, again);
+      card.append(row);
+      return card;
+    }
+    const method = choosing.get(state.id) || state.method;
+    card.append(methodChoices(state, method), ...methodActions(state, method));
+    const failed = providerFaults.get(state.id);
+    if (failed) card.append(el("p", "none fault", failed));
+    return card;
+  }
+
+  function methodChoices(state, method) {
+    const box = el("fieldset", "choices");
+    box.append(el("legend", "label", "Cómo entra"));
+    for (const option of PROVIDER_METHODS) {
+      const input = el("input");
+      input.type = "radio";
+      input.name = `method-${state.id}`;
+      input.value = option.id;
+      input.checked = option.id === method;
+      input.addEventListener("change", () => pickMethod(state, option.id));
+      const text = el("span", "choice-text");
+      text.append(el("b", null, option.label), el("span", null, option.said));
+      const choice = el("label", "choice");
+      choice.append(input, text);
+      box.append(choice);
+    }
+    return box;
+  }
+
+  function methodActions(state, method) {
+    if (method === "apiKey") return keyActions(state);
+    const signed = state.account && state.account.billing !== "signedOut" && !keyed(state.account);
+    const row = el("div", "settings-row");
+    if (connecting) {
+      const waiting = el("button", "quiet", "Esperando al inicio de sesión…");
+      waiting.disabled = true;
+      row.append(waiting);
+      return [row, el("p", "note", "Termina en la ventana de Claude Code que se ha abierto y vuelve aquí.")];
+    }
+    if (signed) {
+      const out = el("button", "quiet", "Cerrar sesión");
+      out.addEventListener("click", () => providerAct(state, () => invoke("provider_sign_out")));
+      const check = el("button", "quiet", "Comprobar");
+      check.addEventListener("click", () => providerAct(state, async () => {}));
+      row.append(out, check);
+      return [row];
+    }
+    const enter = el("button", "primary", "Iniciar sesión");
+    enter.addEventListener("click", () => signIn(state, method));
+    row.append(enter);
+    return [row, el("p", "note", "Se abre una ventana de Claude Code para que entres; Sens no ve tu contraseña ni tus tokens.")];
+  }
+
+  function keyActions(state) {
+    const input = el("input", "field verbatim");
+    input.type = "password";
+    input.id = `key-${state.id}`;
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.placeholder = state.keyHint ? "Pega una clave nueva para cambiarla" : "sk-ant-…";
+    input.setAttribute("aria-label", "Clave de API");
+    const save = el("button", "primary", "Guardar clave");
+    const form = el("form", "settings-row");
+    form.append(input, save);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      providerAct(state, () => invoke("save_api_key", { id: state.id, key: input.value }));
+    });
+    const nodes = [form];
+    if (state.keyHint) {
+      const kept = el("div", "settings-row");
+      const drop = el("button", "quiet", "Quitar clave");
+      drop.addEventListener("click", () => providerAct(state, () => invoke("forget_api_key", { id: state.id })));
+      kept.append(el("span", "note", `Clave guardada: ${state.keyHint}`), drop);
+      nodes.unshift(kept);
+    }
+    nodes.push(el("p", "note", "Se guarda cifrada con tu usuario de Windows y nunca se vuelve a mostrar."));
+    return nodes;
+  }
+
+  async function pickMethod(state, method) {
+    choosing.set(state.id, method);
+    providerFaults.delete(state.id);
+    if (method === "apiKey" && !state.keyHint) return paintSettings();
+    await providerAct(state, () => invoke("set_provider_method", { id: state.id, method }));
+  }
+
+  async function providerAct(state, work) {
+    providerFaults.delete(state.id);
+    try {
+      await work();
+      choosing.delete(state.id);
+    } catch (reason) {
+      providerFaults.set(state.id, String(reason));
+    }
+    await afterProviderChange();
+  }
+
+  async function afterProviderChange() {
+    await loadProviders();
+    await readAccount();
+    refreshModels();
+  }
+
+  async function signIn(state, method) {
+    if (connecting) return;
+    connecting = true;
+    providerFaults.delete(state.id);
+    paintAccount();
+    paintSettings();
+    try {
+      await invoke("provider_sign_in", { method });
+      await awaitSignIn();
+    } catch (reason) {
+      providerFaults.set(state.id, String(reason));
+    }
+    connecting = false;
+    paintAccount();
+    await afterProviderChange();
   }
 
   const SHORTCUTS = [
@@ -6901,7 +7192,7 @@ void main(){
     }
   }
 
-  const PANELS = { settings: openSettings, keys: openKeys, about: openAbout };
+  const PANELS = { settings: () => openSettingsView(settingsSection), keys: openKeys, about: openAbout };
   const menuSheet = steer(popover(menu, profileBtn));
 
   for (const item of menu.querySelectorAll("[data-panel]")) {
