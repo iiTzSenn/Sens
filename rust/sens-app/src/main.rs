@@ -13,6 +13,7 @@ mod projects;
 mod providers;
 mod snapshot;
 mod store;
+mod update;
 mod web;
 
 use std::collections::BTreeMap;
@@ -234,6 +235,11 @@ fn chat_tasks(engine: State<Arc<Engine>>, session_id: String) -> Vec<String> {
 }
 
 #[tauri::command]
+fn chat_working(engine: State<Arc<Engine>>) -> usize {
+    engine.working()
+}
+
+#[tauri::command]
 fn chat_stop_task(engine: State<Arc<Engine>>, session_id: String, task_id: String) -> Result<(), String> {
     engine.stop_task(&session_id, &task_id)
 }
@@ -376,7 +382,32 @@ fn profile(app: AppHandle) -> Result<profile::Profile, String> {
 
 #[tauri::command]
 fn save_profile(app: AppHandle, name: String) -> Result<(), String> {
-    profile::save(&data_dir(&app)?, &profile::Profile { name })
+    profile::rename(&data_dir(&app)?, &name)
+}
+
+#[tauri::command]
+fn set_update_check(app: AppHandle, on: bool) -> Result<(), String> {
+    profile::set_update_check(&data_dir(&app)?, on)
+}
+
+#[tauri::command(async)]
+fn update_check(manual: bool) -> Result<update::Check, String> {
+    update::check(manual)
+}
+
+#[derive(Serialize, Clone)]
+struct Updating<'a> {
+    version: &'a str,
+    stage: update::Stage,
+}
+
+#[tauri::command(async)]
+fn update_install(app: AppHandle) -> Result<(), String> {
+    update::install(&data_dir(&app)?, |version, stage| {
+        let _ = app.emit("update", Updating { version, stage });
+    })?;
+    app.exit(0);
+    Ok(())
 }
 
 #[tauri::command(async)]
@@ -479,6 +510,7 @@ fn main() {
             icon::sharpen(app);
             if let Ok(base) = data_dir(app.handle()) {
                 share_environment(&base);
+                update::sweep(&base);
             }
             Ok(())
         })
@@ -488,6 +520,7 @@ fn main() {
             chat_answer,
             chat_busy,
             chat_tasks,
+            chat_working,
             chat_stop_task,
             task_output,
             chat_warm,
@@ -520,6 +553,9 @@ fn main() {
             last_project,
             profile,
             save_profile,
+            set_update_check,
+            update_check,
+            update_install,
             artifacts,
             artifact_data,
             artifact_text,

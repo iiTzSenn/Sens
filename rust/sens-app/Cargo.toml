@@ -19,6 +19,7 @@ tauri-plugin-opener = "2"
 ureq = { version = "3", default-features = false, features = ["native-tls", "gzip"] }
 tar = "0.4"
 flate2 = "1"
+minisign-verify = "0.2.5"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"

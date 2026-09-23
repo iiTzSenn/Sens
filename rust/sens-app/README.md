@@ -8,7 +8,7 @@ shelled out to, so the installer carries one binary and no runtime.
 
 ```bash
 npm ci
-npm run app:installer -- --unsigned
+npm run app:installer -- --unsigned --no-updater
 ```
 
 That produces `rust/sens-app/target/release/bundle/nsis/Sens_<version>_x64-setup.exe`
@@ -52,6 +52,55 @@ then reads the signature back off the finished installer with
 and timestamped — the build log saying "Successfully signed" is not the same
 thing as Windows accepting it.
 
+## Updates, and the key that makes them safe
+
+Sens checks GitHub for a newer release when it opens and every 12 hours, shows
+it in the top bar, and installs it with one click: it downloads the installer,
+checks its signature, runs it with `/P /UPDATE /R` and closes. NSIS installs per
+user, so there is no UAC prompt, and `/R` opens Sens again when it is done.
+
+A release only counts if it carries both `Sens_<version>_x64-setup.exe` and
+`Sens_<version>_x64-setup.exe.sig`. The `.sig` is a minisign signature made
+with a private key that never enters this repository; the public half is
+[`updater.pub`](updater.pub), compiled into the app. The app refuses an
+installer whose signature does not match that key, or whose signed version is
+not the one the release announces, so an old signed installer cannot be passed
+off as a new one.
+
+Create the key once, from an interactive terminal, because it asks for a
+password:
+
+```powershell
+npx tauri signer generate -w "$env:USERPROFILE\.tauri\sens-updater.key"
+```
+
+and copy `sens-updater.key.pub` over `updater.pub`. Keep the private key and its
+password somewhere safe: losing either means installed copies accept no further
+versions, and everyone has to reinstall by hand.
+
+Then build with it:
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH = "$env:USERPROFILE\.tauri\sens-updater.key"
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "..."
+npm run app:installer -- --unsigned
+```
+
+The script signs the installer after Authenticode has finished with it (the
+Authenticode signature changes the bytes), binds the signature to the version
+in `tauri.conf.json`, and fails if the `.sig` was made with a key other than the
+one in `updater.pub`. Without a key it refuses to build unless you pass
+`--no-updater`.
+
+Publish both files:
+
+```bash
+gh release create v0.12.0 --title "..." --notes "..." Sens_0.12.0_x64-setup.exe Sens_0.12.0_x64-setup.exe.sig
+```
+
+The notes are what the update panel shows. Copies older than 0.12.0 have no
+updater and need one manual install.
+
 ## What a certificate buys, and what it does not
 
 You need an **OV code-signing certificate** (an SSL certificate will not work).
@@ -72,11 +121,13 @@ builds it on a tag. It needs two secrets:
 | --- | --- |
 | `WINDOWS_CERTIFICATE` | the `.pfx`, base64 — `certutil -encode certificate.pfx cert.txt` |
 | `WINDOWS_CERTIFICATE_PASSWORD` | the export password of that `.pfx` |
+| `TAURI_SIGNING_PRIVATE_KEY` | the contents of `sens-updater.key` |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | its password |
 
 The job imports it, hands the thumbprint to the script, and throws if the
 secret is missing rather than quietly shipping something unsigned. The
-installer is uploaded as a workflow artifact and, when a release exists for the
-tag, attached to it.
+installer and its `.sig` are uploaded as a workflow artifact and, when a release
+exists for the tag, attached to it.
 
 ## How this was tested without a real certificate
 

@@ -2,7 +2,7 @@
 
 Fecha: 2026-09-23 · Ámbito: `rust/sens-app` (`update.rs`, `profile.rs`, `main.rs`,
 `ui/index.html`, `updater.pub`), `rust/sens-agent` (`chat.rs`),
-`scripts/app-installer.mjs`, `.github/workflows/release.yml`. Diseño aprobado.
+`scripts/app-installer.mjs`, `.github/workflows/release.yml`. Implementado.
 
 ## Decisiones
 
@@ -42,16 +42,20 @@ no tienen `.sig` (v0.10.0, v0.11.0) quedan fuera solas.
 - `latest(current) -> Result<Option<Release>, String>`: la consulta de arriba.
   `Release { version, notes, page, size, installer, signature }`, donde `notes` es
   el cuerpo de la release, `page` su `html_url` y `size` los bytes del `.exe`.
-- `fetch(base, release) -> Result<PathBuf, String>`: descarga el `.sig` y el `.exe`
-  con `web::bytes` (tope de 64 MB) y verifica la firma en memoria. Solo si pasa,
-  escribe el `.exe` en `<datos>/updates/`.
-- `verify(bytes, signature) -> Result<(), String>`: el crate `minisign-verify`.
-  Tanto `updater.pub` como el `.sig` son el texto minisign en base64, como los
-  escribe `tauri signer`. Se decodifican con `base64`, luego
-  `PublicKey::decode`/`Signature::decode`, y `verify(bytes, &signature, true)`.
-- `apply(path)`: lanza `setup.exe /P /UPDATE /R` como proceso aparte. Si arranca,
-  `app.exit(0)`, y el `RunEvent::Exit` que ya existe apaga el motor y mata los
-  `claude`. Si no arranca, devuelve el error y Sens sigue abierto.
+- `install(base, report)`: vuelve a pedir la última release y descarga el `.sig` y
+  el `.exe` con `web::text`/`web::bytes` (tope de 64 MB). Verifica la firma en
+  memoria y, solo si pasa, escribe el `.exe` en `<datos>/updates/`. Después lanza
+  `setup.exe /P /UPDATE /R` como proceso aparte. `report` recibe cada etapa. Si
+  el instalador arranca, el comando hace `app.exit(0)`, y el `RunEvent::Exit` que
+  ya existe apaga el motor y mata los `claude`. Si no arranca, devuelve el error y
+  Sens sigue abierto.
+- `verify(key, bytes, signature, version)`: el crate `minisign-verify`. Tanto
+  `updater.pub` como el `.sig` son el texto minisign en base64, como los escribe
+  `tauri signer`. Se decodifican con `base64`, luego
+  `PublicKey::decode`/`Signature::decode`, y `verify(bytes, &signature, false)`:
+  solo firmas prehash, que es lo que produce `tauri signer`. Además, el comentario
+  de confianza (cubierto por la firma) tiene que llevar `version:<v>` con la versión
+  de la release. Así un instalador antiguo firmado no pasa por uno nuevo.
 - `sweep(base)`: borra `<datos>/updates/`. Corre en `setup` al arrancar.
 - La clave pública entra con `include_str!("../updater.pub")`.
 - En las builds de desarrollo (`cfg!(debug_assertions)`), `update_check` sin
@@ -65,7 +69,7 @@ un turno en curso o con tareas en segundo plano.
 
 | Comando | Firma JS | Devuelve / efecto |
 | --- | --- | --- |
-| `update_check` | `invoke("update_check", { manual })` | `{ current, latest: { version, notes, page, size } \| null, installable }` |
+| `update_check` | `invoke("update_check", { manual })` | `{ latest: { version, notes, page, size } \| null, installable }` |
 | `update_install` | `invoke("update_install")` | vuelve a consultar, descarga, verifica y aplica la última; si todo va bien, la app se cierra; si falla, rechaza con el mensaje |
 | `chat_working` | `invoke("chat_working")` | número de sesiones trabajando |
 | `set_update_check` | `invoke("set_update_check", { on })` | `null`; guarda el interruptor |
@@ -124,9 +128,14 @@ un turno en curso o con tareas en segundo plano.
     instaladas no aceptan más versiones y toca reinstalar a mano.
 - **`scripts/app-installer.mjs`** trata las dos firmas por separado:
   - Authenticode sigue como está, opcional con `--unsigned`.
-  - La firma del actualizador es obligatoria. Con `TAURI_SIGNING_PRIVATE_KEY` (ruta
-    o contenido) y `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, el script ejecuta
-    `tauri signer sign` sobre el instalador y deja el `.exe.sig` a su lado.
+  - La firma del actualizador es obligatoria. Con `TAURI_SIGNING_PRIVATE_KEY_PATH`
+    (o `TAURI_SIGNING_PRIVATE_KEY` con el contenido) y
+    `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, el script ejecuta
+    `tauri signer sign --app-version <versión de tauri.conf.json>` sobre el
+    instalador y deja el `.exe.sig` a su lado.
+  - Firma después de Authenticode, porque esa firma cambia los bytes del `.exe`.
+  - Si el `.sig` no lleva el mismo id de clave que `updater.pub`, lo borra y falla:
+    las copias instaladas lo rechazarían.
   - Sin clave, se niega («sin .sig, las copias instaladas no verán esta versión»),
     salvo con `--no-updater`.
 - **La release** lleva los dos ficheros:
@@ -144,14 +153,17 @@ un turno en curso o con tareas en segundo plano.
     releases solo de npm, una sin `.sig`, una más antigua que la actual, y gana la
     versión más alta aunque la API no la liste primero.
   - Verificación con un par de claves de prueba sin contraseña, con la pública, el
-    contenido y su `.sig` como ficheros de prueba: la firma buena pasa; el contenido
-    alterado y la clave ajena fallan.
+    contenido y su `.sig` como constantes del test. La firma buena pasa; fallan el
+    contenido alterado, la clave ajena, una versión distinta de la firmada y un texto
+    que no es minisign.
+  - La clave embebida no es ninguna de las de prueba.
 - **`profile`**: un `profile.json` sin `checkUpdates` carga `true`, y `save_profile`
   no lo pisa.
 - **En vivo, `#[ignore]`**: `latest("0.0.0")` contra la API real, como
   `the_real_catalogs`.
-- **UI**: `mock.js` del arnés `ui-harness` simula `update_check`, `update_install`,
-  `chat_working` y el evento. Hay que recorrer:
+- **UI**: un simulador extra sobre el `mock.js` del arnés (`updates-mock.js`)
+  cubre `update_check`, `update_install`, `chat_working`, `set_update_check` y el
+  evento. Hay que recorrer:
   - la pastilla y el panel;
   - las tres etapas, un fallo y el reintento;
   - la confirmación con sesiones trabajando;

@@ -490,6 +490,15 @@ impl Engine {
         self.live(session).map(|live| live.running()).unwrap_or_default()
     }
 
+    pub fn working(&self) -> usize {
+        self.lives.lock().map_or(0, |lives| {
+            lives
+                .values()
+                .filter(|live| live.busy.load(Ordering::SeqCst) || !live.running().is_empty())
+                .count()
+        })
+    }
+
     pub fn stop_task(&self, session: &str, task: &str) -> Result<(), String> {
         let live = self.live(session).ok_or(GONE)?;
         live.control(json!({ "subtype": "stop_task", "task_id": task }))
@@ -1047,6 +1056,11 @@ mod tests {
         let mut found = translate(line);
         assert_eq!(found.len(), 1, "{line} dio {found:?}");
         found.remove(0)
+    }
+
+    #[test]
+    fn an_engine_without_sessions_is_not_working() {
+        assert_eq!(Engine::default().working(), 0);
     }
 
     #[test]

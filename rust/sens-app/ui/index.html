@@ -124,6 +124,17 @@
   .win .shut:hover { background: var(--red); color: var(--sens-carbon-950); }
   .win button > span { display: grid; place-items: center; }
   .win .restore { display: none; }
+  .update-pill {
+    display: flex; align-items: center; gap: 6px; flex: none;
+    height: 26px; margin-inline-start: auto; padding: 0 10px;
+    border: 1px solid var(--hair-strong); border-radius: 999px;
+    font-family: var(--mono); font-size: 12px; color: var(--dim);
+    transition: background var(--fast) var(--curve), color var(--fast) var(--curve);
+  }
+  .update-pill svg { color: var(--sens-info); }
+  .update-pill:hover { background: var(--raise); color: var(--text); }
+  .update-pill[hidden] { display: none; }
+  .update-pill:not([hidden]) + .win { margin-inline-start: 0; }
   .win[data-max="true"] .restore { display: grid; }
   .win[data-max="true"] .grow { display: none; }
 
@@ -553,6 +564,10 @@
   .choice-text b { font-size: 13px; font-weight: 500; color: var(--text); }
   .choice-text span { font-size: 12px; line-height: 16px; color: var(--faint); }
   .settings-later { margin: 0; font-size: 12px; color: var(--ghost); }
+  .settings-row [hidden] { display: none; }
+  .settings-switch { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
+  .settings-switch label { cursor: pointer; }
+  .settings-pane .note.fault, .panel .note.fault { color: var(--red); }
   .stream { position: relative; display: grid; min-height: 0; min-width: 0; }
   .fade {
     position: absolute; inset-inline: 0; height: 64px; z-index: 1;
@@ -1328,6 +1343,10 @@
   .panel .pair + .pair { margin-top: 8px; }
   .panel .note { font-size: 12px; line-height: 16px; color: var(--faint); }
   .panel .actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+  .panel .update-notes { max-height: 280px; overflow: auto; padding: 0; }
+  .panel .update-actions { flex-wrap: wrap; align-items: center; gap: 8px; }
+  .update-actions button { white-space: nowrap; }
+  .update-actions .quiet:first-child { margin-inline-end: auto; }
   .primary {
     height: 32px; padding: 0 14px; border-radius: var(--r-control);
     background: var(--sens-bone-50); color: var(--sens-carbon-950); font-size: 13px; font-weight: 500;
@@ -1373,6 +1392,7 @@
       <b>sens</b>
     </div>
 
+    <button class="update-pill" id="update" hidden></button>
     <div class="win" id="win" data-max="false">
       <button class="tools-btn" id="tools" title="Herramientas" aria-label="Herramientas" aria-haspopup="menu" aria-expanded="false" data-running="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
       <button id="win-min" title="Minimizar" aria-label="Minimizar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
@@ -3026,6 +3046,7 @@
     unarchive: icon('<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h2"/><path d="M20 8v11a2 2 0 0 1-2 2h-2"/><path d="m9 15 3-3 3 3"/><path d="M12 12v9"/>', 16),
     trash: icon('<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/>', 16),
     box: icon('<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>', 12),
+    update: icon('<circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="m8 12 4 4 4-4"/>', 14),
   };
 
   function stored(key, fallback) {
@@ -6982,8 +7003,187 @@ void main(){
     });
     const box = el("div", "pair");
     box.append(label, form, said);
-    return [el("h2", "label", "General"), box];
+    return [el("h2", "label", "General"), box, updatesBlock()];
   }
+
+  const UPDATE_EVERY = 12 * 60 * 60 * 1000;
+  const UPDATE_STAGES = {
+    downloading: "Descargando…",
+    verifying: "Verificando la firma…",
+    installing: "Instalando: Sens se cerrará y volverá a abrirse",
+  };
+  const updateBtn = document.getElementById("update");
+  const updates = { current: "", latest: null, installable: true, checked: false, checking: false, fault: "" };
+  let updateTimer = 0;
+  let paintUpdateBlock = () => {};
+
+  function say(line, text, failed = false) {
+    line.textContent = String(text);
+    line.classList.toggle("fault", failed);
+    line.hidden = !line.textContent;
+  }
+
+  async function checkUpdates(manual) {
+    updates.checking = true;
+    updates.fault = "";
+    paintUpdates();
+    try {
+      const found = await invoke("update_check", { manual });
+      updates.latest = found.latest;
+      updates.installable = found.installable;
+      updates.checked ||= manual || found.installable;
+    } catch (reason) {
+      updates.fault = String(reason);
+    }
+    updates.checking = false;
+    paintUpdates();
+  }
+
+  function paintUpdates() {
+    const next = updates.latest;
+    updateBtn.hidden = !next;
+    if (next) {
+      updateBtn.innerHTML = ICONS.update;
+      updateBtn.append(el("span", null, next.version));
+      updateBtn.setAttribute("aria-label", `Actualización disponible: Sens ${next.version}`);
+      updateBtn.title = `Sens ${next.version} disponible`;
+    }
+    paintUpdateBlock();
+  }
+
+  function scheduleUpdates() {
+    clearInterval(updateTimer);
+    updateTimer = person.checkUpdates === false ? 0 : setInterval(() => checkUpdates(false), UPDATE_EVERY);
+  }
+
+  async function startUpdates() {
+    try {
+      updates.current = await window.__TAURI__.app.getVersion();
+    } catch (ignored) {}
+    scheduleUpdates();
+    if (person.checkUpdates === false) paintUpdates();
+    else await checkUpdates(false);
+  }
+
+  function updateState() {
+    if (updates.checking) return "Comprobando…";
+    if (updates.fault) return updates.fault;
+    if (updates.latest) return `Sens ${updates.latest.version} disponible.`;
+    if (updates.checked) return "Estás en la última versión.";
+    return "";
+  }
+
+  function updatesBlock() {
+    const box = el("div", "pair");
+    const version = el("p", "note");
+    const state = el("p", "note");
+    state.setAttribute("role", "status");
+    const show = el("button", "primary");
+    show.addEventListener("click", () => openUpdate(show));
+    const look = el("button", "quiet", "Buscar actualizaciones");
+    look.addEventListener("click", () => checkUpdates(true));
+    const row = el("div", "settings-row");
+    row.append(show, look);
+    paintUpdateBlock = () => {
+      const next = updates.latest;
+      version.textContent = [
+        updates.current && `Sens ${updates.current}`,
+        !updates.installable && "build de desarrollo: comprueba pero no instala",
+      ].filter(Boolean).join(" · ");
+      say(state, updateState(), Boolean(updates.fault) && !updates.checking);
+      show.hidden = !next;
+      show.textContent = next ? `Ver Sens ${next.version}` : "";
+      look.disabled = updates.checking;
+    };
+    paintUpdateBlock();
+    box.append(el("span", "label", "Actualizaciones"), version, state, row, ...updateSwitch());
+    return box;
+  }
+
+  function updateSwitch() {
+    const toggle = el("button", "switch");
+    toggle.id = "settings-update-check";
+    toggle.setAttribute("role", "switch");
+    toggle.setAttribute("aria-checked", String(person.checkUpdates !== false));
+    const label = el("label", null, "Buscar al abrir Sens");
+    label.htmlFor = toggle.id;
+    const said = el("p", "note fault");
+    said.setAttribute("role", "alert");
+    said.hidden = true;
+    toggle.addEventListener("click", async () => {
+      const on = toggle.getAttribute("aria-checked") !== "true";
+      toggle.setAttribute("aria-checked", String(on));
+      said.hidden = true;
+      try {
+        await invoke("set_update_check", { on });
+        person.checkUpdates = on;
+        scheduleUpdates();
+      } catch (reason) {
+        toggle.setAttribute("aria-checked", String(!on));
+        said.textContent = String(reason);
+        said.hidden = false;
+      }
+    });
+    const row = el("div", "settings-switch");
+    row.append(toggle, label);
+    return [row, said];
+  }
+
+  function openUpdate(back) {
+    const next = updates.latest;
+    if (!next) return;
+    const facts = el("p", "note", [updates.current && `Tienes la ${updates.current}`, weigh(next.size)].filter(Boolean).join(" · "));
+    const notes = next.notes.trim() ? prose(next.notes) : el("p", "note", "Esta versión no trae notas.");
+    notes.classList.add("update-notes");
+    const status = el("p", "note");
+    status.id = "update-status";
+    status.setAttribute("role", "status");
+    status.hidden = true;
+    const page = el("button", "quiet");
+    page.innerHTML = ICONS.external;
+    page.append(el("span", null, "Ver en GitHub"));
+    page.addEventListener("click", () => invoke("open_external", { target: next.page }).catch((reason) => say(status, reason, true)));
+    const later = el("button", "quiet", "Más tarde");
+    later.addEventListener("click", () => panel.close());
+    const go = el("button", "primary", "Actualizar y reiniciar");
+    go.disabled = !updates.installable;
+    go.addEventListener("click", () => installUpdate(go, status));
+    if (!updates.installable) say(status, "Build de desarrollo: comprueba pero no instala.");
+    const actions = el("div", "actions update-actions");
+    actions.append(page, later, go);
+    panelBack = back;
+    showPanel(`Sens ${next.version}`, facts, notes, status, actions);
+  }
+
+  async function installUpdate(button, status) {
+    if (button.dataset.sure !== "true") {
+      const working = await invoke("chat_working").catch(() => 0);
+      if (working > 0) {
+        button.dataset.sure = "true";
+        button.textContent = "Actualizar igualmente";
+        button.classList.add("danger");
+        say(status, working === 1 ? "Hay 1 sesión trabajando y se detendrá." : `Hay ${working} sesiones trabajando y se detendrán.`);
+        return;
+      }
+    }
+    button.disabled = true;
+    say(status, UPDATE_STAGES.downloading);
+    try {
+      await invoke("update_install");
+    } catch (reason) {
+      say(status, reason, true);
+      button.dataset.sure = "false";
+      button.classList.remove("danger");
+      button.textContent = "Reintentar";
+      button.disabled = false;
+    }
+  }
+
+  updateBtn.addEventListener("click", () => openUpdate(updateBtn));
+  listen("update", ({ payload }) => {
+    const status = document.getElementById("update-status");
+    if (status) say(status, UPDATE_STAGES[payload.stage]);
+  });
 
   function providersSection() {
     const nodes = [
@@ -7485,7 +7685,7 @@ void main(){
   syncSend();
   loadCatalog();
   syncFrame();
-  paintProfile();
+  paintProfile().then(startUpdates);
   boot();
 </script>
 </body>
