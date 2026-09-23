@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use sens_agent::Step;
+use sens_agent::chat::Event;
 use sens_agent::session::{self, Entry};
 use serde::Serialize;
 
@@ -14,12 +14,42 @@ use crate::projects::{self, Registry, Workspace};
 const MEGABYTE: u64 = 1024 * 1024;
 const IMAGE_CAP: u64 = 8 * MEGABYTE;
 const TEXT_CAP: u64 = MEGABYTE;
-const ATTACHED: &str = "\n\n--- ";
 const SCHEMES: [&str; 2] = ["http://", "https://"];
 const DOCUMENTS: [&str; 16] = [
     "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "odt", "ods", "odp", "rtf", "png", "jpg", "jpeg", "gif", "webp",
 ];
 const TRAILING: &[char] = &['.', ',', ';', ':', '!', '?'];
+const PICTURE_CAP: usize = 5 * 1024 * 1024;
+const OUTSIDE_CAP: u64 = 20 * MEGABYTE;
+const PASTEABLE: [(&str, &str); 4] = [
+    ("image/png", "png"),
+    ("image/jpeg", "jpg"),
+    ("image/gif", "gif"),
+    ("image/webp", "webp"),
+];
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum Attached {
+    File {
+        path: String,
+        name: String,
+        bytes: u64,
+        outside: bool,
+    },
+    Picture {
+        name: String,
+        media_type: String,
+        data: String,
+        bytes: u64,
+    },
+}
+
+#[derive(Serialize, Default, Debug)]
+pub struct Attachments {
+    pub items: Vec<Attached>,
+    pub refused: Vec<String>,
+}
 const IMAGES: [(&str, &str); 6] = [
     ("png", "image/png"),
     ("jpg", "image/jpeg"),
@@ -152,17 +182,13 @@ pub fn links_of(id: &str, entries: &[Entry]) -> Vec<Artifact> {
 
 fn said(entry: &Entry) -> Option<(u64, &str)> {
     match entry {
-        Entry::Task { at, text } => Some((*at, asked(text))),
-        Entry::Beat {
+        Entry::Task { at, text, .. } => Some((*at, text)),
+        Entry::Agent {
             at,
-            step: Step::Proposed { note, .. },
-        } => Some((*at, note)),
+            event: Event::Said { text },
+        } => Some((*at, text)),
         _ => None,
     }
-}
-
-fn asked(text: &str) -> &str {
-    text.split_once(ATTACHED).map_or(text, |(asked, _)| asked)
 }
 
 fn link(id: &str, at: u64, url: String) -> Artifact {
@@ -178,6 +204,139 @@ fn link(id: &str, at: u64, url: String) -> Artifact {
 
 fn shelf(root: &Path) -> PathBuf {
     root.join(".sens").join("artifacts")
+}
+
+fn session_shelf(root: &Path, session: &str) -> Result<PathBuf, String> {
+    if session.is_empty() || !session.chars().all(|letter| letter.is_ascii_alphanumeric() || letter == '-') {
+        return Err(format!("la sesión {session} no tiene un nombre válido"));
+    }
+    Ok(shelf(root).join(session))
+}
+
+fn made(folder: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(folder).map_err(|error| format!("no pude crear {}: {error}", folder.display()))
+}
+
+fn slashed(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+pub fn keep_picture(root: &Path, session: &str, at: usize, media_type: &str, data: &str) -> Result<String, String> {
+    let extension = PASTEABLE
+        .iter()
+        .find(|(mime, _)| *mime == media_type)
+        .map(|(_, extension)| *extension)
+        .ok_or_else(|| format!("no admito imágenes {media_type}: usa PNG, JPEG, GIF o WebP"))?;
+    let folder = session_shelf(root, session)?;
+    let bytes = STANDARD
+        .decode(data)
+        .map_err(|error| format!("la imagen llegó rota: {error}"))?;
+    if bytes.len() > PICTURE_CAP {
+        return Err(format!("la imagen pasa de {} MB", PICTURE_CAP / 1024 / 1024));
+    }
+
+    made(&folder)?;
+    let name = format!("imagen-{}-{at}.{extension}", session::now());
+    std::fs::write(folder.join(&name), bytes).map_err(|error| format!("no pude guardar la imagen: {error}"))?;
+    Ok(format!(".sens/artifacts/{session}/{name}"))
+}
+
+fn picture_type(path: &Path) -> Option<&'static str> {
+    let extension = path.extension()?.to_string_lossy().to_lowercase();
+    match extension.as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+fn within(root: &Path, full: &Path) -> Option<String> {
+    let base = root.canonicalize().ok()?;
+    full.strip_prefix(base).ok().map(slashed)
+}
+
+pub fn attach(root: &Path, paths: &[String]) -> Attachments {
+    let mut found = Attachments::default();
+    for given in paths {
+        match attached(root, given) {
+            Ok(item) => found.items.push(item),
+            Err(reason) => found.refused.push(reason),
+        }
+    }
+    found
+}
+
+fn attached(root: &Path, given: &str) -> Result<Attached, String> {
+    let full = root
+        .join(given)
+        .canonicalize()
+        .map_err(|_| format!("{given} no existe"))?;
+    let meta = full.metadata().map_err(|error| format!("no pude leer {given}: {error}"))?;
+    let name = full
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| given.to_string());
+    if !meta.is_file() {
+        return Err(format!("{name} no es un fichero"));
+    }
+
+    if let Some(media_type) = picture_type(&full).filter(|_| meta.len() <= PICTURE_CAP as u64) {
+        let bytes = std::fs::read(&full).map_err(|error| format!("no pude leer {name}: {error}"))?;
+        return Ok(Attached::Picture {
+            name,
+            media_type: media_type.to_string(),
+            data: STANDARD.encode(bytes),
+            bytes: meta.len(),
+        });
+    }
+
+    let inside = within(root, &full);
+    if inside.is_none() && meta.len() > OUTSIDE_CAP {
+        return Err(format!("{name} pasa de {} MB", OUTSIDE_CAP / MEGABYTE));
+    }
+    Ok(Attached::File {
+        outside: inside.is_none(),
+        path: inside.unwrap_or_else(|| full.to_string_lossy().into_owned()),
+        name,
+        bytes: meta.len(),
+    })
+}
+
+pub fn keep_file(root: &Path, session: &str, given: &str) -> Result<String, String> {
+    if !Path::new(given).is_absolute() {
+        return Ok(given.to_string());
+    }
+    let full = Path::new(given).canonicalize().map_err(|_| format!("{given} ya no existe"))?;
+    if let Some(inside) = within(root, &full) {
+        return Ok(inside);
+    }
+    let size = full.metadata().map_err(|error| format!("no pude leer {given}: {error}"))?.len();
+    if size > OUTSIDE_CAP {
+        return Err(format!("{given} pasa de {} MB", OUTSIDE_CAP / MEGABYTE));
+    }
+
+    let folder = session_shelf(root, session)?;
+    made(&folder)?;
+    let original = full.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let target = unused(&folder, &original);
+    std::fs::copy(&full, &target).map_err(|error| format!("no pude copiar {given}: {error}"))?;
+    let name = target.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    Ok(format!(".sens/artifacts/{session}/{name}"))
+}
+
+fn unused(folder: &Path, original: &str) -> PathBuf {
+    let wanted = Path::new(original);
+    let stem = wanted.file_stem().map(|stem| stem.to_string_lossy().into_owned()).unwrap_or_default();
+    let extension = wanted.extension().map(|extension| format!(".{}", extension.to_string_lossy())).unwrap_or_default();
+    (0..)
+        .map(|copy| match copy {
+            0 => folder.join(original),
+            _ => folder.join(format!("{stem}-{copy}{extension}")),
+        })
+        .find(|candidate| !candidate.exists())
+        .unwrap_or_else(|| folder.join(original))
 }
 
 pub fn files_of(root: &Path) -> Vec<Artifact> {
@@ -329,12 +488,15 @@ mod tests {
     }
 
     fn task(at: u64, text: &str) -> Entry {
-        Entry::Task { at, text: text.into() }
+        Entry::Task { at, text: text.into(), files: Vec::new(), images: Vec::new() }
     }
 
-    fn proposed(at: u64, note: &str) -> Entry {
-        let step = Step::Proposed { paths: Vec::new(), model: "m".into(), note: note.into() };
-        Entry::Beat { at, step }
+    fn agent(at: u64, event: Event) -> Entry {
+        Entry::Agent { at, event }
+    }
+
+    fn said(at: u64, text: &str) -> Entry {
+        agent(at, Event::Said { text: text.into() })
     }
 
     #[test]
@@ -365,11 +527,12 @@ mod tests {
     }
 
     #[test]
-    fn links_come_only_from_what_was_asked_and_from_proposal_notes() {
+    fn links_come_only_from_what_was_asked_and_from_what_the_agent_said() {
         let entries = vec![
-            task(10, "Usa https://a.com/doc\n\n--- src/x.rs ---\nhttps://adjunto.com"),
-            proposed(20, "Sigo https://b.com/guia."),
-            Entry::Failed { at: 30, reason: "https://fallo.com".into() },
+            task(10, "Usa https://a.com/doc"),
+            said(20, "Sigo https://b.com/guia."),
+            agent(25, Event::Thought { text: "quizá https://pensado.com".into() }),
+            agent(30, Event::Failed { reason: "https://fallo.com".into() }),
         ];
 
         let found = links_of("s1", &entries);
@@ -384,7 +547,7 @@ mod tests {
 
     #[test]
     fn a_link_repeated_in_a_session_keeps_its_first_appearance() {
-        let entries = vec![task(1, "https://a.com/x"), proposed(2, "otra vez https://a.com/x")];
+        let entries = vec![task(1, "https://a.com/x"), said(2, "otra vez https://a.com/x")];
 
         let found = links_of("s1", &entries);
 
@@ -522,10 +685,122 @@ mod tests {
     }
 
     #[test]
+    fn a_pasted_picture_is_kept_as_an_artifact_of_its_session() {
+        let root = temp_root("pasted");
+        let kept = keep_picture(&root, "s1", 0, "image/png", &STANDARD.encode(b"png")).unwrap();
+
+        assert!(kept.starts_with(".sens/artifacts/s1/imagen-"));
+        assert!(kept.ends_with("-0.png"));
+        assert_eq!(std::fs::read(root.join(&kept)).unwrap(), b"png");
+        let found = files_of(&root);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].kind, Kind::Image);
+        assert_eq!(found[0].session.as_deref(), Some("s1"));
+    }
+
+    #[test]
+    fn a_picture_that_cannot_be_trusted_is_refused_before_touching_the_disk() {
+        let root = temp_root("refused");
+        let fine = STANDARD.encode(b"png");
+
+        assert!(keep_picture(&root, "s1", 0, "image/svg+xml", &fine).unwrap_err().contains("PNG"));
+        assert!(keep_picture(&root, "../fuera", 0, "image/png", &fine).is_err());
+        assert!(keep_picture(&root, "s1", 0, "image/png", "esto no es base64").unwrap_err().contains("rota"));
+        let huge = STANDARD.encode(vec![0u8; PICTURE_CAP + 1]);
+        assert!(keep_picture(&root, "s1", 0, "image/png", &huge).unwrap_err().contains("5 MB"));
+        assert!(!shelf(&root).exists());
+    }
+
+    fn full(path: &Path) -> String {
+        path.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn a_picture_from_anywhere_is_attached_as_a_picture() {
+        let root = temp_root("attach-project");
+        let elsewhere = temp_root("attach-elsewhere");
+        put(&elsewhere.join("captura.PNG"), b"png");
+
+        let found = attach(&root, &[full(&elsewhere.join("captura.PNG"))]);
+
+        assert!(found.refused.is_empty());
+        assert_eq!(
+            found.items,
+            vec![Attached::Picture { name: "captura.PNG".into(), media_type: "image/png".into(), data: STANDARD.encode(b"png"), bytes: 3 }]
+        );
+    }
+
+    #[test]
+    fn a_file_inside_the_project_travels_by_its_relative_path() {
+        let root = temp_root("attach-inside");
+        put(&root.join("src").join("a.rs"), b"fn a() {}");
+
+        let found = attach(&root, &[full(&root.join("src").join("a.rs")), "src/a.rs".into()]);
+
+        let expected = Attached::File { path: "src/a.rs".into(), name: "a.rs".into(), bytes: 9, outside: false };
+        assert_eq!(found.items, vec![expected.clone(), expected]);
+    }
+
+    #[test]
+    fn a_file_outside_the_project_is_attached_by_its_full_path() {
+        let root = temp_root("attach-outside-project");
+        let elsewhere = temp_root("attach-outside");
+        put(&elsewhere.join("informe.pdf"), b"%PDF");
+
+        let found = attach(&root, &[full(&elsewhere.join("informe.pdf"))]);
+
+        let Attached::File { path, outside, name, .. } = &found.items[0] else { panic!("{found:?}") };
+        assert!(*outside);
+        assert_eq!(name, "informe.pdf");
+        assert!(Path::new(path).is_absolute());
+    }
+
+    #[test]
+    fn a_picture_too_big_to_send_inline_is_attached_as_a_file_instead() {
+        let root = temp_root("attach-big-picture");
+        put(&root.join("enorme.png"), &vec![0u8; PICTURE_CAP + 1]);
+
+        let found = attach(&root, &["enorme.png".into()]);
+
+        assert!(matches!(&found.items[0], Attached::File { path, .. } if path == "enorme.png"));
+    }
+
+    #[test]
+    fn what_cannot_be_attached_says_why_without_stopping_the_rest() {
+        let root = temp_root("attach-refused");
+        put(&root.join("bien.txt"), b"x");
+
+        let found = attach(&root, &["nada.txt".into(), full(&root), "bien.txt".into()]);
+
+        assert_eq!(found.items.len(), 1);
+        assert_eq!(found.refused.len(), 2);
+        assert!(found.refused[0].contains("no existe"));
+        assert!(found.refused[1].contains("no es un fichero"));
+    }
+
+    #[test]
+    fn sending_copies_outside_files_into_the_session_and_leaves_project_files_alone() {
+        let root = temp_root("keep-project");
+        let elsewhere = temp_root("keep-elsewhere");
+        put(&elsewhere.join("notas.md"), b"hola");
+        put(&root.join("src").join("a.rs"), b"x");
+
+        let first = keep_file(&root, "s1", &full(&elsewhere.join("notas.md"))).unwrap();
+        let second = keep_file(&root, "s1", &full(&elsewhere.join("notas.md"))).unwrap();
+
+        assert_eq!(first, ".sens/artifacts/s1/notas.md");
+        assert_eq!(second, ".sens/artifacts/s1/notas-1.md");
+        assert_eq!(std::fs::read(root.join(&second)).unwrap(), b"hola");
+        assert_eq!(keep_file(&root, "s1", "src/a.rs").unwrap(), "src/a.rs");
+        assert_eq!(keep_file(&root, "s1", &full(&root.join("src").join("a.rs"))).unwrap(), "src/a.rs");
+        assert!(keep_file(&root, "../fuera", &full(&elsewhere.join("notas.md"))).is_err());
+    }
+
+    #[test]
     fn everything_comes_back_newest_first_with_its_project_and_session_title() {
         let root = temp_root("all");
         session::append(&root, "s1", &task(100, "Añade validación https://a.com/x")).unwrap();
-        session::append(&root, "s2", &proposed(200, "https://solo-nota.com")).unwrap();
+        session::append(&root, "s2", &said(200, "https://solo-dicho.com")).unwrap();
         put(&shelf(&root).join("s1").join("captura.png"), b"png");
         let registry = registry_of(&[&root]);
 

@@ -35,7 +35,7 @@ What you get out of it is not speed. It is that the diff you read at the end is 
 ## How a run goes
 
 1. **You open a folder.** Sens indexes it — symbols, references, imports, entry points — and tells you how fresh the index is and which gates are armed.
-2. **You pick who writes.** The Anthropic API with a thinking budget, Claude Code on your subscription, or any command of your own.
+2. **You pick who writes.** Claude Code on your subscription, with any model it offers you.
 3. **You say what to do.** The task goes out with a briefing built from the index, not from the whole repo.
 4. **The gates judge the patch.** Duplication, orphans, growth and comments, all before a single byte is written to disk.
 5. **The patch lands as a transaction and the suite runs.** Every original is saved and verified first; if the tests go red, the whole thing rolls back byte for byte and the model is told what broke. Two repairs, then it gives up rather than insist.
@@ -58,16 +58,16 @@ Above them all there is a **seal**: an FNV hash of every gate's fingerprint, sho
 
 ## Who writes
 
-| Provider | What it uses | Thinking |
+| Provider | What it uses | Models |
 | --- | --- | --- |
-| **Anthropic API** | Sonnet 5, Opus 5, Haiku 4.5 | off · low · medium · high |
-| **Claude Code** | your subscription, through the CLI | — |
-| **Your own command** | any CLI that takes a prompt | — |
+| **Claude Code** | your subscription, through the CLI | discovered, not hard-coded |
 
-Every run uses two: the one that writes, and a cheaper one that puts the patch on a diet afterwards.
+Sens never ships a model list. It asks Claude Code which model answers for each family — Fable, Opus, Sonnet, Haiku — so a new release shows up on its own. **Refresh models** asks again; **Edit models** hides the ones you never want to see or use.
+
+Every run uses the chosen model twice: once to write, and once to put the patch on a diet afterwards.
 
 <p align="center">
-  <img src="docs/app-models.png" alt="Picking the provider, the model and the thinking budget" width="900">
+  <img src="docs/app-models.png" alt="Picking the model" width="900">
 </p>
 
 ## The index underneath

@@ -113,7 +113,7 @@ mod tests {
         let id = format!("s{at}");
         session::append(root, &id, &Entry::Opened { at, root: text(root) }).unwrap();
         for step in 0..tasks {
-            let entry = Entry::Task { at: at + 1 + step as u64, text: "algo".into() };
+            let entry = Entry::Task { at: at + 1 + step as u64, text: "algo".into(), files: Vec::new(), images: Vec::new() };
             session::append(root, &id, &entry).unwrap();
         }
     }

@@ -36,6 +36,32 @@ pub fn read(root: &Path) -> Option<Repo> {
     })
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Changes {
+    pub diff: String,
+    pub fresh: Vec<String>,
+}
+
+const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+pub fn changes(root: &Path) -> Option<Changes> {
+    if say(root, &["rev-parse", "--is-inside-work-tree"])? != "true" {
+        return None;
+    }
+    let base = match say(root, &["rev-parse", "--verify", "--quiet", "HEAD"]) {
+        Some(_) => "HEAD",
+        None => EMPTY_TREE,
+    };
+    Some(Changes {
+        diff: say(root, &["-c", "core.quotePath=false", "diff", base, "--no-color", "--no-ext-diff", "--find-renames"])
+            .unwrap_or_default(),
+        fresh: say(root, &["-c", "core.quotePath=false", "ls-files", "--others", "--exclude-standard"])
+            .map(|listed| listed.lines().map(str::to_string).collect())
+            .unwrap_or_default(),
+    })
+}
+
 pub fn checkout(root: &Path, branch: &str) -> Result<Repo, String> {
     let done = git(root, &["checkout", branch])
         .output()

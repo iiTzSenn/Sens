@@ -1,12 +1,27 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::DirEntry;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
+use crate::snapshot;
 use crate::store;
 
+const AGENT: &str = "agent";
+const MANIFEST: &str = ".claude-plugin";
+const PLUGIN_NAME: &str = "sens";
+const STALE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+const SHELL_SCRIPTS: [&str; 5] = ["npx", "npm", "pnpm", "yarn", "bunx"];
 const SKILLS: &str = "skills";
+const PLUGINS: &str = "plugins";
+const PLUGIN_FILE: &str = "plugin.json";
+const PLUGIN_ENV_FILE: &str = "plugin-env.json";
+const ORIGINS_FILE: &str = "market.json";
+const REMOTE_KINDS: [&str; 2] = ["http", "sse"];
+pub const COMPONENT_KEYS: [&str; 7] = ["skills", "commands", "agents", "hooks", "mcpServers", "lspServers", "outputStyles"];
 const SKILL_FILE: &str = "SKILL.md";
 const SERVERS_FILE: &str = "mcp.json";
 const STATE_FILE: &str = "capabilities.json";
@@ -25,6 +40,36 @@ const RISKY: [char; 5] = [':', '#', '\'', '"', '\\'];
 pub struct Capabilities {
     pub skills: Vec<Skill>,
     pub servers: Vec<Server>,
+    pub plugins: Vec<Plugin>,
+    pub origins: BTreeMap<String, Provenance>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Plugin {
+    pub name: String,
+    pub description: String,
+    pub version: String,
+    pub enabled: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Provenance {
+    pub listing: String,
+    pub revision: String,
+    pub version: String,
+    pub installed_at: u64,
+}
+
+pub struct Launch {
+    pub args: Vec<String>,
+    pub env: BTreeMap<String, String>,
+}
+
+pub struct Remote {
+    pub kind: String,
+    pub url: String,
+    pub headers: BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -41,6 +86,8 @@ pub struct Server {
     pub command: String,
     pub args: Vec<String>,
     pub env_keys: Vec<String>,
+    pub kind: String,
+    pub url: String,
     pub enabled: bool,
 }
 
@@ -66,14 +113,20 @@ struct Servers {
     servers: BTreeMap<String, Entry>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 struct Entry {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     args: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     command: String,
     #[serde(default)]
     env: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    headers: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    kind: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    url: String,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -88,12 +141,15 @@ struct Project {
     skills: BTreeSet<String>,
     #[serde(default)]
     servers: BTreeSet<String>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    plugins: BTreeSet<String>,
 }
 
 #[derive(Clone, Copy)]
 enum Kind {
     Skill,
     Server,
+    Plugin,
 }
 
 #[derive(Default)]
@@ -108,11 +164,12 @@ impl Project {
         match kind {
             Kind::Skill => &mut self.skills,
             Kind::Server => &mut self.servers,
+            Kind::Plugin => &mut self.plugins,
         }
     }
 
     fn is_empty(&self) -> bool {
-        self.skills.is_empty() && self.servers.is_empty()
+        self.skills.is_empty() && self.servers.is_empty() && self.plugins.is_empty()
     }
 }
 
@@ -121,6 +178,7 @@ impl Kind {
         let found = match self {
             Kind::Skill => described(&skill_folder(base, name)?).is_some(),
             Kind::Server => editable_servers(base)?.servers.contains_key(name),
+            Kind::Plugin => manifest_of(&plugin_folder(base, name)?).is_some(),
         };
         if found { Ok(()) } else { Err(self.missing(name)) }
     }
@@ -129,7 +187,17 @@ impl Kind {
         match self {
             Kind::Skill => missing_skill(name),
             Kind::Server => missing_server(name),
+            Kind::Plugin => missing_plugin(name),
         }
+    }
+
+    fn key(self, name: &str) -> String {
+        let kind = match self {
+            Kind::Skill => "skill",
+            Kind::Server => "server",
+            Kind::Plugin => "plugin",
+        };
+        format!("{kind}:{name}")
     }
 }
 
@@ -146,29 +214,57 @@ pub fn is_server_name(name: &str) -> bool {
 }
 
 pub fn header(text: &str) -> Option<Header> {
+    let mut found = front_matter(text)?;
+    Some(Header {
+        name: present(found.remove("name"))?,
+        description: present(found.remove("description"))?,
+    })
+}
+
+pub fn front_matter(text: &str) -> Option<BTreeMap<String, String>> {
     let mut lines = text.trim_start_matches('\u{feff}').lines();
     if lines.next()?.trim_end() != FENCE {
         return None;
     }
-    let mut name = None;
-    let mut description = None;
-    for line in lines {
+    let mut found = BTreeMap::new();
+    let mut lines = lines.peekable();
+    while let Some(line) = lines.next() {
         if line.trim_end() == FENCE {
-            return Some(Header {
-                name: present(name)?,
-                description: present(description)?,
-            });
+            return Some(found);
         }
         let Some((key, value)) = line.split_once(':') else {
             continue;
         };
-        match key.trim() {
-            "name" => name = Some(unquoted(value.trim())),
-            "description" => description = Some(unquoted(value.trim())),
-            _ => {}
+        if value.trim().is_empty() {
+            let depth = indent(line);
+            while lines.next_if(|next| next.trim().is_empty() || indent(next) > depth).is_some() {}
+            continue;
         }
+        let value = match is_block(value.trim()) {
+            true => folded(&mut lines),
+            false => unquoted(value.trim()),
+        };
+        found.insert(key.trim().to_string(), value);
     }
     None
+}
+
+fn indent(line: &str) -> usize {
+    line.len() - line.trim_start().len()
+}
+
+fn is_block(value: &str) -> bool {
+    value.strip_prefix(['>', '|']).is_some_and(|rest| rest.chars().all(|mark| mark == '-' || mark == '+' || mark.is_ascii_digit()))
+}
+
+fn folded<'a>(lines: &mut std::iter::Peekable<impl Iterator<Item = &'a str>>) -> String {
+    let mut parts = Vec::new();
+    while let Some(line) = lines.next_if(|line| line.trim().is_empty() || line.starts_with(char::is_whitespace)) {
+        if !line.trim().is_empty() {
+            parts.push(line.trim());
+        }
+    }
+    parts.join(" ")
 }
 
 fn present(value: Option<String>) -> Option<String> {
@@ -228,6 +324,8 @@ pub fn all(base: &Path, root: &str) -> Capabilities {
     Capabilities {
         skills: skills(base, &active.skills),
         servers: servers(base, &active.servers),
+        plugins: plugins(base, &active.plugins),
+        origins: origins(base),
     }
 }
 
@@ -292,7 +390,34 @@ fn forget(base: &Path, kind: Kind, name: &str) -> Result<(), String> {
         for project in kept.projects.values_mut() {
             project.names(kind).remove(name);
         }
-    })
+    })?;
+    let mut kept = origins(base);
+    if kept.remove(&kind.key(name)).is_some() {
+        store::store(base, ORIGINS_FILE, &kept)?;
+    }
+    Ok(())
+}
+
+fn origins(base: &Path) -> BTreeMap<String, Provenance> {
+    store::stored(&base.join(ORIGINS_FILE))
+}
+
+fn record(base: &Path, kind: Kind, name: &str, provenance: Provenance) -> Result<(), String> {
+    let mut kept = origins(base);
+    kept.insert(kind.key(name), provenance);
+    store::store(base, ORIGINS_FILE, &kept)
+}
+
+pub fn record_skill(base: &Path, name: &str, provenance: Provenance) -> Result<(), String> {
+    record(base, Kind::Skill, name, provenance)
+}
+
+pub fn record_server(base: &Path, name: &str, provenance: Provenance) -> Result<(), String> {
+    record(base, Kind::Server, name, provenance)
+}
+
+pub fn record_plugin(base: &Path, name: &str, provenance: Provenance) -> Result<(), String> {
+    record(base, Kind::Plugin, name, provenance)
 }
 
 fn known_servers(base: &Path) -> Servers {
@@ -333,11 +458,21 @@ fn servers(base: &Path, active: &BTreeSet<String>) -> Vec<Server> {
         .map(|(name, entry)| Server {
             enabled: active.contains(&name),
             name,
+            kind: transport(&entry).to_string(),
             command: entry.command,
             args: entry.args,
-            env_keys: entry.env.into_keys().collect(),
+            env_keys: entry.env.into_keys().chain(entry.headers.into_keys()).collect(),
+            url: entry.url,
         })
         .collect()
+}
+
+fn transport(entry: &Entry) -> &'static str {
+    match (entry.url.is_empty(), entry.kind.as_str()) {
+        (true, _) => "stdio",
+        (false, "sse") => "sse",
+        (false, _) => "http",
+    }
 }
 
 fn skill_folder(base: &Path, name: &str) -> Result<PathBuf, String> {
@@ -355,6 +490,10 @@ fn missing_skill(name: &str) -> String {
 
 fn missing_server(name: &str) -> String {
     format!("no existe el servidor {name}")
+}
+
+fn missing_plugin(name: &str) -> String {
+    format!("no existe el plugin {name}")
 }
 
 fn unclaimed(base: &Path, name: &str) -> Result<PathBuf, String> {
@@ -535,12 +674,32 @@ fn vetted_server(server: &NewServer) -> Result<(&str, Entry), String> {
         args: server.args.clone(),
         command: command.to_string(),
         env: server.env.clone(),
+        ..Entry::default()
     };
     Ok((name, entry))
 }
 
 pub fn add_server(base: &Path, root: &str, server: &NewServer) -> Result<(), String> {
     let (name, entry) = vetted_server(server)?;
+    insert_server(base, root, name, entry)
+}
+
+pub fn add_remote(base: &Path, root: &str, name: &str, remote: Remote) -> Result<(), String> {
+    let name = name.trim();
+    if !is_server_name(name) {
+        return Err(format!("nombre de servidor no válido: «{name}»"));
+    }
+    if !REMOTE_KINDS.contains(&remote.kind.as_str()) {
+        return Err(format!("no conozco el transporte {}", remote.kind));
+    }
+    if !remote.url.starts_with("https://") && !remote.url.starts_with("http://localhost") {
+        return Err(format!("la dirección de {name} tiene que empezar por https://"));
+    }
+    let entry = Entry { kind: remote.kind, url: remote.url, headers: remote.headers, ..Entry::default() };
+    insert_server(base, root, name, entry)
+}
+
+fn insert_server(base: &Path, root: &str, name: &str, entry: Entry) -> Result<(), String> {
     let mut known = editable_servers(base)?;
     activatable(base, root)?;
     if known.servers.contains_key(name) {
@@ -561,6 +720,342 @@ pub fn remove_server(base: &Path, name: &str) -> Result<(), String> {
 
 pub fn set_server(base: &Path, root: &str, name: &str, enabled: bool) -> Result<(), String> {
     switch(base, root, Kind::Server, name, enabled)
+}
+
+pub fn is_plugin_name(name: &str) -> bool {
+    is_server_name(name) && !name.starts_with(['-', '_'])
+}
+
+fn plugins_dir(base: &Path) -> PathBuf {
+    base.join(PLUGINS)
+}
+
+fn plugin_folder(base: &Path, name: &str) -> Result<PathBuf, String> {
+    if !is_plugin_name(name) {
+        return Err(format!("nombre de plugin no válido: «{name}»"));
+    }
+    Ok(plugins_dir(base).join(name))
+}
+
+fn manifest_path(folder: &Path) -> PathBuf {
+    folder.join(MANIFEST).join(PLUGIN_FILE)
+}
+
+pub fn manifest(folder: &Path) -> Option<Value> {
+    serde_json::from_str(&std::fs::read_to_string(manifest_path(folder)).ok()?).ok()
+}
+
+fn manifest_of(folder: &Path) -> Option<Value> {
+    let found = manifest(folder)?;
+    let named = folder.file_name()?.to_str()? == found["name"].as_str()?;
+    named.then_some(found)
+}
+
+pub fn declares_components(manifest: &Value) -> bool {
+    COMPONENT_KEYS.iter().any(|key| manifest.get(key).is_some_and(|value| !value.is_null()))
+}
+
+fn plugins(base: &Path, active: &BTreeSet<String>) -> Vec<Plugin> {
+    let mut found: Vec<Plugin> = std::fs::read_dir(plugins_dir(base))
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .filter_map(|entry| manifest_of(&entry.path()))
+        .filter_map(|manifest| {
+            let name = manifest["name"].as_str()?.to_string();
+            Some(Plugin {
+                enabled: active.contains(&name),
+                description: manifest["description"].as_str().unwrap_or_default().to_string(),
+                version: manifest["version"].as_str().unwrap_or_default().to_string(),
+                name,
+            })
+        })
+        .collect();
+    found.sort_by(|a, b| a.name.cmp(&b.name));
+    found
+}
+
+fn plugin_env(base: &Path) -> BTreeMap<String, BTreeMap<String, String>> {
+    store::stored(&base.join(PLUGIN_ENV_FILE))
+}
+
+fn keep_plugin_env(base: &Path, name: &str, values: BTreeMap<String, String>) -> Result<(), String> {
+    let mut kept: BTreeMap<String, BTreeMap<String, String>> = store::editable(&base.join(PLUGIN_ENV_FILE))?;
+    if values.is_empty() && kept.remove(name).is_none() {
+        return Ok(());
+    }
+    if !values.is_empty() {
+        kept.insert(name.to_string(), values);
+    }
+    store::store(base, PLUGIN_ENV_FILE, &kept)
+}
+
+fn staged_plugin(base: &Path, name: &str, source: &Path, definition: Option<&Value>) -> Result<PathBuf, String> {
+    let staging = plugins_dir(base).join(format!("{STAGING}{name}"));
+    let _ = std::fs::remove_dir_all(&staging);
+    let built = snapshot::copy_tree(source, &staging).and_then(|()| match definition {
+        None => Ok(()),
+        Some(definition) => {
+            if manifest(&staging).is_some_and(|found| declares_components(&found)) {
+                return Err(format!("{name} trae su propio plugin.json con componentes y la ficha también los define"));
+            }
+            let path = manifest_path(&staging);
+            std::fs::create_dir_all(path.parent().unwrap_or(&staging)).map_err(unwritable(&staging))?;
+            std::fs::write(&path, serde_json::to_string_pretty(definition).map_err(|error| error.to_string())?)
+                .map_err(unwritable(&path))
+        }
+    });
+    let named = built.and_then(|()| match manifest(&staging) {
+        Some(found) if found["name"].as_str() == Some(name) => Ok(()),
+        Some(_) => Err(format!("el plugin.json de {name} dice otro nombre")),
+        None => Err(format!("{name} no tiene .claude-plugin/plugin.json")),
+    });
+    if let Err(reason) = named {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(reason);
+    }
+    Ok(staging)
+}
+
+pub fn install_plugin(
+    base: &Path,
+    root: &str,
+    name: &str,
+    source: &Path,
+    definition: Option<&Value>,
+    values: BTreeMap<String, String>,
+) -> Result<(), String> {
+    let target = plugin_folder(base, name)?;
+    activatable(base, root)?;
+    if target.symlink_metadata().is_ok() {
+        return Err(format!("ya tienes un plugin llamado {name}"));
+    }
+    let staging = staged_plugin(base, name, source, definition)?;
+    std::fs::rename(&staging, &target).map_err(|error| {
+        let _ = std::fs::remove_dir_all(&staging);
+        format!("no pude guardar el plugin {name}: {error}")
+    })?;
+    keep_plugin_env(base, name, values)?;
+    adopt(base, root, Kind::Plugin, name)
+}
+
+pub fn replace_plugin(base: &Path, name: &str, source: &Path, definition: Option<&Value>) -> Result<(), String> {
+    let target = plugin_folder(base, name)?;
+    if manifest_of(&target).is_none() {
+        return Err(missing_plugin(name));
+    }
+    let staging = staged_plugin(base, name, source, definition)?;
+    let retired = plugins_dir(base).join(format!("{STAGING}viejo-{name}"));
+    let _ = std::fs::remove_dir_all(&retired);
+    std::fs::rename(&target, &retired).map_err(|error| {
+        let _ = std::fs::remove_dir_all(&staging);
+        format!("no pude apartar la versión anterior de {name}: {error}")
+    })?;
+    if let Err(error) = std::fs::rename(&staging, &target) {
+        let _ = std::fs::rename(&retired, &target);
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(format!("no pude guardar la versión nueva de {name}: {error}"));
+    }
+    let _ = std::fs::remove_dir_all(&retired);
+    Ok(())
+}
+
+pub fn replace_skill(base: &Path, name: &str, source: &Path) -> Result<(), String> {
+    let target = skill_folder(base, name)?;
+    if described(&target).is_none() {
+        return Err(missing_skill(name));
+    }
+    let found = survey(source)?;
+    if header_of(source, &found)?.name != name {
+        return Err(format!("la versión nueva de {name} tiene otro nombre; quítala e instálala de nuevo"));
+    }
+    let staging = shelf(base).join(format!("{STAGING}{name}"));
+    let retired = shelf(base).join(format!("{STAGING}viejo-{name}"));
+    let _ = std::fs::remove_dir_all(&staging);
+    let _ = std::fs::remove_dir_all(&retired);
+    copy_all(source, &staging, &found)?;
+    std::fs::rename(&target, &retired).map_err(|error| {
+        let _ = std::fs::remove_dir_all(&staging);
+        format!("no pude apartar la versión anterior de {name}: {error}")
+    })?;
+    if let Err(error) = std::fs::rename(&staging, &target) {
+        let _ = std::fs::rename(&retired, &target);
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(format!("no pude guardar la versión nueva de {name}: {error}"));
+    }
+    let _ = std::fs::remove_dir_all(&retired);
+    Ok(())
+}
+
+pub fn set_plugin(base: &Path, root: &str, name: &str, enabled: bool) -> Result<(), String> {
+    switch(base, root, Kind::Plugin, name, enabled)
+}
+
+pub fn remove_plugin(base: &Path, name: &str) -> Result<(), String> {
+    editable_state(base)?;
+    let folder = plugin_folder(base, name)?;
+    if !folder.symlink_metadata().is_ok_and(|meta| meta.is_dir()) {
+        return Err(missing_plugin(name));
+    }
+    let held = folder.canonicalize().map_err(|_| missing_plugin(name))?;
+    let inside = plugins_dir(base)
+        .canonicalize()
+        .is_ok_and(|plugins| held.parent() == Some(plugins.as_path()));
+    if !inside {
+        return Err(format!("{name} no está dentro de la carpeta de plugins"));
+    }
+    std::fs::remove_dir_all(&held).map_err(|error| format!("no pude quitar el plugin {name}: {error}"))?;
+    keep_plugin_env(base, name, BTreeMap::new())?;
+    forget(base, Kind::Plugin, name)
+}
+
+pub fn launch(base: &Path, root: &str) -> Result<Launch, String> {
+    let project = active(base, root);
+    let mut args = Vec::new();
+    let mut env = BTreeMap::new();
+    if let Some(config) = server_config(base, &project.servers)? {
+        args.extend(["--mcp-config".to_string(), config.to_string_lossy().into_owned()]);
+    }
+    if let Some(plugin) = skill_plugin(base, &project.skills)? {
+        args.extend(["--plugin-dir".to_string(), plugin.to_string_lossy().into_owned()]);
+    }
+    let values = plugin_env(base);
+    for name in &project.plugins {
+        let Ok(folder) = plugin_folder(base, name) else { continue };
+        if manifest_of(&folder).is_none() {
+            continue;
+        }
+        args.extend(["--plugin-dir".to_string(), folder.to_string_lossy().into_owned()]);
+        env.extend(values.get(name).cloned().unwrap_or_default());
+    }
+    Ok(Launch { args, env })
+}
+
+fn agent_dir(base: &Path) -> PathBuf {
+    base.join(AGENT)
+}
+
+fn digest(value: impl Hash) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn launched(entry: Entry) -> Value {
+    if !entry.url.is_empty() {
+        return json!({ "type": transport(&entry), "url": entry.url, "headers": entry.headers });
+    }
+    let wrapped = cfg!(windows) && SHELL_SCRIPTS.contains(&entry.command.to_ascii_lowercase().as_str());
+    let (command, args) = match wrapped {
+        true => ("cmd".to_string(), [vec!["/c".to_string(), entry.command], entry.args].concat()),
+        false => (entry.command, entry.args),
+    };
+    json!({ "type": "stdio", "command": command, "args": args, "env": entry.env })
+}
+
+fn server_config(base: &Path, active: &BTreeSet<String>) -> Result<Option<PathBuf>, String> {
+    let servers: BTreeMap<String, Value> = known_servers(base)
+        .servers
+        .into_iter()
+        .filter(|(name, _)| active.contains(name))
+        .map(|(name, entry)| (name, launched(entry)))
+        .collect();
+    if servers.is_empty() {
+        return Ok(None);
+    }
+
+    let text = serde_json::to_string_pretty(&json!({ "mcpServers": servers })).map_err(|error| error.to_string())?;
+    let folder = agent_dir(base);
+    let path = folder.join(format!("mcp-{:016x}.json", digest(&text)));
+    if !path.is_file() {
+        std::fs::create_dir_all(&folder).map_err(unwritable(&folder))?;
+        std::fs::write(&path, text).map_err(unwritable(&path))?;
+        prune(&folder, &path);
+    }
+    Ok(Some(path))
+}
+
+fn skill_plugin(base: &Path, active: &BTreeSet<String>) -> Result<Option<PathBuf>, String> {
+    let chosen: Vec<(String, PathBuf, Survey)> = active
+        .iter()
+        .filter_map(|name| Some((name.clone(), skill_folder(base, name).ok()?)))
+        .filter(|(_, folder)| described(folder).is_some())
+        .map(|(name, folder)| survey(&folder).map(|found| (name, folder, found)))
+        .collect::<Result<_, _>>()?;
+    if chosen.is_empty() {
+        return Ok(None);
+    }
+
+    let folder = agent_dir(base);
+    let plugin = folder.join(format!("plugin-{:016x}", fingerprint(&chosen)));
+    if plugin.join(MANIFEST).is_dir() {
+        return Ok(Some(plugin));
+    }
+
+    let staging = folder.join(format!("{STAGING}plugin-{:016x}", digest((std::process::id(), SystemTime::now()))));
+    let placed = bundle(&staging, &chosen).and_then(|()| match std::fs::rename(&staging, &plugin) {
+        Ok(()) => Ok(()),
+        Err(_) if plugin.join(MANIFEST).is_dir() => Ok(()),
+        Err(error) => Err(format!("no pude preparar las skills para el agente: {error}")),
+    });
+    let _ = std::fs::remove_dir_all(&staging);
+    placed?;
+    prune(&folder, &plugin);
+    Ok(Some(plugin))
+}
+
+fn fingerprint(chosen: &[(String, PathBuf, Survey)]) -> u64 {
+    let listing: Vec<(&str, Vec<(PathBuf, u64, Option<SystemTime>)>)> = chosen
+        .iter()
+        .map(|(name, folder, found)| {
+            let mut files: Vec<_> = found
+                .files
+                .iter()
+                .map(|file| {
+                    let meta = folder.join(file).metadata().ok();
+                    let size = meta.as_ref().map_or(0, |meta| meta.len());
+                    (file.clone(), size, meta.and_then(|meta| meta.modified().ok()))
+                })
+                .collect();
+            files.sort();
+            (name.as_str(), files)
+        })
+        .collect();
+    digest(listing)
+}
+
+fn bundle(staging: &Path, chosen: &[(String, PathBuf, Survey)]) -> Result<(), String> {
+    let manifest = staging.join(MANIFEST);
+    std::fs::create_dir_all(&manifest).map_err(unwritable(&manifest))?;
+    let identity = json!({ "name": PLUGIN_NAME, "description": "Skills que activaste en Sens para este proyecto" });
+    let path = manifest.join("plugin.json");
+    std::fs::write(&path, identity.to_string()).map_err(unwritable(&path))?;
+    for (name, folder, found) in chosen {
+        copy_all(folder, &staging.join(SKILLS).join(name), found)?;
+    }
+    Ok(())
+}
+
+fn prune(folder: &Path, keep: &Path) {
+    let old = |entry: &DirEntry| {
+        entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|at| at.elapsed().ok())
+            .is_some_and(|age| age > STALE)
+    };
+    for entry in std::fs::read_dir(folder).into_iter().flatten().filter_map(Result::ok) {
+        let path = entry.path();
+        if path == keep || !old(&entry) {
+            continue;
+        }
+        let _ = match path.is_dir() {
+            true => std::fs::remove_dir_all(&path),
+            false => std::fs::remove_file(&path),
+        };
+    }
 }
 
 #[cfg(test)]
@@ -634,6 +1129,83 @@ mod tests {
         Some(Header { name: name.into(), description: description.into() })
     }
 
+    fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
+        args.windows(2).find(|pair| pair[0] == name).map(|pair| pair[1].as_str())
+    }
+
+    #[test]
+    fn a_project_with_nothing_active_launches_the_agent_as_it_is() {
+        let base = temp_root("launch-bare");
+        create_skill(&base, THERE, "ajena", "De otro proyecto.", "x").unwrap();
+        assert!(launch(&base, HERE).unwrap().args.is_empty());
+        assert!(launch(&base, "").unwrap().args.is_empty());
+    }
+
+    #[test]
+    fn only_the_servers_active_here_reach_the_agent_with_their_environment() {
+        let base = temp_root("launch-servers");
+        add_server(&base, HERE, &server("github", &[("GITHUB_TOKEN", "t")])).unwrap();
+        add_server(&base, THERE, &server("linear", &[])).unwrap();
+
+        let args = launch(&base, HERE).unwrap().args;
+        let config: Value = serde_json::from_str(&std::fs::read_to_string(flag(&args, "--mcp-config").unwrap()).unwrap()).unwrap();
+
+        let servers = config["mcpServers"].as_object().unwrap();
+        assert_eq!(servers.keys().collect::<Vec<_>>(), vec!["github"]);
+        assert_eq!(servers["github"]["env"]["GITHUB_TOKEN"], "t");
+        assert_eq!(servers["github"]["type"], "stdio");
+        assert_eq!(launch(&base, HERE).unwrap().args, args);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_node_script_runner_is_launched_through_cmd_on_windows() {
+        let wrapped = launched(Entry { command: "npx".into(), args: vec!["-y".into(), "@x/y".into()], env: BTreeMap::new(), ..Entry::default() });
+        assert_eq!(wrapped["command"], "cmd");
+        assert_eq!(wrapped["args"], json!(["/c", "npx", "-y", "@x/y"]));
+
+        let direct = launched(Entry { command: "node".into(), args: vec!["server.js".into()], env: BTreeMap::new(), ..Entry::default() });
+        assert_eq!(direct["command"], "node");
+    }
+
+    #[test]
+    fn active_skills_travel_as_a_plugin_the_agent_can_load() {
+        let base = temp_root("launch-skills");
+        create_skill(&base, HERE, "revisar-prs", "Revisa un PR.", "# Pasos").unwrap();
+        create_skill(&base, THERE, "ajena", "De otro proyecto.", "x").unwrap();
+
+        let args = launch(&base, HERE).unwrap().args;
+        let plugin = PathBuf::from(flag(&args, "--plugin-dir").unwrap());
+
+        let manifest: Value = serde_json::from_str(&std::fs::read_to_string(plugin.join(MANIFEST).join("plugin.json")).unwrap()).unwrap();
+        assert_eq!(manifest["name"], PLUGIN_NAME);
+        assert!(std::fs::read_to_string(plugin.join(SKILLS).join("revisar-prs").join(SKILL_FILE)).unwrap().contains("# Pasos"));
+        assert!(!plugin.join(SKILLS).join("ajena").exists());
+        assert_eq!(launch(&base, HERE).unwrap().args, args);
+    }
+
+    #[test]
+    fn editing_an_active_skill_gives_the_agent_a_fresh_copy() {
+        let base = temp_root("launch-edit");
+        create_skill(&base, HERE, "revisar-prs", "Revisa un PR.", "corto").unwrap();
+        let before = launch(&base, HERE).unwrap().args;
+
+        put(&shelf(&base).join("revisar-prs").join("notas.md"), b"una nota nueva");
+        let after = launch(&base, HERE).unwrap().args;
+
+        assert_ne!(flag(&before, "--plugin-dir"), flag(&after, "--plugin-dir"));
+        assert!(PathBuf::from(flag(&after, "--plugin-dir").unwrap()).join(SKILLS).join("revisar-prs").join("notas.md").is_file());
+    }
+
+    #[test]
+    fn a_skill_that_vanished_is_simply_left_out() {
+        let base = temp_root("launch-vanished");
+        create_skill(&base, HERE, "revisar-prs", "Revisa un PR.", "x").unwrap();
+        std::fs::remove_dir_all(shelf(&base).join("revisar-prs")).unwrap();
+
+        assert!(launch(&base, HERE).unwrap().args.is_empty());
+    }
+
     #[test]
     fn a_header_reads_plain_values_between_the_two_fences() {
         let text = "---\nname: revisar-prs\ndescription: Revisa un PR contra la guía.\n---\n\nCuerpo";
@@ -652,6 +1224,14 @@ mod tests {
     fn a_header_ignores_spaces_around_keys_and_values_and_windows_line_ends() {
         let text = "\u{feff}---  \r\n  name  :   x-1  \r\ndescription:   Algo: más  \r\nversion: 2\r\n---\r\n";
         assert_eq!(header(text), head("x-1", "Algo: más"));
+    }
+
+    #[test]
+    fn a_folded_or_literal_block_reads_as_one_line_and_nested_keys_are_ignored() {
+        let folded = "---\nname: academy-guide\ndescription: >\n  Stop and check this skill\n  before finishing.\n\nmetadata:\n  name: otro\n---\n";
+        let literal = "---\ndescription: |-\n    Uno\n    dos\nname: b\n---\n";
+        assert_eq!(header(folded), head("academy-guide", "Stop and check this skill before finishing."));
+        assert_eq!(header(literal), head("b", "Uno dos"));
     }
 
     #[test]
@@ -972,6 +1552,8 @@ mod tests {
                 command: "npx".into(),
                 args: vec!["-y".into(), "@x/github".into()],
                 env_keys: vec!["ALFA".into(), "TOKEN".into()],
+                kind: "stdio".into(),
+                url: String::new(),
                 enabled: true,
             }]
         );
@@ -1154,6 +1736,8 @@ mod tests {
                 command: "npx".into(),
                 args: vec!["-y".into()],
                 env_keys: vec!["TOKEN".into()],
+                kind: "stdio".into(),
+                url: String::new(),
                 enabled: false,
             }]
         );
@@ -1196,5 +1780,180 @@ mod tests {
         let found = all(&temp_root("empty"), "");
         assert!(found.skills.is_empty());
         assert!(found.servers.is_empty());
+        assert!(found.plugins.is_empty());
+    }
+
+    fn plugin_source(root: &Path, name: &str, manifest: &str) -> PathBuf {
+        let source = root.join(format!("fuente-{name}"));
+        let _ = std::fs::remove_dir_all(&source);
+        if !manifest.is_empty() {
+            put(&source.join(MANIFEST).join(PLUGIN_FILE), manifest.as_bytes());
+        }
+        put(&source.join("skills").join("revisar").join(SKILL_FILE), skill_md("revisar", "Revisa.", "x").as_bytes());
+        put(&source.join(".mcp.json"), b"{\"mcpServers\":{\"gh\":{\"command\":\"npx\",\"env\":{\"TOKEN\":\"${GITHUB_TOKEN}\"}}}}");
+        source
+    }
+
+    fn plugin_flags(base: &Path, root: &str) -> Vec<(String, bool)> {
+        all(base, root).plugins.into_iter().map(|found| (found.name, found.enabled)).collect()
+    }
+
+    fn values(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs.iter().map(|(key, value)| (key.to_string(), value.to_string())).collect()
+    }
+
+    #[test]
+    fn an_installed_plugin_is_active_here_and_reaches_the_agent_with_its_values() {
+        let root = temp_root("plugin-install");
+        let base = root.join("datos");
+        let source = plugin_source(&root, "gh", "{\"name\":\"gh\",\"version\":\"1.2.0\",\"description\":\"GitHub\"}");
+
+        install_plugin(&base, HERE, "gh", &source, None, values(&[("GITHUB_TOKEN", "ghp_x")])).unwrap();
+
+        let listed = all(&base, HERE).plugins;
+        assert_eq!(listed, vec![Plugin { name: "gh".into(), description: "GitHub".into(), version: "1.2.0".into(), enabled: true }]);
+        let launched = launch(&base, HERE).unwrap();
+        let dir = PathBuf::from(flag(&launched.args, "--plugin-dir").unwrap());
+        assert_eq!(dir, plugins_dir(&base).join("gh"));
+        assert!(dir.join("skills").join("revisar").join(SKILL_FILE).is_file());
+        assert_eq!(launched.env.get("GITHUB_TOKEN").map(String::as_str), Some("ghp_x"));
+        assert!(launch(&base, THERE).unwrap().args.is_empty());
+        assert!(launch(&base, THERE).unwrap().env.is_empty());
+        assert!(!serde_json::to_string(&all(&base, HERE)).unwrap().contains("ghp_x"));
+    }
+
+    #[test]
+    fn a_plugin_defined_by_its_listing_gets_a_generated_manifest() {
+        let root = temp_root("plugin-strict");
+        let base = root.join("datos");
+        let source = plugin_source(&root, "suelto", "");
+        let definition = json!({ "name": "suelto", "description": "Definido en la ficha", "skills": ["./skills/revisar"] });
+
+        install_plugin(&base, "", "suelto", &source, Some(&definition), BTreeMap::new()).unwrap();
+
+        let written = manifest(&plugins_dir(&base).join("suelto")).unwrap();
+        assert_eq!(written["skills"], json!(["./skills/revisar"]));
+        assert_eq!(plugin_flags(&base, HERE), vec![("suelto".to_string(), false)]);
+    }
+
+    #[test]
+    fn a_listing_definition_cannot_fight_a_manifest_that_declares_components() {
+        let root = temp_root("plugin-clash");
+        let base = root.join("datos");
+        let source = plugin_source(&root, "choque", "{\"name\":\"choque\",\"skills\":[\"./skills/revisar\"]}");
+        let definition = json!({ "name": "choque", "skills": ["./skills/revisar"] });
+
+        let refused = install_plugin(&base, "", "choque", &source, Some(&definition), BTreeMap::new()).unwrap_err();
+
+        assert!(refused.contains("componentes"));
+        assert!(std::fs::read_dir(plugins_dir(&base)).map_or(true, |mut left| left.next().is_none()));
+    }
+
+    #[test]
+    fn a_plugin_needs_a_manifest_with_its_own_name_and_cannot_be_installed_twice() {
+        let root = temp_root("plugin-rules");
+        let base = root.join("datos");
+        let bare = plugin_source(&root, "sin", "");
+        let other = plugin_source(&root, "otro", "{\"name\":\"distinto\"}");
+        let good = plugin_source(&root, "bueno", "{\"name\":\"bueno\"}");
+
+        assert!(install_plugin(&base, "", "sin", &bare, None, BTreeMap::new()).unwrap_err().contains("plugin.json"));
+        assert!(install_plugin(&base, "", "otro", &other, None, BTreeMap::new()).unwrap_err().contains("otro nombre"));
+        assert!(install_plugin(&base, "", "../fuera", &good, None, BTreeMap::new()).is_err());
+        install_plugin(&base, "", "bueno", &good, None, BTreeMap::new()).unwrap();
+        assert!(install_plugin(&base, "", "bueno", &good, None, BTreeMap::new()).unwrap_err().contains("ya tienes"));
+        assert_eq!(plugin_flags(&base, ""), vec![("bueno".to_string(), false)]);
+    }
+
+    #[test]
+    fn removing_a_plugin_clears_its_folder_values_activation_and_origin() {
+        let root = temp_root("plugin-remove");
+        let base = root.join("datos");
+        let source = plugin_source(&root, "gh", "{\"name\":\"gh\"}");
+        install_plugin(&base, HERE, "gh", &source, None, values(&[("GITHUB_TOKEN", "x")])).unwrap();
+        record_plugin(&base, "gh", Provenance { listing: "official:gh".into(), ..Provenance::default() }).unwrap();
+        set_plugin(&base, THERE, "gh", true).unwrap();
+
+        remove_plugin(&base, "gh").unwrap();
+
+        assert!(!plugins_dir(&base).join("gh").exists());
+        assert!(plugin_env(&base).is_empty());
+        assert!(all(&base, HERE).origins.is_empty());
+        assert!(state(&base).projects.is_empty());
+        assert!(remove_plugin(&base, "gh").unwrap_err().contains("no existe"));
+        assert!(set_plugin(&base, HERE, "gh", true).unwrap_err().contains("no existe el plugin"));
+    }
+
+    #[test]
+    fn replacing_a_plugin_swaps_its_files_and_keeps_it_active() {
+        let root = temp_root("plugin-replace");
+        let base = root.join("datos");
+        let first = plugin_source(&root, "uno", "{\"name\":\"gh\",\"version\":\"1\"}");
+        install_plugin(&base, HERE, "gh", &first, None, BTreeMap::new()).unwrap();
+        let second = plugin_source(&root, "dos", "{\"name\":\"gh\",\"version\":\"2\"}");
+        put(&second.join("nuevo.md"), b"nuevo");
+
+        replace_plugin(&base, "gh", &second, None).unwrap();
+
+        assert_eq!(all(&base, HERE).plugins[0].version, "2");
+        assert!(all(&base, HERE).plugins[0].enabled);
+        assert!(plugins_dir(&base).join("gh").join("nuevo.md").is_file());
+        assert_eq!(std::fs::read_dir(plugins_dir(&base)).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn replacing_a_skill_keeps_its_name_and_activation() {
+        let root = temp_root("skill-replace");
+        let base = root.join("datos");
+        create_skill(&base, HERE, "importada", "Vieja.", "uno").unwrap();
+        let source = source_skill(&root, "importada");
+        put(&source.join("extra.md"), b"x");
+
+        replace_skill(&base, "importada", &source).unwrap();
+
+        assert!(skill_text(&base, "importada").unwrap().contains("Importada."));
+        assert!(shelf(&base).join("importada").join("extra.md").is_file());
+        assert_eq!(skill_flags(&base, HERE), vec![true]);
+        let renamed = root.join("renombrada");
+        put(&renamed.join(SKILL_FILE), skill_md("otra", "x", "").as_bytes());
+        assert!(replace_skill(&base, "importada", &renamed).unwrap_err().contains("otro nombre"));
+    }
+
+    #[test]
+    fn a_remote_server_is_written_for_claude_code_as_http_with_its_headers() {
+        let base = temp_root("remote");
+        let remote = Remote { kind: "http".into(), url: "https://mcp.example.com/mcp".into(), headers: values(&[("Authorization", "Bearer k")]) };
+        add_remote(&base, HERE, "ejemplo", remote).unwrap();
+
+        let listed = &all(&base, HERE).servers[0];
+        assert_eq!((listed.kind.as_str(), listed.url.as_str(), listed.enabled), ("http", "https://mcp.example.com/mcp", true));
+        assert_eq!(listed.env_keys, vec!["Authorization"]);
+
+        let args = launch(&base, HERE).unwrap().args;
+        let config: Value = serde_json::from_str(&std::fs::read_to_string(flag(&args, "--mcp-config").unwrap()).unwrap()).unwrap();
+        assert_eq!(config["mcpServers"]["ejemplo"], json!({ "type": "http", "url": "https://mcp.example.com/mcp", "headers": { "Authorization": "Bearer k" } }));
+    }
+
+    #[test]
+    fn a_remote_server_needs_a_known_transport_and_https() {
+        let base = temp_root("remote-rules");
+        let remote = |kind: &str, url: &str| Remote { kind: kind.into(), url: url.into(), headers: BTreeMap::new() };
+        assert!(add_remote(&base, "", "a", remote("ws", "https://x")).is_err());
+        assert!(add_remote(&base, "", "a", remote("http", "http://x.com")).unwrap_err().contains("https"));
+        assert!(add_remote(&base, "", "con espacio", remote("sse", "https://x")).is_err());
+        add_remote(&base, "", "a", remote("sse", "https://x/sse")).unwrap();
+        assert_eq!(all(&base, "").servers[0].kind, "sse");
+    }
+
+    #[test]
+    fn provenance_is_kept_per_kind_and_goes_away_with_the_thing() {
+        let base = temp_root("provenance");
+        create_skill(&base, "", "a", "x", "").unwrap();
+        let from = Provenance { listing: "skills:a".into(), revision: "r1".into(), version: "1".into(), installed_at: 7 };
+        record_skill(&base, "a", from.clone()).unwrap();
+
+        assert_eq!(all(&base, "").origins.get("skill:a"), Some(&from));
+        remove_skill(&base, "a").unwrap();
+        assert!(all(&base, "").origins.is_empty());
     }
 }

@@ -1,62 +1,34 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod artifacts;
+mod browser;
 mod capabilities;
+mod files;
+mod icon;
 mod git;
+mod market;
+mod preview;
 mod profile;
 mod projects;
+mod snapshot;
 mod store;
+mod web;
 
+use std::collections::BTreeMap;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use sens_agent::catalog::{self, Choice};
-use sens_agent::{Crew, HALTED, Halt, Step, session};
+use sens_agent::account;
+use sens_agent::catalog;
+use sens_agent::chat::{self, Decision, Engine, Event, Message, Settings, Sink};
+use sens_agent::session;
+use sens_agent::title;
 use sens_hook::engine;
-use sens_hook::freshness::{self, Freshness};
-use sens_hook::gate::{self, Gauntlet, Outcome, Patch};
+use sens_hook::gate::{self, Outcome, Patch};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_opener::OpenerExt;
-
-const ATTACH_CAP: usize = 24_000;
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Status {
-    root: String,
-    seal: String,
-    files: usize,
-    symbols: usize,
-    fresh: bool,
-    indexed: bool,
-}
-
-#[tauri::command]
-fn status(root: String) -> Status {
-    let path = PathBuf::from(&root);
-    let seal = Gauntlet::sealed().seal();
-
-    let Some((index, meta)) = engine::load(&path) else {
-        return Status {
-            root,
-            seal,
-            files: 0,
-            symbols: 0,
-            fresh: false,
-            indexed: false,
-        };
-    };
-
-    Status {
-        root,
-        seal,
-        files: index.files.len(),
-        symbols: index.symbols.len(),
-        fresh: freshness::check(&path, &index.files, &meta) == Freshness::Fresh,
-        indexed: true,
-    }
-}
 
 #[tauri::command]
 fn judge(root: String, mut patch: Patch) -> Option<Outcome> {
@@ -103,55 +75,30 @@ fn checkout(root: String, branch: String) -> Result<git::Repo, String> {
     git::checkout(&PathBuf::from(root), &branch)
 }
 
-struct Held {
-    full: PathBuf,
-    relative: String,
+#[tauri::command(async)]
+fn changes(root: String) -> Option<git::Changes> {
+    git::changes(&PathBuf::from(root))
 }
 
-fn inside(root: &str, path: &str) -> Result<Held, String> {
-    let base = PathBuf::from(root)
-        .canonicalize()
-        .map_err(|error| format!("proyecto ilegible: {error}"))?;
-    let full = base
-        .join(path)
-        .canonicalize()
-        .map_err(|_| format!("{path} no existe"))?;
+#[tauri::command(async)]
+fn folder(root: String, path: String) -> Result<Vec<files::Entry>, String> {
+    files::folder(Path::new(&root), &path)
+}
 
-    let relative = full
-        .strip_prefix(&base)
-        .map_err(|_| format!("{path} está fuera del proyecto"))?
-        .to_string_lossy()
-        .replace('\\', "/");
-
-    Ok(Held { full, relative })
+#[tauri::command(async)]
+fn find_files(root: String, needle: String) -> Result<Vec<files::Entry>, String> {
+    files::search(Path::new(&root), &needle)
 }
 
 #[tauri::command]
 fn open_file(root: String, path: String) -> Result<String, String> {
-    let held = inside(&root, &path)?;
-    std::fs::read_to_string(&held.full).map_err(|error| format!("no pude leer {path}: {error}"))
+    let full = files::inside(Path::new(&root), &path)?;
+    std::fs::read_to_string(&full).map_err(|error| format!("no pude leer {path}: {error}"))
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Attachment {
-    path: String,
-    bytes: usize,
-}
-
-#[tauri::command]
-fn attach(root: String, paths: Vec<String>) -> Vec<Attachment> {
-    paths
-        .iter()
-        .filter_map(|given| {
-            let held = inside(&root, given).ok()?;
-            let bytes = std::fs::metadata(&held.full).ok()?.len() as usize;
-            Some(Attachment {
-                path: held.relative,
-                bytes,
-            })
-        })
-        .collect()
+#[tauri::command(async)]
+fn attach(root: String, paths: Vec<String>) -> artifacts::Attachments {
+    artifacts::attach(Path::new(&root), &paths)
 }
 
 #[tauri::command]
@@ -159,19 +106,177 @@ fn providers() -> &'static [catalog::Provider] {
     catalog::PROVIDERS
 }
 
-#[tauri::command]
-fn stop(halt: State<Arc<Halt>>) {
-    halt.raise();
+#[tauri::command(async)]
+fn models(provider: String) -> Result<Vec<catalog::Card>, String> {
+    catalog::discover(&provider)
+}
+
+#[tauri::command(async)]
+fn claude_account() -> Result<account::Account, String> {
+    account::read()
 }
 
 #[tauri::command]
-fn open_session(root: String) -> Result<String, String> {
-    session::open(&PathBuf::from(root))
+fn claude_sign_in() -> Result<(), String> {
+    account::sign_in()
+}
+
+#[derive(Serialize, Clone)]
+struct Heard<'a> {
+    session: &'a str,
+    event: &'a Event,
+}
+
+fn relay(app: AppHandle) -> Sink {
+    Arc::new(move |session, event| {
+        let _ = app.emit("chat", Heard { session, event });
+    })
+}
+
+#[tauri::command]
+fn chat_send(
+    app: AppHandle,
+    engine: State<Arc<Engine>>,
+    root: String,
+    session_id: String,
+    mut message: Message,
+    mut settings: Settings,
+) -> Result<(), String> {
+    if engine.busy(&session_id) {
+        return Err(chat::BUSY.into());
+    }
+    let here = Path::new(&root);
+    for (at, image) in message.images.iter_mut().enumerate() {
+        image.kept = artifacts::keep_picture(here, &session_id, at, &image.media_type, &image.data)?;
+    }
+    for file in message.files.iter_mut() {
+        *file = artifacts::keep_file(here, &session_id, file)?;
+    }
+    equip(&app, &root, &mut settings)?;
+    engine.send(here, &session_id, &message, settings, relay(app))
+}
+
+#[tauri::command(async)]
+fn chat_warm(app: AppHandle, engine: State<Arc<Engine>>, root: String, session_id: String, mut settings: Settings) -> Result<(), String> {
+    equip(&app, &root, &mut settings)?;
+    engine.warm(Path::new(&root), &session_id, settings, relay(app))
+}
+
+fn equip(app: &AppHandle, root: &str, settings: &mut Settings) -> Result<(), String> {
+    let launch = capabilities::launch(&data_dir(app)?, root)?;
+    settings.extra = launch.args;
+    settings.env = launch.env;
+    Ok(())
+}
+
+#[tauri::command]
+fn new_session_id() -> String {
+    session::fresh_id()
+}
+
+#[tauri::command]
+fn chat_stop(engine: State<Arc<Engine>>, session_id: String) -> Result<(), String> {
+    engine.stop(&session_id)
+}
+
+#[tauri::command]
+fn chat_answer(engine: State<Arc<Engine>>, session_id: String, request: String, decision: Decision) -> Result<(), String> {
+    engine.answer(&session_id, &request, &decision)
+}
+
+#[tauri::command]
+fn chat_busy(engine: State<Arc<Engine>>, session_id: String) -> bool {
+    engine.busy(&session_id)
+}
+
+#[tauri::command]
+fn chat_tasks(engine: State<Arc<Engine>>, session_id: String) -> Vec<String> {
+    engine.tasks(&session_id)
+}
+
+#[tauri::command]
+fn chat_stop_task(engine: State<Arc<Engine>>, session_id: String, task_id: String) -> Result<(), String> {
+    engine.stop_task(&session_id, &task_id)
+}
+
+const TASK_TAIL: u64 = 64 * 1024;
+
+#[tauri::command(async)]
+fn task_output(path: String) -> Result<String, String> {
+    let file = PathBuf::from(&path);
+    let in_tasks = file.parent().and_then(Path::file_name).is_some_and(|name| name == "tasks");
+    if !in_tasks || file.extension().is_none_or(|extension| extension != "output") {
+        return Err("esa ruta no es la salida de una tarea".into());
+    }
+    let mut opened = std::fs::File::open(&file).map_err(|error| format!("no pude leer la salida: {error}"))?;
+    let size = opened.metadata().map(|meta| meta.len()).unwrap_or_default();
+    let skipped = size.saturating_sub(TASK_TAIL);
+    opened
+        .seek(SeekFrom::Start(skipped))
+        .map_err(|error| format!("no pude leer la salida: {error}"))?;
+    let mut bytes = Vec::new();
+    opened
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("no pude leer la salida: {error}"))?;
+    let text = String::from_utf8_lossy(&bytes);
+    Ok(match skipped {
+        0 => text.into_owned(),
+        _ => text.split_once('\n').map(|(_, rest)| rest).unwrap_or(&text).to_string(),
+    })
+}
+
+#[tauri::command(async)]
+fn browser_open(app: AppHandle, url: String, frame: browser::Frame, zoom: f64) -> Result<(), String> {
+    browser::open(&app, &url, frame, zoom)
+}
+
+#[tauri::command(async)]
+fn browser_place(app: AppHandle, frame: browser::Frame, zoom: f64) -> Result<(), String> {
+    browser::place(&app, frame, zoom)
+}
+
+#[tauri::command(async)]
+fn browser_show(app: AppHandle, shown: bool) -> Result<(), String> {
+    browser::show(&app, shown)
+}
+
+#[tauri::command(async)]
+fn browser_act(app: AppHandle, act: String) -> Result<(), String> {
+    browser::act(&app, &act)
+}
+
+#[tauri::command]
+fn open_session(root: String, id: Option<String>) -> Result<String, String> {
+    let root = PathBuf::from(root);
+    match id {
+        Some(id) => session::open_as(&root, &id),
+        None => session::open(&root),
+    }
 }
 
 #[tauri::command]
 fn sessions(root: String) -> Vec<session::Summary> {
     session::list(&PathBuf::from(root))
+}
+
+#[tauri::command]
+fn archive_session(root: String, id: String, archived: bool) -> Result<(), String> {
+    session::archive(&PathBuf::from(root), &id, archived)
+}
+
+#[tauri::command]
+fn delete_session(root: String, id: String) -> Result<(), String> {
+    session::erase(&PathBuf::from(root), &id)
+}
+
+#[tauri::command(async)]
+fn title_session(root: String, id: String) -> Result<Option<String>, String> {
+    title::suggest(&PathBuf::from(root), &id)
+}
+
+#[tauri::command]
+fn rename_session(root: String, id: String, title: String) -> Result<String, String> {
+    session::entitle(&PathBuf::from(root), &id, &title, session::Namer::User)
 }
 
 #[tauri::command]
@@ -261,6 +366,11 @@ fn import_skill(app: AppHandle, root: String, path: String) -> Result<String, St
 }
 
 #[tauri::command]
+fn preview_url(site: State<preview::Site>, root: String, path: String) -> Result<String, String> {
+    preview::url(&site, Path::new(&root), &path)
+}
+
+#[tauri::command]
 fn remove_skill(app: AppHandle, name: String) -> Result<(), String> {
     capabilities::remove_skill(&data_dir(&app)?, &name)
 }
@@ -285,121 +395,86 @@ fn set_server(app: AppHandle, root: String, name: String, enabled: bool) -> Resu
     capabilities::set_server(&data_dir(&app)?, &root, &name, enabled)
 }
 
-fn clip(text: &str, cap: usize) -> (&str, bool) {
-    if text.len() <= cap {
-        return (text, false);
-    }
-    let end = (0..=cap)
-        .rev()
-        .find(|at| text.is_char_boundary(*at))
-        .unwrap_or_default();
-    (&text[..end], true)
-}
-
-fn briefed(root: &Path, task: &str, attachments: &[String]) -> String {
-    let mut out = task.to_string();
-    for path in attachments {
-        let Ok(text) = std::fs::read_to_string(root.join(path)) else {
-            continue;
-        };
-        let (body, clipped) = clip(&text, ATTACH_CAP);
-        out.push_str(&format!("\n\n--- {path} ---\n{body}"));
-        if clipped {
-            out.push_str("\n[recortado]");
-        }
-    }
-    out
+#[tauri::command]
+fn set_plugin(app: AppHandle, root: String, name: String, enabled: bool) -> Result<(), String> {
+    capabilities::set_plugin(&data_dir(&app)?, &root, &name, enabled)
 }
 
 #[tauri::command]
-fn work(
-    app: AppHandle,
-    halt: State<Arc<Halt>>,
-    root: String,
-    task: String,
-    choice: Choice,
-    attachments: Vec<String>,
-    session_id: String,
-) -> Result<(), String> {
-    catalog::vet(&choice)?;
-    let halt = halt.inner().clone();
-    halt.clear();
+fn remove_plugin(app: AppHandle, name: String) -> Result<(), String> {
+    capabilities::remove_plugin(&data_dir(&app)?, &name)
+}
 
-    std::thread::spawn(move || {
-        let here = PathBuf::from(&root);
-        let keep = |entry: session::Entry| {
-            let _ = session::append(&here, &session_id, &entry);
-        };
+#[tauri::command(async)]
+fn market(app: AppHandle, refresh: bool) -> Result<market::Market, String> {
+    Ok(market::market(&data_dir(&app)?, refresh))
+}
 
-        let asked = briefed(&here, &task, &attachments);
+#[tauri::command(async)]
+fn market_search(app: AppHandle, query: String) -> Result<Vec<market::Listing>, String> {
+    market::search(&data_dir(&app)?, &query)
+}
 
-        keep(session::Entry::Task {
-            at: session::now(),
-            text: asked.clone(),
-        });
+#[tauri::command(async)]
+fn market_detail(app: AppHandle, id: String) -> Result<market::Detail, String> {
+    market::detail(&data_dir(&app)?, &id)
+}
 
-        let pair = match catalog::hire(&choice) {
-            Ok(pair) => pair,
-            Err(reason) => {
-                keep(session::Entry::Failed {
-                    at: session::now(),
-                    reason: reason.clone(),
-                });
-                let _ = app.emit("failed", reason);
-                return;
-            }
-        };
+#[tauri::command(async)]
+fn market_file(app: AppHandle, id: String, path: String) -> Result<String, String> {
+    market::file(&data_dir(&app)?, &id, &path)
+}
 
-        let crew = Crew {
-            writer: pair.writer.as_ref(),
-            dieter: pair.dieter.as_ref(),
-        };
+#[tauri::command(async)]
+fn market_install(app: AppHandle, root: String, id: String, values: BTreeMap<String, String>) -> Result<String, String> {
+    market::install(&data_dir(&app)?, &root, &id, &values)
+}
 
-        let mut emit = |step: Step| {
-            keep(session::Entry::Beat {
-                at: session::now(),
-                step: step.clone(),
-            });
-            let _ = app.emit("step", step);
-        };
-
-        match sens_agent::run(&here, &asked, &crew, &halt, &mut emit) {
-            Ok(landed) => {
-                let _ = app.emit("done", (landed.paths, landed.net));
-            }
-            Err(reason) => {
-                keep(session::Entry::Failed {
-                    at: session::now(),
-                    reason: reason.clone(),
-                });
-                let event = if reason == HALTED { "stopped" } else { "failed" };
-                let _ = app.emit(event, reason);
-            }
-        }
-    });
-
-    Ok(())
+#[tauri::command(async)]
+fn market_update(app: AppHandle, id: String, name: String) -> Result<(), String> {
+    market::update(&data_dir(&app)?, &id, &name)
 }
 
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(Arc::new(Halt::default()))
+        .manage(Arc::new(Engine::default()))
+        .manage(preview::Site::default())
+        .setup(|app| {
+            icon::sharpen(app);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
-            status,
             judge,
-            work,
-            stop,
+            chat_send,
+            chat_stop,
+            chat_answer,
+            chat_busy,
+            chat_tasks,
+            chat_stop_task,
+            task_output,
+            chat_warm,
+            new_session_id,
             providers,
+            models,
+            claude_account,
+            claude_sign_in,
             attach,
             open_session,
             sessions,
+            archive_session,
+            delete_session,
+            title_session,
+            rename_session,
             replay,
             tree,
+            folder,
+            find_files,
             open_file,
             repo,
             checkout,
+            changes,
             workspaces,
             remember,
             last_project,
@@ -409,6 +484,11 @@ fn main() {
             artifact_data,
             artifact_text,
             open_external,
+            preview_url,
+            browser_open,
+            browser_place,
+            browser_show,
+            browser_act,
             capabilities,
             skill_text,
             create_skill,
@@ -417,8 +497,21 @@ fn main() {
             set_skill,
             add_server,
             remove_server,
-            set_server
+            set_server,
+            set_plugin,
+            remove_plugin,
+            market,
+            market_search,
+            market_detail,
+            market_file,
+            market_install,
+            market_update
         ])
-        .run(tauri::generate_context!())
-        .expect("sens app");
+        .build(tauri::generate_context!())
+        .expect("sens app")
+        .run(|app, event| {
+            if let RunEvent::Exit = event {
+                app.state::<Arc<Engine>>().shutdown();
+            }
+        });
 }
