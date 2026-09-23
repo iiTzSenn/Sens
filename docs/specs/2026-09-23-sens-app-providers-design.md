@@ -49,3 +49,18 @@ Fecha: 2026-09-23 · Ámbito: `rust/sens-agent` (`process.rs`, `account.rs`),
 
 `claude_sign_in` desaparece. `providers_state` recorre `catalog::PROVIDERS`, así
 que un proveedor nuevo es una entrada más ahí y su tarjeta sale sola.
+
+## Inicio de sesión con OAuth
+
+- El botón «Iniciar sesión con Claude» (o «con la Consola») está siempre en la
+  tarjeta, también con sesión abierta, para cambiar de cuenta. Debajo, tres pasos:
+  se abre el navegador en claude.ai (o console.anthropic.com), autorizas a Claude
+  Code y te da un código, y si te lo pide lo pegas en la ventana de Claude Code.
+- `provider_sign_in` lanza `claude auth login --claudeai|--console` en una consola
+  propia (`CREATE_NEW_CONSOLE`) y **espera a que termine**: sale bien → Sens relee
+  la cuenta; se cierra sin terminar → «no terminaste el inicio de sesión». Ya no se
+  sondea la cuenta cada 2 s, que se quedaba 5 minutos esperando si volvías a entrar
+  con la misma cuenta.
+- El código de autorización nunca pasa por Sens: lo genera claude.ai y lo recibe el
+  propio `claude`. Las condiciones de Anthropic prohíben a una app de terceros
+  recogerlo o reenviarlo.

@@ -145,7 +145,7 @@ fn forget_api_key(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn provider_sign_in(method: providers::Method) -> Result<(), String> {
     match method {
         providers::Method::Subscription => account::sign_in(account::Door::Subscription),

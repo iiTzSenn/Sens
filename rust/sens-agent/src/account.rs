@@ -2,7 +2,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
-use crate::process::{CLAUDE, claude, hidden};
+use crate::process::{CLAUDE, claude};
 
 const FIRST_PARTY: &str = "firstParty";
 const BEARER: &str = "ANTHROPIC_AUTH_TOKEN";
@@ -116,10 +116,13 @@ pub fn version() -> Result<String, String> {
 }
 
 pub fn sign_in(door: Door) -> Result<(), String> {
-    login_window(door)?
-        .spawn()
-        .map(drop)
-        .map_err(|error| format!("no pude abrir el inicio de sesión de {CLAUDE}: {error}"))
+    let finished = login_window(door)?
+        .status()
+        .map_err(|error| format!("no pude abrir el inicio de sesión de {CLAUDE}: {error}"))?;
+    match finished.success() {
+        true => Ok(()),
+        false => Err("no terminaste el inicio de sesión".into()),
+    }
 }
 
 pub fn sign_out() -> Result<(), String> {
@@ -137,8 +140,9 @@ pub fn sign_out() -> Result<(), String> {
 fn login_window(door: Door) -> Result<Command, String> {
     use std::os::windows::process::CommandExt;
 
-    let mut command = Command::new("cmd");
-    hidden(&mut command).raw_arg(format!("/c start \"Claude Code\" {CLAUDE} auth login {}", door.flag()));
+    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+    let mut command = Command::new(CLAUDE);
+    command.args(["auth", "login", door.flag()]).creation_flags(CREATE_NEW_CONSOLE);
     Ok(command)
 }
 

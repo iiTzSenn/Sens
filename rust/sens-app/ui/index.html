@@ -564,10 +564,12 @@
   .choice-text b { font-size: 13px; font-weight: 500; color: var(--text); }
   .choice-text span { font-size: 12px; line-height: 16px; color: var(--faint); }
   .settings-later { margin: 0; font-size: 12px; color: var(--ghost); }
+  .settings-row .primary { display: inline-flex; align-items: center; gap: 6px; }
   .settings-row [hidden] { display: none; }
   .settings-switch { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
   .settings-switch label { cursor: pointer; }
   .settings-pane .note.fault, .panel .note.fault { color: var(--red); }
+  .sign-steps { margin: 0; padding-inline-start: 18px; display: grid; gap: 2px; font-size: 12px; line-height: 17px; color: var(--faint); }
   .stream { position: relative; display: grid; min-height: 0; min-width: 0; }
   .fade {
     position: absolute; inset-inline: 0; height: 64px; z-index: 1;
@@ -6207,8 +6209,6 @@ void main(){
   }
 
   const PLANS = { pro: "Pro", max: "Max", team: "Team", enterprise: "Enterprise" };
-  const SIGN_IN_WAIT = 5 * 60_000;
-  const SIGN_IN_POLL = 2_000;
 
   const BILLED = {
     subscription: ({ plan, source, email }) => [`Suscripción ${PLANS[plan] || plan}`.trim(), source, email],
@@ -6247,18 +6247,6 @@ void main(){
     }
     paintAccount();
     return account;
-  }
-
-  const pause = (ms) => new Promise((done) => setTimeout(done, ms));
-
-  async function awaitSignIn() {
-    const before = JSON.stringify(account);
-    const deadline = Date.now() + SIGN_IN_WAIT;
-    while (Date.now() < deadline) {
-      await pause(SIGN_IN_POLL);
-      const now = await readAccount();
-      if (now?.billing === "subscription" || JSON.stringify(now) !== before) return;
-    }
   }
 
   const PASTEABLE = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -6942,6 +6930,10 @@ void main(){
   const SETTINGS_SECTION = "sens.settings.section";
   const API_KEY_SOURCE = "ANTHROPIC_API_KEY";
   const SETUP_URL = "https://code.claude.com/docs/en/setup";
+  const SIGN_IN_DOORS = {
+    subscription: { button: "Iniciar sesión con Claude", site: "claude.ai" },
+    console: { button: "Iniciar sesión con la Consola", site: "console.anthropic.com" },
+  };
   const PROVIDER_METHODS = [
     { id: "subscription", label: "Suscripción de Claude", said: "Pro o Max. Inicias sesión en el navegador con tu cuenta de Claude." },
     { id: "console", label: "Consola de Anthropic", said: "Facturación por uso. Inicias sesión con tu cuenta de la Consola." },
@@ -7269,26 +7261,32 @@ void main(){
 
   function methodActions(state, method) {
     if (method === "apiKey") return keyActions(state);
+    const door = SIGN_IN_DOORS[method];
     const signed = state.account && state.account.billing !== "signedOut" && !keyed(state.account);
+    const enter = el("button", "primary");
+    enter.innerHTML = ICONS.external;
+    enter.append(connecting ? "Esperando a que termines…" : door.button);
+    enter.disabled = connecting;
+    enter.addEventListener("click", () => signIn(state, method));
     const row = el("div", "settings-row");
-    if (connecting) {
-      const waiting = el("button", "quiet", "Esperando al inicio de sesión…");
-      waiting.disabled = true;
-      row.append(waiting);
-      return [row, el("p", "note", "Termina en la ventana de Claude Code que se ha abierto y vuelve aquí.")];
-    }
-    if (signed) {
+    row.append(enter);
+    const steps = el("ol", "sign-steps");
+    steps.append(
+      el("li", null, `Se abre tu navegador en ${door.site}.`),
+      el("li", null, "Autorizas a Claude Code y te da un código."),
+      el("li", null, "Si te lo pide, pégalo en la ventana de Claude Code. Sens se entera solo."),
+    );
+    const nodes = [row, steps, el("p", "note", "El código y tu sesión los maneja Claude Code; Sens nunca los ve.")];
+    if (signed && !connecting) {
       const out = el("button", "quiet", "Cerrar sesión");
       out.addEventListener("click", () => providerAct(state, () => invoke("provider_sign_out")));
       const check = el("button", "quiet", "Comprobar");
       check.addEventListener("click", () => providerAct(state, async () => {}));
-      row.append(out, check);
-      return [row];
+      const more = el("div", "settings-row");
+      more.append(out, check);
+      nodes.push(more);
     }
-    const enter = el("button", "primary", "Iniciar sesión");
-    enter.addEventListener("click", () => signIn(state, method));
-    row.append(enter);
-    return [row, el("p", "note", "Se abre una ventana de Claude Code para que entres; Sens no ve tu contraseña ni tus tokens.")];
+    return nodes;
   }
 
   function keyActions(state) {
@@ -7350,7 +7348,6 @@ void main(){
     paintSettings();
     try {
       await invoke("provider_sign_in", { method });
-      await awaitSignIn();
     } catch (reason) {
       providerFaults.set(state.id, String(reason));
     }
