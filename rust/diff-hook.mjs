@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..");
-const rustBin = path.join(here, "sens-hook", "target", "release", "sens-hook.exe");
+const rustBin = path.join(here, "sens-hook", "target", "release", process.platform === "win32" ? "sens-hook.exe" : "sens-hook");
 const nodeHook = path.join(root, "dist", "hook.js");
 
 const run = (cmd, args, input) => {

@@ -6,7 +6,7 @@ import { buildIndex } from "../src/indexer/indexer.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, "..");
-const bin = path.join(here, "sens-hook", "target", "release", "sens-hook.exe");
+const bin = path.join(here, "sens-hook", "target", "release", process.platform === "win32" ? "sens-hook.exe" : "sens-hook");
 
 const normalize = (o) => ({
   symbols: o.symbols
