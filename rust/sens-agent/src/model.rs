@@ -1,13 +1,9 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 pub const SYSTEM_SLOT: &str = "{system}";
 
 pub const CLAUDE_CODE: &str = "claude -p --system-prompt {system} --disallowedTools Bash Edit Write Read Glob Grep Task TodoWrite WebFetch WebSearch NotebookEdit";
-
-const ENDPOINT: &str = "https://api.anthropic.com/v1/messages";
-const API_VERSION: &str = "2023-06-01";
-const MAX_TOKENS: u32 = 8000;
 
 #[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
 pub struct Edit {
@@ -36,72 +32,18 @@ pub trait Model {
     fn propose(&self, system: &str, user: &str) -> Result<Proposal, String>;
 }
 
-pub struct Anthropic {
-    pub key: String,
-    pub model: String,
-    pub think: u32,
-}
-
-impl Anthropic {
-    pub fn new(key: impl Into<String>, model: impl Into<String>, think: u32) -> Self {
-        Self {
-            key: key.into(),
-            model: model.into(),
-            think,
-        }
-    }
-}
-
-impl Model for Anthropic {
-    fn name(&self) -> &str {
-        &self.model
-    }
-
-    fn propose(&self, system: &str, user: &str) -> Result<Proposal, String> {
-        let mut body = json!({
-            "model": self.model,
-            "max_tokens": MAX_TOKENS + self.think,
-            "system": system,
-            "messages": [{ "role": "user", "content": user }]
-        });
-        if self.think > 0 {
-            body["thinking"] = json!({ "type": "enabled", "budget_tokens": self.think });
-        }
-
-        let mut response = ureq::post(ENDPOINT)
-            .header("x-api-key", self.key.as_str())
-            .header("anthropic-version", API_VERSION)
-            .header("content-type", "application/json")
-            .send_json(&body)
-            .map_err(|error| format!("{} no respondió: {error}", self.model))?;
-
-        let value: Value = response
-            .body_mut()
-            .read_json()
-            .map_err(|error| format!("respuesta ilegible: {error}"))?;
-
-        let text = said(&value).ok_or_else(|| format!("respuesta sin texto: {value}"))?;
-
-        parse_proposal(text)
-    }
-}
-
-fn said(value: &Value) -> Option<&str> {
-    value["content"]
-        .as_array()?
-        .iter()
-        .find(|block| block["type"] == "text")
-        .and_then(|block| block["text"].as_str())
-}
-
 pub fn parse_proposal(text: &str) -> Result<Proposal, String> {
     let object = first_object(text).ok_or("la respuesta no trae JSON")?;
     let value: Value =
         serde_json::from_str(object).map_err(|error| format!("JSON inválido: {error}"))?;
 
-    let files: Vec<Edit> = match value.get("files").and_then(Value::as_array) {
-        Some(listed) => listed.iter().filter_map(edit_from).collect(),
-        None => edit_from(&value).into_iter().collect(),
+    let files: Vec<Edit> = match value.get("files") {
+        Some(Value::Array(listed)) => listed
+            .iter()
+            .map(|entry| edit_from(entry).ok_or("la propuesta contiene un fichero incompleto"))
+            .collect::<Result<_, _>>()?,
+        Some(_) => return Err("files debe ser una lista".into()),
+        None => vec![edit_from(&value).ok_or("la propuesta no dice qué fichero toca")?],
     };
 
     if files.is_empty() {
@@ -182,6 +124,14 @@ impl Cli {
         Cli::parse(CLAUDE_CODE).expect("preset")
     }
 
+    pub fn on(mut self, model: &str) -> Self {
+        if !model.is_empty() {
+            self.args.extend(["--model".to_string(), model.to_string()]);
+            self.label = model.to_string();
+        }
+        self
+    }
+
     fn fill(&self, system: &str) -> (Vec<String>, bool) {
         let mut carried = false;
         let args = self
@@ -205,42 +155,62 @@ impl Model for Cli {
     }
 
     fn propose(&self, system: &str, user: &str) -> Result<Proposal, String> {
-        use std::io::Write;
-        use std::process::{Command, Stdio};
-
         let (args, carried) = self.fill(system);
         let prompt = if carried {
             user.to_string()
         } else {
-            format!("{system}\n\n---\n\n{user}")
+            format!("{system}
+
+---
+
+{user}")
         };
 
-        let mut child = Command::new(&self.program)
-            .args(&args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|error| format!("no pude lanzar {}: {error}", self.program))?;
-
-        child
-            .stdin
-            .take()
-            .ok_or("el proceso no acepta entrada")?
-            .write_all(prompt.as_bytes())
-            .map_err(|error| format!("no pude hablar con {}: {error}", self.program))?;
-
-        let finished = child
-            .wait_with_output()
-            .map_err(|error| format!("{} se cayó: {error}", self.program))?;
-
-        if !finished.status.success() {
-            let complaint = String::from_utf8_lossy(&finished.stderr);
-            return Err(format!("{} falló: {}", self.program, complaint.trim()));
-        }
-
-        parse_proposal(&String::from_utf8_lossy(&finished.stdout))
+        parse_proposal(&run(&self.program, &args, &prompt)?)
     }
+}
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+pub fn hidden(command: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
+pub fn run(program: &str, args: &[String], input: &str) -> Result<String, String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = hidden(&mut Command::new(program))
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("no pude lanzar {program}: {error}"))?;
+
+    child
+        .stdin
+        .take()
+        .ok_or("el proceso no acepta entrada")?
+        .write_all(input.as_bytes())
+        .map_err(|error| format!("no pude hablar con {program}: {error}"))?;
+
+    let finished = child
+        .wait_with_output()
+        .map_err(|error| format!("{program} se cayó: {error}"))?;
+
+    if !finished.status.success() {
+        let complaint = String::from_utf8_lossy(&finished.stderr);
+        return Err(format!("{program} falló: {}", complaint.trim()));
+    }
+
+    Ok(String::from_utf8_lossy(&finished.stdout).into_owned())
 }
 
 pub fn split(command: &str) -> Vec<String> {
@@ -373,14 +343,15 @@ mod tests {
 
     #[test]
     fn the_same_file_listed_twice_is_refused() {
-        let raw = "{\"files\":[{\"path\":\"a.rs\",\"after\":\"x\"},{\"path\":\"a.rs\",\"after\":\"y\"}]}";
+        let raw =
+            "{\"files\":[{\"path\":\"a.rs\",\"after\":\"x\"},{\"path\":\"a.rs\",\"after\":\"y\"}]}";
         assert!(parse_proposal(raw).unwrap_err().contains("dos veces"));
     }
 
     #[test]
-    fn an_entry_without_content_is_dropped_instead_of_guessed() {
+    fn an_entry_without_content_rejects_the_whole_proposal() {
         let raw = "{\"files\":[{\"path\":\"a.rs\"},{\"path\":\"b.rs\",\"after\":\"y\"}]}";
-        assert_eq!(parse_proposal(raw).unwrap().paths(), vec!["b.rs"]);
+        assert!(parse_proposal(raw).is_err());
     }
 
     #[test]
@@ -409,7 +380,16 @@ mod tests {
         let (args, carried) = cli.fill("eres el motor");
 
         assert!(carried);
-        assert_eq!(args, vec!["-p", "--system-prompt", "eres el motor", "--model", "sonnet"]);
+        assert_eq!(
+            args,
+            vec![
+                "-p",
+                "--system-prompt",
+                "eres el motor",
+                "--model",
+                "sonnet"
+            ]
+        );
     }
 
     #[test]
@@ -426,8 +406,19 @@ mod tests {
         let cli = Cli::claude();
         assert_eq!(cli.program, "claude");
         for forbidden in ["Edit", "Write", "Bash", "NotebookEdit"] {
-            assert!(cli.args.iter().any(|arg| arg == forbidden), "falta {forbidden}");
+            assert!(
+                cli.args.iter().any(|arg| arg == forbidden),
+                "falta {forbidden}"
+            );
         }
+    }
+
+    #[test]
+    fn a_chosen_model_rides_along_as_a_flag() {
+        let cli = Cli::claude().on("claude-opus-5-5");
+        assert_eq!(cli.args[cli.args.len() - 2..], ["--model", "claude-opus-5-5"]);
+        assert_eq!(cli.name(), "claude-opus-5-5");
+        assert_eq!(Cli::claude().on("").args, Cli::claude().args);
     }
 
     #[test]

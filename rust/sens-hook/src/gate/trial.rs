@@ -192,10 +192,18 @@ mod tests {
     #[test]
     fn a_node_project_needs_a_test_script_to_count() {
         let root = temp_root("node");
-        std::fs::write(root.join("package.json"), "{\"scripts\":{\"build\":\"tsc\"}}").unwrap();
+        std::fs::write(
+            root.join("package.json"),
+            "{\"scripts\":{\"build\":\"tsc\"}}",
+        )
+        .unwrap();
         assert_eq!(suite_for(&root), None);
 
-        std::fs::write(root.join("package.json"), "{\"scripts\":{\"test\":\"vitest run\"}}").unwrap();
+        std::fs::write(
+            root.join("package.json"),
+            "{\"scripts\":{\"test\":\"vitest run\"}}",
+        )
+        .unwrap();
         assert_eq!(suite_for(&root), Some(words("npm test --silent")));
     }
 
@@ -206,6 +214,21 @@ mod tests {
 
         assert_eq!(ruling.verdict, Verdict::Abstain);
         assert_eq!(ruling.gate, "G4");
+    }
+
+    #[test]
+    fn an_unavailable_runner_is_unverified() {
+        let root = temp_root("missing-runner");
+        let trial = Trial {
+            command: Some(vec![
+                root.join("missing-runner.exe")
+                    .to_string_lossy()
+                    .into_owned(),
+            ]),
+        };
+        let ruling = trial.run(&root);
+        assert_eq!(ruling.verdict, Verdict::Abstain);
+        assert!(!ruling.evidence.is_empty());
     }
 
     #[test]

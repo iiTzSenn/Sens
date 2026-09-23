@@ -1,8 +1,11 @@
+pub mod account;
 pub mod apply;
 pub mod catalog;
+pub mod chat;
 pub mod context;
 pub mod model;
 pub mod session;
+pub mod title;
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,6 +14,7 @@ use sens_hook::gate::patch::{LineChange, diff_lines};
 use sens_hook::gate::{self, FilePatch, Gauntlet, Outcome, Patch, Ruling, Verdict};
 use serde::{Deserialize, Serialize};
 
+use apply::{Origin, Transaction};
 use context::Briefing;
 use model::{Model, Proposal};
 
@@ -132,13 +136,7 @@ pub struct Refusal {
 struct Kept {
     proposal: Proposal,
     net: i64,
-    origins: Vec<Origin>,
-}
-
-struct Origin {
-    path: String,
-    text: String,
-    written_at: Option<std::time::SystemTime>,
+    transaction: Transaction,
 }
 
 pub fn run(
@@ -168,29 +166,48 @@ pub fn run(
             note: proposal.note.clone(),
         });
 
+        let mut transaction = Transaction::prepare(root, &as_patch(&proposal))?;
+        let gauntlet = Gauntlet::over(root);
         let outcome = weigh(root, &proposal, emit)?;
         let (applies, net) = (outcome.applies, outcome.net_lines);
         let mut refusal = first_stop(&outcome);
         emit(Step::Judged { outcome });
 
         if applies {
-            let origins = origins_of(root, &proposal);
-            apply::write(root, &as_patch(&proposal))?;
+            halt.checkpoint()?;
+            transaction.apply()?;
 
-            let proof = Gauntlet::over(root).prove(root);
-            let broke = proof.verdict == Verdict::Stop;
+            let proof = gauntlet.prove(root);
+            let unverified = proof.verdict == Verdict::Abstain;
+            let broke = proof.verdict != Verdict::Pass;
             refusal = broke.then(|| refusal_of(&proof));
             emit(Step::Proven { ruling: proof });
+
+            if halt.raised() {
+                transaction.rollback()?;
+                return Err(HALTED.into());
+            }
 
             if !broke {
                 kept = Some(Kept {
                     proposal,
                     net,
-                    origins,
+                    transaction,
                 });
                 break;
             }
-            restore_all(root, &origins)?;
+            transaction.rollback()?;
+            if unverified {
+                let refusal = refusal.as_ref().unwrap();
+                let reason = format!(
+                    "Cambio no verificado: {} {}",
+                    refusal.said, refusal.evidence
+                );
+                emit(Step::GaveUp {
+                    reason: reason.clone(),
+                });
+                return Err(reason);
+            }
         }
 
         let Some(refusal) = refusal else {
@@ -214,14 +231,22 @@ pub fn run(
         halt.checkpoint()?;
     }
 
-    let Some(kept) = kept else {
+    let Some(mut kept) = kept else {
         return Err("ningún parche pasó los controles".into());
     };
 
-    halt.checkpoint()?;
-    let landed = slim(root, crew, kept, emit);
+    if halt.raised() {
+        kept.transaction.rollback()?;
+        return Err(HALTED.into());
+    }
+    let mut landed = slim(root, crew, kept, halt, emit)?;
+    if halt.raised() {
+        landed.transaction.rollback()?;
+        return Err(HALTED.into());
+    }
     let files = diffs_of(&landed);
     let net = total_net(&files);
+    landed.transaction.commit()?;
 
     emit(Step::Applied {
         net,
@@ -233,11 +258,23 @@ pub fn run(
     Ok(Landed { paths, net })
 }
 
-fn slim(root: &Path, crew: &Crew, kept: Kept, emit: &mut dyn FnMut(Step)) -> Kept {
+fn slim(
+    root: &Path,
+    crew: &Crew,
+    mut kept: Kept,
+    halt: &Halt,
+    emit: &mut dyn FnMut(Step),
+) -> Result<Kept, String> {
     let slimmer = match crew.dieter.propose(DIET, &diet(&kept.proposal)) {
         Ok(slimmer) => slimmer,
         Err(reason) => return declined(reason, kept, emit),
     };
+
+    if halt.raised() {
+        kept.transaction.rollback()?;
+        return Err(HALTED.into());
+    }
+    kept.transaction.verify_applied()?;
 
     if slimmer.paths() != kept.proposal.paths() {
         return declined(
@@ -259,7 +296,7 @@ fn slim(root: &Path, crew: &Crew, kept: Kept, emit: &mut dyn FnMut(Step)) -> Kep
         Err(reason) => return declined(reason, kept, emit),
     };
 
-    let net = net_against(&kept.origins, &slimmer);
+    let net = net_against(&kept.transaction.origins, &slimmer);
     if !outcome.applies || net >= kept.net {
         let reason = format!(
             "la versión corta no mejora: {net:+} líneas contra {:+}",
@@ -268,36 +305,45 @@ fn slim(root: &Path, crew: &Crew, kept: Kept, emit: &mut dyn FnMut(Step)) -> Kep
         return declined(reason, kept, emit);
     }
 
+    let mut transaction = Transaction::prepare(root, &as_patch(&slimmer))?;
+    let gauntlet = Gauntlet::over(root);
     emit(Step::Judged { outcome });
-
-    let standing = kept.proposal.clone();
-    if apply::write(root, &as_patch(&slimmer)).is_err() {
-        return declined("no pude escribir la versión corta".into(), kept, emit);
+    if halt.raised() {
+        kept.transaction.rollback()?;
+        return Err(HALTED.into());
     }
+    transaction.apply()?;
 
-    let proof = Gauntlet::over(root).prove(root);
-    let broke = proof.verdict == Verdict::Stop;
+    let proof = gauntlet.prove(root);
+    let broke = proof.verdict != Verdict::Pass;
     emit(Step::Proven { ruling: proof });
 
-    if broke {
-        let _ = apply::write(root, &as_patch(&standing));
-        return declined("la versión corta rompe las pruebas".into(), kept, emit);
+    if broke || halt.raised() {
+        transaction.rollback()?;
+        if halt.raised() {
+            kept.transaction.rollback()?;
+            return Err(HALTED.into());
+        }
+        return declined("la versión corta no superó las pruebas".into(), kept, emit);
     }
+
+    transaction.commit()?;
+    kept.transaction.expect(&as_patch(&slimmer))?;
 
     emit(Step::Dieted {
         from: kept.net,
         to: net,
     });
-    Kept {
+    Ok(Kept {
         proposal: slimmer,
         net,
-        origins: kept.origins,
-    }
+        transaction: kept.transaction,
+    })
 }
 
-fn declined(reason: String, kept: Kept, emit: &mut dyn FnMut(Step)) -> Kept {
+fn declined(reason: String, kept: Kept, emit: &mut dyn FnMut(Step)) -> Result<Kept, String> {
     emit(Step::DietRejected { reason });
-    kept
+    Ok(kept)
 }
 
 fn reindex(root: &Path, touched: &[String]) -> Step {
@@ -310,11 +356,7 @@ fn reindex(root: &Path, touched: &[String]) -> Step {
     }
 }
 
-fn weigh(
-    root: &Path,
-    proposal: &Proposal,
-    emit: &mut dyn FnMut(Step),
-) -> Result<Outcome, String> {
+fn weigh(root: &Path, proposal: &Proposal, emit: &mut dyn FnMut(Step)) -> Result<Outcome, String> {
     if let Err(reason) = sens_hook::refresh::update(root, &proposal.paths()) {
         emit(Step::ReindexFailed { reason });
     }
@@ -323,49 +365,14 @@ fn weigh(
         .ok_or_else(|| "el índice está obsoleto: no juzgo con datos viejos".into())
 }
 
-fn origins_of(root: &Path, proposal: &Proposal) -> Vec<Origin> {
-    proposal
-        .files
-        .iter()
-        .map(|edit| {
-            let target = root.join(&edit.path);
-            Origin {
-                path: edit.path.clone(),
-                text: std::fs::read_to_string(&target).unwrap_or_default(),
-                written_at: std::fs::metadata(&target).and_then(|meta| meta.modified()).ok(),
-            }
-        })
-        .collect()
-}
-
-fn restore_all(root: &Path, origins: &[Origin]) -> Result<(), String> {
-    for origin in origins {
-        let target = root.join(&origin.path);
-        if origin.text.is_empty() {
-            let _ = std::fs::remove_file(&target);
-            continue;
-        }
-        std::fs::write(&target, &origin.text)
-            .map_err(|error| format!("no pude deshacer {}: {error}", origin.path))?;
-        restamp(&target, origin.written_at);
-    }
-    Ok(())
-}
-
-fn restamp(target: &Path, written_at: Option<std::time::SystemTime>) {
-    let Some(when) = written_at else { return };
-    let Ok(handle) = std::fs::OpenOptions::new().write(true).open(target) else {
-        return;
-    };
-    let _ = handle.set_times(std::fs::FileTimes::new().set_modified(when));
-}
-
 fn diffs_of(kept: &Kept) -> Vec<FileDiff> {
-    kept.origins
+    kept.transaction
+        .origins
         .iter()
         .filter_map(|origin| {
             let edit = kept.proposal.touches(&origin.path)?;
-            let (added, removed) = diff_lines(&origin.text, &edit.after);
+            let (added, removed) =
+                diff_lines(origin.text.as_deref().unwrap_or_default(), &edit.after);
             Some(FileDiff {
                 path: origin.path.clone(),
                 added,
@@ -387,7 +394,8 @@ fn net_against(origins: &[Origin], proposal: &Proposal) -> i64 {
         .iter()
         .filter_map(|origin| {
             let edit = proposal.touches(&origin.path)?;
-            let (added, removed) = diff_lines(&origin.text, &edit.after);
+            let (added, removed) =
+                diff_lines(origin.text.as_deref().unwrap_or_default(), &edit.after);
             Some(added.len() as i64 - removed.len() as i64)
         })
         .sum()
@@ -501,32 +509,40 @@ mod tests {
             "haz algo",
             &crew,
             &Halt::default(),
-            &mut |step| {
-            steps.push(step)
-        });
+            &mut |step| steps.push(step),
+        );
 
         assert!(outcome.is_err());
         assert!(steps.is_empty());
         assert_eq!(writer.replies.borrow().len(), 1);
     }
 
-    fn origin(path: &str, text: &str) -> Origin {
-        Origin {
-            path: path.into(),
-            text: text.into(),
-            written_at: None,
-        }
-    }
-
     #[test]
     fn restoring_puts_every_file_back_as_it_was() {
         let root = scratch("restore-many");
-        std::fs::write(root.join("a.rs"), "roto\n").unwrap();
-        std::fs::write(root.join("b.rs"), "tambien roto\n").unwrap();
+        std::fs::write(root.join("a.rs"), "bueno\n").unwrap();
+        let patch = Patch {
+            files: vec![
+                FilePatch {
+                    path: "a.rs".into(),
+                    before: String::new(),
+                    after: "roto\n".into(),
+                },
+                FilePatch {
+                    path: "b.rs".into(),
+                    before: String::new(),
+                    after: "nuevo\n".into(),
+                },
+            ],
+        };
+        let mut transaction = Transaction::prepare(&root, &patch).unwrap();
+        transaction.apply().unwrap();
+        transaction.rollback().unwrap();
 
-        restore_all(&root, &[origin("a.rs", "bueno\n"), origin("b.rs", "")]).unwrap();
-
-        assert_eq!(std::fs::read_to_string(root.join("a.rs")).unwrap(), "bueno\n");
+        assert_eq!(
+            std::fs::read_to_string(root.join("a.rs")).unwrap(),
+            "bueno\n"
+        );
         assert!(!root.join("b.rs").exists());
     }
 
@@ -537,23 +553,21 @@ mod tests {
         std::fs::write(&target, "bueno\n").unwrap();
         let stamp = std::fs::metadata(&target).unwrap().modified().unwrap();
 
-        std::fs::write(&target, "roto\n").unwrap();
-        restore_all(
-            &root,
-            &[Origin {
-                path: "a.rs".into(),
-                text: "bueno\n".into(),
-                written_at: Some(stamp),
-            }],
-        )
-        .unwrap();
+        let mut transaction =
+            Transaction::prepare(&root, &as_patch(&proposal("a.rs", "roto\n"))).unwrap();
+        transaction.apply().unwrap();
+        transaction.rollback().unwrap();
 
-        assert_eq!(std::fs::metadata(&target).unwrap().modified().unwrap(), stamp);
+        assert_eq!(
+            std::fs::metadata(&target).unwrap().modified().unwrap(),
+            stamp
+        );
     }
 
     #[test]
     fn the_net_of_a_patch_adds_up_across_its_files() {
-        let origins = vec![origin("a.rs", "uno\ndos\ntres\n"), origin("b.rs", "")];
+        let root = scratch("net-many");
+        std::fs::write(root.join("a.rs"), "uno\ndos\ntres\n").unwrap();
         let proposal = Proposal {
             files: vec![
                 Edit {
@@ -568,7 +582,8 @@ mod tests {
             note: String::new(),
         };
 
-        assert_eq!(net_against(&origins, &proposal), -1);
+        let transaction = Transaction::prepare(&root, &as_patch(&proposal)).unwrap();
+        assert_eq!(net_against(&transaction.origins, &proposal), -1);
     }
 
     #[test]

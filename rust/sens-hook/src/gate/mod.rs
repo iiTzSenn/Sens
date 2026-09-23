@@ -99,10 +99,6 @@ pub struct Gauntlet {
 }
 
 impl Gauntlet {
-    pub fn sealed() -> Self {
-        Self::over(&std::path::PathBuf::from("."))
-    }
-
     pub fn over(root: &Path) -> Self {
         Self {
             gates: vec![
@@ -192,9 +188,16 @@ pub mod fixture {
 mod tests {
     use super::*;
 
+    fn temp_root(name: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!("sens-seal-{name}"));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        path
+    }
+
     #[test]
     fn the_seal_changes_when_a_threshold_changes() {
-        let sealed = Gauntlet::sealed();
+        let sealed = Gauntlet::over(&temp_root("threshold"));
         let loosened = Gauntlet {
             gates: vec![
                 Box::new(duplication::Duplication),
@@ -208,7 +211,22 @@ mod tests {
     }
 
     #[test]
+    fn two_roots_with_different_suites_seal_differently() {
+        let cargo = temp_root("cargo");
+        std::fs::write(cargo.join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        let go = temp_root("go");
+        std::fs::write(go.join("go.mod"), "module x\n").unwrap();
+
+        assert_ne!(
+            trial::Trial::detect(&cargo).fingerprint(),
+            trial::Trial::detect(&go).fingerprint()
+        );
+        assert_ne!(Gauntlet::over(&cargo).seal(), Gauntlet::over(&go).seal());
+    }
+
+    #[test]
     fn the_seal_is_stable_across_runs() {
-        assert_eq!(Gauntlet::sealed().seal(), Gauntlet::sealed().seal());
+        let root = temp_root("stable");
+        assert_eq!(Gauntlet::over(&root).seal(), Gauntlet::over(&root).seal());
     }
 }

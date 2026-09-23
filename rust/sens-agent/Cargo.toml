@@ -7,4 +7,3 @@ edition = "2024"
 sens-hook = { path = "../sens-hook" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-ureq = { version = "3.4.2", features = ["json"] }
