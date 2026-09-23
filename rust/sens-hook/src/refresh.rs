@@ -270,6 +270,12 @@ mod tests {
         std::fs::write(root.join("boot.rs"), "pub fn boot() {}
 pub fn start() {}
 ").unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(root.join("boot.rs"))
+            .unwrap()
+            .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(2))
+            .unwrap();
 
         assert!(matches!(rebuild(&root).unwrap(), Refreshed::Native { .. }));
     }
