@@ -3232,7 +3232,7 @@ dependencies = [
 
 [[package]]
 name = "sens-app"
-version = "0.1.0"
+version = "0.10.0"
 dependencies = [
  "base64 0.22.1",
  "flate2",
