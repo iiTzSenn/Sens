@@ -68,6 +68,8 @@ fewer colors, less copy, and clearer hierarchy.
 | signal-700 | `#78AA12` | 120, 170, 18 | Signal text on very light surfaces |
 | signal-200 | `#E4FFA5` | 228, 255, 165 | Soft signal highlight |
 | signal-100 | `#F0FFD0` | 240, 255, 208 | Light signal wash |
+| signal-tint-900 | `#1A1F16` | 26, 31, 22 | Featured dark surface: Carbon with a trace of Signal |
+| signal-tint-700 | `#353E2A` | 53, 62, 42 | Edge of the featured dark surface |
 
 The brand should be approximately 85% neutral, 10% typography/data tones, and at
 most 5% Signal. Signal is scarce by design.
@@ -92,6 +94,20 @@ Never use Signal:
 - for warnings or neutral information.
 
 If everything is Signal, nothing is Signal.
+
+### 3.2.1 Signal tint
+
+The tint tokens are Carbon carrying roughly 5% of Signal. They are not Signal
+and carry none of its meanings; they mark the one surface on a screen that
+summarizes the state of what the user is looking at.
+
+- Use `signal-tint-900` as the background and `signal-tint-700` as the 1 px
+  edge of a single featured surface per screen.
+- Never use the tint for page backgrounds, whole panels, rows, buttons, or
+  more than one surface at a time.
+- Text on the tint follows the dark theme text tokens; Signal on top of the
+  tint keeps its usual restrictions.
+- The tint is dark-theme only. The light theme uses signal-100 for the same role.
 
 ### 3.3 Functional colors
 
@@ -312,6 +328,7 @@ Sens uses an 8 px spacing system with 4 px optical adjustments.
 
 Preferred radii:
 
+- keycaps (shortcut hints such as `Ctrl` `N`) and inline code chips: 4 px;
 - controls and small cards: 8 px;
 - primary panels: 12 px;
 - modal/sheet: 16 px;
@@ -450,6 +467,8 @@ retype these values by hand.
   --sens-signal-500: #c7ff4a;
   --sens-signal-200: #e4ffa5;
   --sens-signal-100: #f0ffd0;
+  --sens-signal-tint-900: #1a1f16;
+  --sens-signal-tint-700: #353e2a;
   --sens-success: #43c878;
   --sens-warning: #e7b84b;
   --sens-danger: #e7655f;

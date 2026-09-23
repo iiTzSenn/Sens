@@ -16,6 +16,8 @@ export const palette = {
   "signal-500": "#c7ff4a",
   "signal-200": "#e4ffa5",
   "signal-100": "#f0ffd0",
+  "signal-tint-900": "#1a1f16",
+  "signal-tint-700": "#353e2a",
   success: "#43c878",
   warning: "#e7b84b",
   danger: "#e7655f",
