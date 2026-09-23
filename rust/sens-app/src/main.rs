@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod artifacts;
+mod capabilities;
 mod git;
 mod profile;
 mod projects;
@@ -239,6 +240,51 @@ fn save_profile(app: AppHandle, name: String) -> Result<(), String> {
     profile::save(&data_dir(&app)?, &profile::Profile { name })
 }
 
+#[tauri::command(async)]
+fn capabilities(app: AppHandle, root: String) -> Result<capabilities::Capabilities, String> {
+    Ok(capabilities::all(&data_dir(&app)?, &root))
+}
+
+#[tauri::command]
+fn skill_text(app: AppHandle, name: String) -> Result<String, String> {
+    capabilities::skill_text(&data_dir(&app)?, &name)
+}
+
+#[tauri::command]
+fn create_skill(app: AppHandle, root: String, name: String, description: String, body: String) -> Result<(), String> {
+    capabilities::create_skill(&data_dir(&app)?, &root, &name, &description, &body)
+}
+
+#[tauri::command(async)]
+fn import_skill(app: AppHandle, root: String, path: String) -> Result<String, String> {
+    capabilities::import_skill(&data_dir(&app)?, &root, Path::new(&path))
+}
+
+#[tauri::command]
+fn remove_skill(app: AppHandle, name: String) -> Result<(), String> {
+    capabilities::remove_skill(&data_dir(&app)?, &name)
+}
+
+#[tauri::command]
+fn set_skill(app: AppHandle, root: String, name: String, enabled: bool) -> Result<(), String> {
+    capabilities::set_skill(&data_dir(&app)?, &root, &name, enabled)
+}
+
+#[tauri::command]
+fn add_server(app: AppHandle, root: String, server: capabilities::NewServer) -> Result<(), String> {
+    capabilities::add_server(&data_dir(&app)?, &root, &server)
+}
+
+#[tauri::command]
+fn remove_server(app: AppHandle, name: String) -> Result<(), String> {
+    capabilities::remove_server(&data_dir(&app)?, &name)
+}
+
+#[tauri::command]
+fn set_server(app: AppHandle, root: String, name: String, enabled: bool) -> Result<(), String> {
+    capabilities::set_server(&data_dir(&app)?, &root, &name, enabled)
+}
+
 fn clip(text: &str, cap: usize) -> (&str, bool) {
     if text.len() <= cap {
         return (text, false);
@@ -362,7 +408,16 @@ fn main() {
             artifacts,
             artifact_data,
             artifact_text,
-            open_external
+            open_external,
+            capabilities,
+            skill_text,
+            create_skill,
+            import_skill,
+            remove_skill,
+            set_skill,
+            add_server,
+            remove_server,
+            set_server
         ])
         .run(tauri::generate_context!())
         .expect("sens app");
