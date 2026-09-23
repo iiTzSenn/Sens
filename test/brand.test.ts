@@ -89,6 +89,7 @@ describe("the desktop shell", () => {
 
   it("sizes every corner from the radius scale", () => {
     const allowed = new Set([
+      "var(--r-key)",
       "var(--r-control)",
       "var(--r-card)",
       "var(--r-sheet)",
