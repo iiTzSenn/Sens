@@ -16,6 +16,7 @@ import { startUpdates, updates } from "../features/updates/store";
 import { API_KEY_SOURCE, PLANS, keyed } from "../shared/account";
 import { MARKDOWN, PAGE, TEXTUAL, compact, parentOf, seconds, stem, weigh, whole } from "../shared/format.js";
 import { ICONS } from "../shared/icons.js";
+import { fileIcon } from "../shared/fileIcons";
 import { sheets } from "../shared/sheets.js";
 import { store, stored } from "../shared/storage.js";
 import { legacy } from "./bridge";
@@ -1352,53 +1353,14 @@ async function foundRows(needle) {
   return found.map((entry) => fileRow(entry, 0, true));
 }
 
-const FILE_KINDS = new Map(
-  Object.entries({
-    fileJson: "json jsonc json5",
-    fileTerminal: "sh bash zsh fish ps1 psm1 psd1 bat cmd",
-    fileCog: "toml yaml yml ini cfg conf properties editorconfig gitignore gitattributes npmrc nvmrc prettierrc eslintrc",
-    fileText: "md markdown mdx txt log rst adoc pdf doc docx odt rtf",
-    fileImage: "png jpg jpeg gif webp avif svg ico bmp tif tiff heic psd",
-    fileVideo: "mp4 webm mov mkv avi m4v",
-    fileMusic: "mp3 wav ogg flac m4a aac opus mid midi",
-    fileArchive: "zip tar gz tgz rar 7z xz bz2 zst",
-    fileSheet: "csv tsv xls xlsx ods",
-    fileLock: "lock lockb",
-    fileKey: "pem key crt cer der pfx p12 pub asc gpg env",
-    fileDiff: "diff patch",
-    fileType: "ttf otf woff woff2 eot",
-    fileBox: "exe dll so dylib wasm jar war deb rpm msi dmg apk nupkg whl bin",
-    database: "db sqlite sqlite3 mdb",
-  }).flatMap(([kind, extensions]) => extensions.split(" ").map((extension) => [extension, kind])),
-);
-
-const NAMED_FILES = {
-  dockerfile: "fileBox",
-  makefile: "fileTerminal",
-  justfile: "fileTerminal",
-  procfile: "fileTerminal",
-  license: "fileText",
-  licence: "fileText",
-  "package-lock.json": "fileLock",
-  "pnpm-lock.yaml": "fileLock",
-};
-
-function glyphOf(name) {
-  const lower = name.toLowerCase();
-  const extension = lower.includes(".") ? lower.slice(lower.lastIndexOf(".") + 1) : "";
-  const tongue = TONGUES[extension] || TONGUES[lower] || "";
-  const kind =
-    NAMED_FILES[lower] ||
-    (/^\.env(\.|$)/.test(lower) ? "fileKey" : FILE_KINDS.get(extension)) ||
-    (tongue || TEXTUAL.test(lower) || PAGE.test(lower) ? "fileCode" : "file");
-  return { icon: ICONS[kind], tongue };
-}
-
+// A file's type icon, in its own colours (identity.md §6.5).
 function fileGlyph(name) {
-  const { icon: drawn, tongue } = glyphOf(name);
   const glyph = el("span", "glyph");
-  glyph.innerHTML = drawn;
-  if (tongue) glyph.dataset.tongue = tongue;
+  const img = el("img");
+  img.src = fileIcon(name);
+  img.alt = "";
+  img.draggable = false;
+  glyph.append(img);
   return glyph;
 }
 
@@ -3834,7 +3796,6 @@ Object.assign(legacy, {
   session: () => current,
   panelShows,
   openTouched,
-  glyphOf,
   diffView: (hunks, preview) => patchView(hunks, preview).node,
   addedView(text, preview) {
     const rows = addedRows(text);

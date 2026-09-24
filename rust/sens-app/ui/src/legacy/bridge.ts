@@ -28,9 +28,7 @@ export const legacy = {
   panelShows: (_tool: string): boolean => false,
   // Opens a file of the project in the file panel, with the agent's edits marked.
   openTouched: (_path: string): void => {},
-  // The chat's renderers: a file's icon and colour, a diff, a new file's lines,
-  // folded text.
-  glyphOf: (_name: string) => ({ icon: "", tongue: "" }),
+  // The chat's renderers: a diff, a new file's lines, folded text.
   diffView: (_hunks: unknown[], _preview: number): Node => document.createElement("div"),
   addedView: (_text: string, _preview: number) => ({ node: document.createElement("div") as Node, lines: 0 }),
   folded: (_text: string): Node => document.createElement("div"),

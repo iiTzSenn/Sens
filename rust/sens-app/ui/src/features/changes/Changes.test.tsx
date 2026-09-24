@@ -2,7 +2,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { legacy } from "../../legacy/bridge";
-import { ICONS } from "../../shared/icons.js";
 import { project } from "../project/store";
 import { forgetTasks, noteTask, settleTasks } from "../tasks/store";
 import { TasksPanel } from "../tasks/TasksPanel";
@@ -35,7 +34,6 @@ beforeEach(() => {
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.changes.mockResolvedValue({ diff: DIFF, fresh: ["notes.md"] });
   ipc.commands.openFile.mockResolvedValue("a\nb\nc");
-  legacy.glyphOf = () => ({ icon: ICONS.file, tongue: "amber" });
   legacy.diffView = vi.fn(() => Object.assign(document.createElement("div"), { className: "diff", textContent: "diff" }));
   legacy.addedView = vi.fn((text: string) => ({ node: document.createElement("div"), lines: text.split("\n").length }));
   legacy.openTouched = vi.fn();

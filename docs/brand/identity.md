@@ -322,6 +322,26 @@ Do not:
 - give one concept different icons across the CLI, the app, and the docs;
 - draw an exclusive icon before a screen needs it, or for a meaning Lucide already carries.
 
+### 6.5 File type icons
+
+One exception to 6.1 and 6.2: a file shows the icon of its type — the Python
+snake on `main.py`, the Markdown mark on `README.md`, npm on `package.json` —
+in that icon's own colors. A file type is recognized faster by its logo than
+by a generic page with a tint, and a code editor is expected to show them.
+
+- They come from Material Icon Theme (MIT), the set VS Code users already
+  know, matched by whole file name first and then by the longest extension.
+  Anything unknown gets the theme's plain file.
+- They identify files and nothing else: the file tree, search results, the
+  changes panel. Actions, states and navigation stay Lucide, including acting
+  on a file ("Leer", "Editar"): the icon there is the action, not the type.
+- They are not edited, recolored or mixed with Lucide in one glyph. Folders
+  keep their Lucide chevrons.
+- The table is generated from the installed package with
+  `npm run icons -w sens-app-ui`; the build copies only the icons it names,
+  with the theme's license. Upgrade the package, then regenerate.
+- 16 px in lists, the minimum size of 6.3.
+
 ## 7. Layout and components
 
 Sens uses an 8 px spacing system with 4 px optical adjustments.
@@ -508,7 +528,7 @@ When creating or modifying any Sens visual asset or interface:
 8. Remove decorative elements that do not explain state, structure, or action.
 9. Preserve the S-cut symbol's silhouette and negative space. Never reinterpret it as a generic network, spark, bot, eye, or lightning bolt.
 10. Use Geist Sans for product language and Geist Mono only for code/data.
-11. Take icons from Lucide, as SVG, with an explicit 1.5 px stroke below 24 px. Draw an exclusive one only when a screen needs a meaning Lucide does not carry.
+11. Take icons from Lucide, as SVG, with an explicit 1.5 px stroke below 24 px. Draw an exclusive one only when a screen needs a meaning Lucide does not carry. File type icons are the one exception (6.5).
 12. Write concise factual copy in sentence case.
 13. Check light and dark variants, keyboard focus, reduced motion, and text contrast.
 14. At the end, explain any deliberate exception to this guide. If there is no exception, say: Sens identity tokens preserved.

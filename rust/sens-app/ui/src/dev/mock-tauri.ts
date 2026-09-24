@@ -86,8 +86,28 @@ const DIFF = [
   "rename to new.txt",
 ].join("\n");
 
+// A project with a bit of everything, to see the file icons.
+const FOLDERS: Record<string, string[]> = {
+  "": ["src/", "docs/", ".gitignore", "Dockerfile", "package.json", "README.md", "main.py", "Cargo.toml", "datos.csv", "logo.png", "notas.xyz"],
+  src: ["components/", "app.tsx", "index.ts", "types.d.ts", "lib.rs", "styles.css", "query.sql", "build.ps1"],
+  "src/components": ["Button.tsx", "Button.test.tsx"],
+  docs: ["guia.md", "api.yaml", "config.toml"],
+};
+
+const entries = (path: string) =>
+  (FOLDERS[path] ?? []).map((name) => {
+    const dir = name.endsWith("/");
+    const bare = dir ? name.slice(0, -1) : name;
+    return { name: bare, path: path ? `${path}/${bare}` : bare, dir, ignored: bare === "logo.png" };
+  });
+
 const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   last_project: () => ROOT,
+  folder: ({ path }) => entries(String(path ?? "")),
+  find_files: ({ needle }) =>
+    Object.keys(FOLDERS)
+      .flatMap(entries)
+      .filter((entry) => !entry.dir && entry.name.toLowerCase().includes(String(needle).toLowerCase())),
   changes: () => ({ diff: DIFF, fresh: ["notas/idea.md"] }),
   open_file: ({ path }) => `# ${path}\n\nUna idea.\nOtra línea.`,
   task_output: () => "compilando…\nlisto en 3 s",
@@ -102,7 +122,6 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   preview_url: ({ path }) => `http://127.0.0.1:4321/demo/${String(path).split("/").pop()}`,
   artifact_text: ({ path }) => `# ${String(path).split("/").pop()}\n\nTexto de prueba.`,
   tree: () => [],
-  folder: () => [],
   capabilities: () => structuredClone(caps),
   set_skill: setCapability("skills"),
   set_server: setCapability("servers"),

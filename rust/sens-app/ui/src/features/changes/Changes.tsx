@@ -6,6 +6,7 @@ import { commands } from "../../ipc/commands";
 import { legacy } from "../../legacy/bridge";
 import { PICTURE, parentOf, plural, stem } from "../../shared/format.js";
 import { Borrowed } from "../../shared/Borrowed";
+import { FileIcon } from "../../shared/FileIcon";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { project } from "../project/store";
@@ -81,7 +82,6 @@ function ChangeRow({ file }: { file: DiffFile }) {
   const touched = useStore(changes, (s) => s.touched.has(file.path));
   const [counted, setCounted] = useState<number | null>(null);
   const plus = file.fresh ? (counted ?? file.plus) : file.plus;
-  const { icon, tongue } = legacy.glyphOf(file.path);
 
   return (
     <details
@@ -97,9 +97,7 @@ function ChangeRow({ file }: { file: DiffFile }) {
         <span className="state" data-state={file.state} title={CHANGE_WORD[file.state] || file.state}>
           {file.state}
         </span>
-        <span className="glyph" data-tongue={tongue || undefined}>
-          <Icon svg={icon} />
-        </span>
+        <FileIcon path={file.path} />
         <span className="name">{stem(file.path)}</span>
         <span className="dirname">{parentOf(file.path)}</span>
         <Counts file={file} plus={plus} />

@@ -24,6 +24,10 @@ same UI to any browser with a simulated Tauri (`ui/src/dev/mock-tauri.ts`):
 no Rust toolchain needed, and commands without a fixture there resolve to
 `null` and are logged in the console.
 
+File type icons come from Material Icon Theme (docs/brand/identity.md §6.5).
+After upgrading `material-icon-theme`, run `npm run icons -w sens-app-ui` to
+regenerate the table of which icon each file gets; a test fails until you do.
+
 ## Signing it
 
 `--unsigned` is there so you can build one on purpose. Without it the script

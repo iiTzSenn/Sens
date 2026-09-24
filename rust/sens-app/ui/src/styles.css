@@ -1234,10 +1234,9 @@
     content: ''; position: absolute; left: 0; top: 7px; bottom: 7px;
     width: 2px; border-radius: 1px; background: var(--focus);
   }
-  .filerow .glyph, .change .glyph { display: grid; place-items: center; width: 14px; flex: none; color: var(--tongue, var(--ghost)); }
-  .change .glyph svg { width: 14px; height: 14px; }
+  .filerow .glyph, .change .glyph { display: grid; place-items: center; width: 16px; flex: none; }
+  .filerow .glyph img, .change .glyph img { display: block; width: 16px; height: 16px; }
   .filerow[data-ignored="true"] .glyph { opacity: .55; }
-  .filerow .glyph svg { width: 14px; height: 14px; }
   .filerow .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .filerow .dirname {
     min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
