@@ -438,8 +438,9 @@ fn update_install(app: AppHandle) -> Result<(), String> {
     update::install(&data_dir(&app)?, |version, stage| {
         let _ = app.emit("update", Updating { version, stage });
     })?;
-    app.exit(0);
-    Ok(())
+    app.state::<Arc<Engine>>().shutdown();
+    app.cleanup_before_exit();
+    std::process::exit(0)
 }
 
 #[tauri::command(async)]
