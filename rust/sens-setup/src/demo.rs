@@ -9,7 +9,7 @@ use crate::system;
 pub const SIZE: u64 = 7_329_792;
 const TICKS: u32 = 24;
 
-pub fn install(dir: &Path, start_menu: bool, desktop: bool, cancel: &AtomicBool, report: Report) -> Result<(), String> {
+pub fn install(dir: &Path, start_menu: bool, desktop: bool, look: bool, cancel: &AtomicBool, report: Report) -> Result<(), String> {
     let started = Instant::now();
     report(Step::Check, 0.02, &progress::space(system::free_space(dir)));
     pause(cancel, 300)?;
@@ -24,6 +24,10 @@ pub fn install(dir: &Path, start_menu: bool, desktop: bool, cancel: &AtomicBool,
     rest(200);
     report(Step::Register, 0.9, progress::REGISTERING);
     rest(250);
+    if look {
+        report(Step::Register, 0.92, progress::LOOK);
+        rest(150);
+    }
     for (asked, line, share) in [(start_menu, progress::START_MENU, 0.94), (desktop, progress::DESKTOP, 0.97)] {
         if asked {
             report(Step::Shortcuts, share, line);

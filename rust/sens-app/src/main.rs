@@ -7,6 +7,7 @@ mod claude_code;
 mod files;
 mod icon;
 mod git;
+mod look;
 mod market;
 mod preview;
 mod profile;
@@ -30,7 +31,7 @@ use sens_agent::chat::{self, Decision, Engine, Event, Message, Settings, Sink};
 use sens_agent::session;
 use sens_agent::title;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
+use tauri::{App, AppHandle, Emitter, Manager, RunEvent, State, Theme, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command]
@@ -398,6 +399,33 @@ fn set_welcomed(app: AppHandle, on: bool) -> Result<(), String> {
     profile::set_welcomed(&data_dir(&app)?, on)
 }
 
+#[tauri::command]
+fn look(app: AppHandle) -> Result<look::Look, String> {
+    Ok(look::load(&data_dir(&app)?))
+}
+
+#[tauri::command]
+fn set_look(app: AppHandle, look: look::Look) -> Result<(), String> {
+    look::save(&data_dir(&app)?, look)
+}
+
+fn open_window(app: &App) -> tauri::Result<()> {
+    let Some(config) = app.config().app.windows.first().cloned() else {
+        return Ok(());
+    };
+    let look = data_dir(app.handle()).map(|base| look::load(&base)).unwrap_or_default();
+    let theme = look.theme();
+    let window = WebviewWindowBuilder::from_config(app.handle(), &config)?
+        .theme(theme)
+        .background_color(look::ground(theme.unwrap_or(Theme::Dark)))
+        .initialization_script(look.script())
+        .build()?;
+    if theme.is_none() {
+        window.set_background_color(Some(look::ground(window.theme()?)))?;
+    }
+    Ok(())
+}
+
 #[tauri::command(async)]
 fn welcome_scan(app: AppHandle) -> Result<welcome::Found, String> {
     Ok(welcome::scan(&data_dir(&app)?, &welcome::Places::current()?))
@@ -540,6 +568,7 @@ fn main() {
         .manage(Arc::new(Engine::default()))
         .manage(preview::Site::default())
         .setup(|app| {
+            open_window(app)?;
             icon::sharpen(app);
             if let Ok(base) = data_dir(app.handle()) {
                 share_environment(&base);
@@ -593,6 +622,8 @@ fn main() {
             save_profile,
             set_update_check,
             set_welcomed,
+            look,
+            set_look,
             welcome_scan,
             welcome_adopt,
             welcome_servers,

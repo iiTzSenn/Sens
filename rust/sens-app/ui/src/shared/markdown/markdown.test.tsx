@@ -49,7 +49,7 @@ describe("markdown", () => {
     });
     const code = page.querySelector(".codeblock code")!;
     expect(code.textContent).toBe("const a = 'x';\nlet b;");
-    expect([...code.querySelectorAll("span")].find((span) => span.textContent === "const")?.style.color).toBe("rgb(86, 156, 214)");
+    expect([...code.querySelectorAll("span")].find((span) => span.textContent === "const")?.style.color).toBe("light-dark(rgb(0, 0, 255), rgb(86, 156, 214))");
   });
 
   it("mends a text cut while it arrives", () => {

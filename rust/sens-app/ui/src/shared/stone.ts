@@ -1,7 +1,10 @@
 export type StoneState = "idle" | "scan" | "focus" | "done" | "rest";
 
+export type Rgb = [number, number, number];
+
 export interface Stone {
   set(state: StoneState): void;
+  tint(signal: Rgb, hot: Rgb, light: boolean): void;
   destroy(): void;
 }
 
@@ -20,10 +23,11 @@ uniform float scanning;
 uniform float reveal;
 uniform float flash;
 uniform float seed;
+uniform vec3 SIGNAL;
+uniform vec3 HOT;
+uniform float ground;
 
 const float PI = 3.14159265;
-const vec3 SIGNAL = vec3(0.571, 1.0, 0.069);
-const vec3 HOT = vec3(0.86, 1.0, 0.62);
 const float BEND = 0.2;
 const float GAP = 0.018;
 const float LIP = 0.05;
@@ -216,7 +220,7 @@ void main() {
   shade *= edge;
   vec3 bloom = SIGNAL * halo * (0.8 + 0.2 * HOT) * edge;
   vec3 addition = pow(max(floorGlow + bloom, 0.0), vec3(1.0 / 2.2)) * 0.9;
-  vec3 result = colour * cover + addition * (1.0 - cover * 0.6);
+  vec3 result = colour * cover + addition * mix(1.0 - cover * 0.6, cover * 0.4, ground);
   float alpha = cover + (1.0 - cover) * clamp(shade, 0.0, 0.85);
   gl_FragColor = vec4(result + dither / 255.0, alpha);
 }
@@ -229,6 +233,9 @@ const DONE = 560;
 const SLOW = 40;
 const PIXELS = 1_400_000;
 const IDLE_FPS = 20;
+
+const FIRST_SIGNAL: Rgb = [0.571, 1.0, 0.069];
+const FIRST_HOT: Rgb = [0.86, 1.0, 0.62];
 
 const reduced = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
@@ -279,8 +286,14 @@ export function mountStone(canvas: HTMLCanvasElement, first: StoneState = "idle"
     reveal: uniform("reveal"),
     flash: uniform("flash"),
     seed: uniform("seed"),
+    signal: uniform("SIGNAL"),
+    hot: uniform("HOT"),
+    ground: uniform("ground"),
   };
 
+  let signal = FIRST_SIGNAL;
+  let hot = FIRST_HOT;
+  let onLight = false;
   let state = first;
   let since = performance.now();
   let frame = 0;
@@ -334,6 +347,9 @@ export function mountStone(canvas: HTMLCanvasElement, first: StoneState = "idle"
     gl.uniform1f(at.reveal, v.reveal);
     gl.uniform1f(at.flash, v.flash);
     gl.uniform1f(at.seed, (drawn % 64) + 0.5);
+    gl.uniform3fv(at.signal, signal);
+    gl.uniform3fv(at.hot, hot);
+    gl.uniform1f(at.ground, onLight ? 1 : 0);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     const started = performance.now();
@@ -386,6 +402,13 @@ export function mountStone(canvas: HTMLCanvasElement, first: StoneState = "idle"
       if (next === state && next !== "done" && next !== "focus") return;
       state = next;
       since = performance.now();
+      wake();
+    },
+    tint(nextSignal, nextHot, nextLight) {
+      signal = nextSignal;
+      hot = nextHot;
+      onLight = nextLight;
+      if (!gone) paint(performance.now());
       wake();
     },
     destroy() {

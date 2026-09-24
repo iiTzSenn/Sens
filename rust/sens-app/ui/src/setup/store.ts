@@ -1,8 +1,9 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { createStore } from "zustand/vanilla";
+import { FIRST_LOOK, lookOf, showLook, type Look } from "../shared/look";
 import { heard, setup, type Place, type Progress, type SetupState, type Step } from "./ipc";
 
-export type Screen = "welcome" | "custom" | "busy" | "running" | "done" | "error";
+export type Screen = "welcome" | "custom" | "look" | "busy" | "running" | "done" | "error";
 
 const STEP_AT_LEAST = 280;
 const FORCE_AFTER = 10_000;
@@ -22,6 +23,8 @@ export const STEPS: Record<Step, string> = {
 export const installer = createStore(() => ({
   info: null as SetupState | null,
   screen: "welcome" as Screen,
+  before: "welcome" as Screen,
+  look: FIRST_LOOK,
   dir: "",
   desktop: true,
   startMenu: true,
@@ -49,6 +52,7 @@ let forceTimer = 0;
 
 export const uninstalling = () => info().mode === "uninstall";
 export const unattended = () => info().mode === "update" || info().passive;
+export const choosing = () => info().mode === "install" && !info().installed && !unattended();
 
 export function compare(a: string, b: string) {
   const parts = (version: string) => version.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -100,7 +104,9 @@ export async function boot() {
     });
     await heard.running(running);
     const state = await setup.state();
-    set({ info: state, dir: state.dir, desktop: state.installed ? state.desktop : true });
+    const look = lookOf(state.look ?? FIRST_LOOK);
+    set({ info: state, dir: state.dir, desktop: state.installed ? state.desktop : true, look });
+    showLook(look);
   } catch (reason) {
     set({ screen: "error", fault: String(reason) });
     return;
@@ -125,6 +131,15 @@ export function customize() {
 
 export const back = () => set({ screen: "welcome" });
 
+export const toLook = () => set(({ screen }) => ({ screen: "look", before: screen }));
+
+export const leaveLook = () => set(({ before }) => ({ screen: before }));
+
+export function chooseLook(look: Look) {
+  set({ look });
+  showLook(look);
+}
+
 export async function pickDir() {
   const picked = await open({ directory: true, title: "Elige dónde instalar Sens", defaultPath: installer.getState().dir });
   if (typeof picked !== "string") return;
@@ -134,13 +149,13 @@ export async function pickDir() {
 }
 
 export async function run() {
-  const { working, dir, desktop, startMenu, removeData } = installer.getState();
+  const { working, dir, desktop, startMenu, removeData, look } = installer.getState();
   if (working) return;
   queue.length = 0;
   set({ working: true, cancelling: false, progress: 0, lines: [], status: STEPS.check, screen: "busy" });
   try {
     if (uninstalling()) await setup.uninstall(removeData);
-    else await setup.install({ dir, desktop, startMenu });
+    else await setup.install({ dir, desktop, startMenu, look: choosing() ? look : null });
     await settled();
     await finish();
   } catch (reason) {

@@ -5,7 +5,9 @@ import { Capabilities } from "../features/capabilities/Capabilities";
 import { Panes } from "../features/panes/Panes";
 import { project } from "../features/project/store";
 import { Rail } from "../features/rail/Rail";
-import { Settings } from "../features/settings/Settings";
+import { SettingsDialog } from "../features/settings/Settings";
+import { settingsSheet } from "../features/settings/sheet";
+import { openSettings } from "../features/settings/store";
 import { Welcome } from "../features/welcome/Welcome";
 import { sheets } from "../shared/sheets.js";
 import { Dialog } from "./Dialog";
@@ -17,7 +19,7 @@ import { ToolsPanel } from "./ToolsPanel";
 import { Topbar } from "./Topbar";
 
 // Ctrl and a letter, unless a dialog is open.
-const HOTKEYS: Record<string, () => unknown> = { n: fresh, o: chooseFolder, b: toggleRail };
+const HOTKEYS: Record<string, () => unknown> = { n: fresh, o: chooseFolder, b: toggleRail, ",": () => openSettings() };
 
 // The whole window: the title bar; the rail, the chat or a view over it, and
 // the tool panel, with the splitters between them; and the dialog.
@@ -52,7 +54,7 @@ export function App() {
       const act = event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && HOTKEYS[event.key.toLowerCase()];
       if (!act) return;
       event.preventDefault();
-      if (!dialog.getState().open) act();
+      if (!dialog.getState().open && !settingsSheet.getState().open) act();
     };
     document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", keys);
@@ -93,23 +95,11 @@ export function App() {
               <Capabilities />
             </div>
           </section>
-          <section className="view" id="settings-view" aria-label="Ajustes" hidden={view !== "settings"}>
-            <div className="view-inner">
-              <header className="view-top">
-                <div>
-                  <h1 className="label">Ajustes</h1>
-                  <p>Tu perfil y los proveedores con los que trabaja Sens.</p>
-                </div>
-              </header>
-              <div className="settings-body" id="settings-body">
-                <Settings />
-              </div>
-            </div>
-          </section>
           <Splitter id="panel-split" label="Ancho del panel de herramientas" name="--tools-width" host={body} pane={code} grow={-1} />
           <ToolsPanel pane={code} />
         </div>
       </div>
+      <SettingsDialog />
       <Dialog />
       <Welcome />
     </>

@@ -7,6 +7,7 @@ import { PAGE } from "../../shared/format.js";
 import { sheets } from "../../shared/sheets.js";
 import { warn as notice } from "../chat/state";
 import { project } from "../project/store";
+import { settingsSheet } from "../settings/sheet";
 
 export interface Said {
   level: string;
@@ -142,7 +143,7 @@ function spotOf(): [Frame, number] {
 const overlaps = (one: DOMRect, two: DOMRect) => one.left < two.right && one.right > two.left && one.top < two.bottom && one.bottom > two.top;
 
 function covered() {
-  if (dialog.getState().open) return true;
+  if (dialog.getState().open || settingsSheet.getState().open) return true;
   const box = frame?.getBoundingClientRect();
   return Boolean(box) && sheets.some(({ sheet }) => sheet && !sheet.hidden && overlaps(sheet.getBoundingClientRect(), box!));
 }
@@ -193,6 +194,7 @@ export function forgetSite() {
 // The panel opening or closing, the dialog over it: the page follows.
 shell.subscribe(syncBrowser);
 dialog.subscribe(syncBrowser);
+settingsSheet.subscribe(syncBrowser);
 
 // Once, when the panel is mounted: the page tells where it went and what its
 // console said.

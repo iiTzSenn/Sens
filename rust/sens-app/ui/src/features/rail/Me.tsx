@@ -1,10 +1,10 @@
 import { useStore } from "zustand";
-import { showView } from "../../app/session";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { openPanel } from "../../shared/Panel";
 import { useSheet } from "../../shared/useSheet";
 import { profile } from "../profile/store";
+import { openSettings } from "../settings/store";
 import { updates } from "../updates/store";
 
 const SHORTCUTS = [
@@ -14,6 +14,7 @@ const SHORTCUTS = [
   ["Ctrl+B", "Mostrar u ocultar la barra lateral"],
   ["Ctrl+N", "Sesión nueva"],
   ["Ctrl+O", "Abrir carpeta"],
+  ["Ctrl+,", "Ajustes"],
   ["Esc", "Cerrar"],
 ];
 
@@ -45,7 +46,7 @@ export function Me() {
         </p>
       )}
       <div className="sheet menu" id="menu" role="menu" aria-label="Perfil" {...menu.sheet}>
-        <button className="menu-item" role="menuitem" tabIndex={-1} onClick={pick(() => showView("settings"))}>
+        <button className="menu-item" role="menuitem" tabIndex={-1} onClick={pick((back) => openSettings(undefined, back))}>
           <Icon svg={ICONS.gear} />
           <span>Ajustes</span>
         </button>

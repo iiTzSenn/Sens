@@ -2,6 +2,7 @@ import { createHighlighterCore, type HighlighterCore } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { bundledLanguages } from "shiki/langs";
 import darkPlus from "shiki/themes/dark-plus.mjs";
+import lightPlus from "shiki/themes/light-plus.mjs";
 
 // How a stretch of code looks: a React style and a DOM style alike.
 export interface Look {
@@ -18,7 +19,7 @@ export interface Painted {
   lines: [string, number][][];
 }
 
-const THEME = "dark-plus";
+const THEMES = { light: "light-plus", dark: "dark-plus" };
 // VS Code leaves longer lines uncolored too (editor.maxTokenizationLineLength).
 const LONGEST_LINE = 20_000;
 const ITALIC = 1;
@@ -33,7 +34,7 @@ let shiki: Promise<HighlighterCore> | null = null;
 const loading = new Map<string, Promise<void>>();
 
 const highlighter = () =>
-  (shiki ??= createHighlighterCore({ themes: [darkPlus], langs: [], engine: createJavaScriptRegexEngine({ forgiving: true }) }));
+  (shiki ??= createHighlighterCore({ themes: [darkPlus, lightPlus], langs: [], engine: createJavaScriptRegexEngine({ forgiving: true }) }));
 
 async function grammar(language: string) {
   const load = bundledLanguages[language as keyof typeof bundledLanguages];
@@ -47,18 +48,19 @@ async function grammar(language: string) {
 export async function tokenize(text: string, language: string): Promise<Painted | null> {
   const ready = await grammar(language);
   if (!ready) return null;
-  const plain = ready.getTheme(THEME).fg.toLowerCase();
-  const tokens = ready.codeToTokensBase(text, { lang: language, theme: THEME, tokenizeMaxLineLength: LONGEST_LINE });
+  const plain = { light: ready.getTheme(THEMES.light).fg.toLowerCase(), dark: ready.getTheme(THEMES.dark).fg.toLowerCase() };
+  const tokens = ready.codeToTokensWithThemes(text, { lang: language, themes: THEMES, tokenizeMaxLineLength: LONGEST_LINE });
 
   const looks: Look[] = [];
   const known = new Map<string, number>();
-  const lookOf = (color = plain, style = 0) => {
+  const lookOf = (light = plain.light, dark = plain.dark, style = 0) => {
     const flags = Math.max(style, 0);
-    const key = `${color.toLowerCase()}/${flags}`;
-    if (key === `${plain}/0`) return -1;
+    const pair = { light: light.toLowerCase(), dark: dark.toLowerCase() };
+    const key = `${pair.light}/${pair.dark}/${flags}`;
+    if (key === `${plain.light}/${plain.dark}/0`) return -1;
     if (!known.has(key)) {
       known.set(key, looks.length);
-      looks.push(lookFor(color, flags));
+      looks.push(lookFor(pair, flags));
     }
     return known.get(key)!;
   };
@@ -67,7 +69,8 @@ export async function tokenize(text: string, language: string): Promise<Painted 
   const lines = tokens.map((line) => {
     const runs: [string, number][] = [];
     for (const token of line) {
-      const look = lookOf(token.color, token.fontStyle);
+      const { light, dark } = token.variants;
+      const look = lookOf(light?.color, dark?.color, dark?.fontStyle ?? light?.fontStyle);
       const last = runs.at(-1);
       if (last && last[1] === look) last[0] += token.content;
       else runs.push([token.content, look]);
@@ -77,8 +80,8 @@ export async function tokenize(text: string, language: string): Promise<Painted 
   return { looks, lines };
 }
 
-function lookFor(color: string, flags: number): Look {
-  const look: Look = { color };
+function lookFor({ light, dark }: { light: string; dark: string }, flags: number): Look {
+  const look: Look = { color: `light-dark(${light}, ${dark})` };
   if (flags & ITALIC) look.fontStyle = "italic";
   if (flags & BOLD) look.fontWeight = "bold";
   if (flags & UNDERLINE) look.textDecoration = "underline";

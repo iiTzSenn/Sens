@@ -3,11 +3,12 @@ import { commands, events } from "../../ipc/commands";
 import type { ClaudeCodeProgress, Method, ProviderState } from "../../ipc/types";
 import { checkClaudeCode, readAccount, refreshModels } from "../models/store";
 import { store, stored } from "../../shared/storage.js";
+import { settingsSheet } from "./sheet";
 
-export type Section = "general" | "providers";
+export type Section = "general" | "look" | "providers";
 
 const SECTION = "sens.settings.section";
-const SECTIONS: Section[] = ["general", "providers"];
+const SECTIONS: Section[] = ["general", "look", "providers"];
 const kept = stored(SECTION, "");
 
 // `visits` counts every time the view opens, so the pane starts fresh each
@@ -39,6 +40,23 @@ export function showSection(section: Section) {
 export function enterSettings() {
   settings.setState(({ visits }) => ({ visits: visits + 1 }));
   if (settings.getState().section === "providers") loadProviders();
+}
+
+let back: HTMLElement | null = null;
+
+export function openSettings(section?: Section, from?: HTMLElement | null) {
+  back = from ?? (document.activeElement as HTMLElement | null);
+  if (section) showSection(section);
+  settingsSheet.setState({ open: true });
+  enterSettings();
+}
+
+export const closeSettings = () => settingsSheet.setState({ open: false });
+
+export function settingsClosed() {
+  settingsSheet.setState({ open: false });
+  if (back?.isConnected) back.focus();
+  back = null;
 }
 
 export async function loadProviders() {

@@ -8,6 +8,7 @@ import { chooseFolder, draft, dropShown, fresh, openBeside, resume, showView } f
 import { focused } from "../panes/store";
 import { profile } from "../profile/store";
 import { project } from "../project/store";
+import { settingsSheet } from "../settings/sheet";
 import { Rail } from "./Rail";
 import { loadRail, nameSession, noteActivity, oweRail, rail } from "./store";
 
@@ -22,7 +23,7 @@ const ipc = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../ipc/commands", () => ({ commands: ipc.commands }));
+vi.mock("../../ipc/commands", () => ({ commands: ipc.commands, events: { claudeCode: () => Promise.resolve(() => {}) } }));
 vi.mock("../../app/session", () => ({ resume: vi.fn(), draft: vi.fn(async () => {}), dropShown: vi.fn(async () => {}), openBeside: vi.fn(async () => {}), fresh: vi.fn(), chooseFolder: vi.fn(), showView: vi.fn() }));
 
 const SPACES: Workspace[] = [
@@ -234,7 +235,8 @@ describe("the rail", () => {
     expect(me.querySelector(".avatar")?.textContent).toBe("AL");
     fireEvent.click(me);
     fireEvent.click(screen.getByRole("menuitem", { name: "Ajustes" }));
-    expect(showView).toHaveBeenCalledWith("settings");
+    expect(settingsSheet.getState().open).toBe(true);
+    act(() => settingsSheet.setState({ open: false }));
 
     fireEvent.click(me);
     fireEvent.click(screen.getByRole("menuitem", { name: "Atajos de teclado" }));

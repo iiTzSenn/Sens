@@ -13,6 +13,10 @@ import { tickTasks } from "./features/tasks/store";
 import { startUpdates } from "./features/updates/store";
 import { greetIfNew } from "./features/welcome/store";
 import { enterSite, hearBrowser } from "./features/web/store";
+import { followLook, lookOf, showLook } from "./shared/look";
+
+showLook(lookOf(window.__SENS_LOOK__));
+followLook();
 
 // Once: what Rust tells (the chat, the browser, dropped files), what each tool
 // reads as it comes on screen, the window, and then the last project.

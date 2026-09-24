@@ -17,7 +17,7 @@
   transition: background var(--fast) var(--curve), color var(--fast) var(--curve);
 }
 .stage .win button:hover { background: var(--raise); color: var(--text); }
-.stage .win .shut:hover { background: var(--red); color: var(--sens-carbon-950); }
+.stage .win .shut:hover { background: var(--sens-danger); color: var(--sens-carbon-950); }
 
 .stage h1 { margin: 0; font-size: 56px; line-height: 1.02; font-weight: 560; letter-spacing: -.035em; }
 .stage h2 { margin: 0; font-size: 30px; line-height: 1.15; font-weight: 560; letter-spacing: -.02em; }
@@ -29,7 +29,7 @@
 
 .stage .go {
   height: 52px; padding: 0 22px 0 26px; display: inline-flex; align-items: center; gap: 16px;
-  border-radius: var(--r-control); background: var(--sens-signal-500); color: var(--sens-carbon-950);
+  border-radius: var(--r-control); background: var(--accent-fill); color: var(--accent-ink);
   font-size: 17px; font-weight: 600; letter-spacing: -.01em;
   transition: filter var(--fast) var(--curve), transform var(--fast) var(--curve), background var(--fast) var(--curve);
 }
@@ -37,7 +37,7 @@
 .stage .go:hover { filter: brightness(1.06); }
 .stage .go:hover svg { transform: translateX(2px); }
 .stage .go:active { transform: translateY(1px); }
-.stage .go.plain { padding: 0 24px; background: var(--sens-bone-50); }
+.stage .go.plain { padding: 0 24px; background: var(--primary); color: var(--primary-ink); }
 .stage .go.danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
 .stage .go.danger svg { display: none; }
 .stage .go.danger:hover { filter: none; background: var(--card); }
@@ -76,8 +76,8 @@
   transition: background var(--fast) var(--curve), border-color var(--fast) var(--curve);
 }
 .stage .check input:checked, .stage input.box:checked {
-  border-color: var(--sens-bone-50); background: var(--sens-bone-50) center / 12px no-repeat;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230c0d0d' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  border-color: var(--primary); background: var(--primary) center / 12px no-repeat;
+  background-image: var(--check);
 }
 .stage input.box:disabled { opacity: .35; cursor: default; }
 .stage .check:hover span { color: var(--text); }

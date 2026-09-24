@@ -4,11 +4,16 @@
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type { Capabilities, Found } from "../ipc/types";
+import { lookOf } from "../shared/look";
+import { store, stored } from "../shared/storage.js";
 
 const now = Date.now();
 const HOUR = 3_600_000;
 const ROOT = "C:/Proyectos/demo";
 const person = { name: "Demo", checkUpdates: false, welcomed: !new URLSearchParams(location.search).has("welcome") };
+const LOOK = "sens.dev.look";
+const asked = new URLSearchParams(location.search).get("look")?.split(".");
+const kept = asked ? { mode: asked[0], accent: asked[1] } : stored(LOOK, null);
 const DAY = 24 * HOUR;
 
 const found: Found = {
@@ -445,6 +450,8 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   ],
   profile: () => ({ ...person }),
   set_welcomed: ({ on }) => void (person.welcomed = Boolean(on)),
+  look: () => lookOf(stored(LOOK, kept)),
+  set_look: ({ look }) => store(LOOK, look),
   welcome_scan: () => pause(1400).then(() => found),
   welcome_adopt: ({ roots }) => adopt(roots as string[]),
   welcome_servers: ({ ids }) => pause(500).then(() => ({ added: (ids as string[]).map((id) => id.split(":")[1]), skipped: [] })),
@@ -456,6 +463,7 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
 };
 
 if (!("__TAURI_INTERNALS__" in window)) {
+  window.__SENS_LOOK__ = kept;
   mockWindows("main");
   mockIPC(
     (cmd, args) => {

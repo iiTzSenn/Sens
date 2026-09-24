@@ -3,20 +3,26 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStore } from "zustand";
 import { Icon } from "../shared/Icon";
 import { ICONS } from "../shared/icons.js";
+import { ACCENTS } from "../shared/look";
+import { AccentPicker, ModePicker } from "../shared/LookPicker";
 import { StoneCanvas } from "../shared/StoneCanvas";
 import type { StoneState } from "../shared/stone";
 import { setup, type SetupState } from "./ipc";
 import {
   back,
   cancel,
+  chooseLook,
+  choosing,
   closeApp,
   compare,
   customize,
   installer,
+  leaveLook,
   openSens,
   pickDir,
   quit,
   run,
+  toLook,
   toggleDetails,
   unattended,
   uninstalling,
@@ -38,6 +44,7 @@ function bytes(size: number) {
 }
 
 function stoneFor(screen: Screen, leaving: boolean): StoneState {
+  if (screen === "look") return "focus";
   if (screen === "busy") return "scan";
   if (screen === "error" || leaving) return "rest";
   if (screen === "done") return "done";
@@ -47,7 +54,7 @@ function stoneFor(screen: Screen, leaving: boolean): StoneState {
 function welcomeWords(info: SetupState): [string, string, string] {
   if (info.mode === "uninstall") return ["Desinstalar Sens.", "Se quita la aplicación. Tus proyectos y sus sesiones no se tocan.", "Desinstalar"];
   const had = info.installed;
-  if (!had) return ["Instala Sens.", "Todo empieza con claridad.", "Instalar Sens"];
+  if (!had) return ["Instala Sens.", "Todo empieza con claridad.", "Empezar"];
   const order = compare(had.version, info.version);
   if (order < 0) return ["Actualiza Sens.", `Tienes la ${had.version}. Esta es la ${info.version}.`, "Actualizar Sens"];
   if (order === 0) return ["Reinstala Sens.", `Ya tienes la ${info.version}.`, "Reinstalar Sens"];
@@ -92,16 +99,18 @@ function Go({ children, look = "signal", focus = false, disabled = false, onClic
 export function Setup() {
   const info = useStore(installer, (s) => s.info);
   const screen = useStore(installer, (s) => s.screen);
+  const accent = useStore(installer, (s) => s.look.accent);
   if (!info) return screen === "error" ? <Broken /> : null;
   return (
     <div className="setup stage" data-screen={screen} data-mode={info.mode}>
       <Bar />
       <figure className="stone" aria-hidden="true">
-        <StoneCanvas state={stoneFor(screen, info.mode === "uninstall")} />
+        <StoneCanvas state={stoneFor(screen, info.mode === "uninstall")} replay={screen === "look" ? accent : ""} />
       </figure>
       <main className="words" key={screen}>
         {screen === "welcome" && <Welcome info={info} />}
         {screen === "custom" && <Custom info={info} />}
+        {screen === "look" && <LookStep />}
         {screen === "busy" && <Busy info={info} />}
         {screen === "running" && <Running />}
         {screen === "done" && <Done info={info} />}
@@ -168,7 +177,7 @@ function Welcome({ info }: { info: SetupState }) {
         </label>
       )}
       <div className="actions">
-        <Go look={leaving ? "danger" : "signal"} focus onClick={run}>
+        <Go look={leaving ? "danger" : "signal"} focus onClick={choosing() ? toLook : run}>
           {action}
         </Go>
         {leaving && (
@@ -219,10 +228,39 @@ function Custom({ info }: { info: SetupState }) {
         <span>Añadir al menú Inicio</span>
       </label>
       <div className="actions">
-        <Go focus disabled={Boolean(problem)} onClick={run}>
-          Instalar Sens
+        <Go focus disabled={Boolean(problem)} onClick={choosing() ? toLook : run}>
+          {choosing() ? "Continuar" : "Instalar Sens"}
         </Go>
         <button type="button" className="ghost" onClick={back}>
+          Volver
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function LookStep() {
+  const chosen = useStore(installer, (s) => s.look);
+  const named = ACCENTS.find((one) => one.id === chosen.accent)!.label;
+  return (
+    <section className="screen">
+      <h2>Elige cómo se ve.</h2>
+      <p className="lead small">Sens se abrirá así. Puedes cambiarlo cuando quieras en Ajustes.</p>
+      <div className="look-field">
+        <span className="label">Modo</span>
+        <ModePicker chosen={chosen.mode} pick={(mode) => chooseLook({ ...chosen, mode })} />
+      </div>
+      <div className="look-field">
+        <span className="label">
+          Color <b>{named}</b>
+        </span>
+        <AccentPicker named={false} chosen={chosen.accent} pick={(accent) => chooseLook({ ...chosen, accent })} />
+      </div>
+      <div className="actions">
+        <Go focus onClick={run}>
+          Instalar Sens
+        </Go>
+        <button type="button" className="ghost" onClick={leaveLook}>
           Volver
         </button>
       </div>
@@ -354,7 +392,7 @@ function Foot({ info, screen }: { info: SetupState; screen: Screen }) {
   const cancellable = (screen === "busy" || screen === "running") && info.mode !== "update";
   return (
     <footer className="foot">
-      {(screen === "welcome" || screen === "custom") && (
+      {(screen === "welcome" || screen === "custom" || screen === "look") && (
         <span className="made">{[`Sens para Windows · v${info.version}`, info.demo ? "demo" : ""].filter(Boolean).join(" · ")}</span>
       )}
       {screen === "busy" && (

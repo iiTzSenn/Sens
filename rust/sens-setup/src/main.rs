@@ -5,6 +5,7 @@ mod install;
 mod launch;
 mod layout;
 mod log;
+mod look;
 mod payload;
 mod progress;
 mod registry;
@@ -60,7 +61,7 @@ fn quietly(launch: &Launch, layout: &Layout, exe: &Path, log: &Log) -> ExitCode 
     let cancel = AtomicBool::new(false);
     let done = match (launch.mode, payload::embedded()) {
         (Mode::Uninstall, None) => demo::uninstall(&layout.dir, false, &report),
-        (_, None) => demo::install(&layout.dir, true, false, &cancel, &report),
+        (_, None) => demo::install(&layout.dir, true, false, false, &cancel, &report),
         (Mode::Uninstall, Some(_)) => {
             let removal = Removal {
                 layout,
@@ -82,6 +83,7 @@ fn quietly(launch: &Launch, layout: &Layout, exe: &Path, log: &Log) -> ExitCode 
                 placed: false,
                 closing: Closing::Force,
                 cancel: &cancel,
+                look: None,
             };
             install::run(&job, &report)
                 .map_err(|failure| failure.reason)

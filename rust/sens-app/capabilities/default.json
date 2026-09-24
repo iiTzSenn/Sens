@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "La ventana no trae marco del sistema: la barra superior es suya y necesita arrastrar, minimizar, maximizar y cerrar. El selector de ficheros abre proyectos y adjuntos.",
+  "description": "La ventana no trae marco del sistema: la barra superior es suya y necesita arrastrar, minimizar, maximizar y cerrar. Toma el tema y el fondo del modo que eligió la persona. El selector de ficheros abre proyectos y adjuntos.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -10,6 +10,8 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-is-maximized",
     "core:window:allow-close",
+    "core:window:allow-set-theme",
+    "core:window:allow-set-background-color",
     "dialog:allow-open"
   ]
 }

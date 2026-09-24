@@ -6,6 +6,7 @@ use std::time::Instant;
 use serde::Serialize;
 
 use crate::layout::Layout;
+use crate::look::{self, Look};
 use crate::payload;
 use crate::progress::{self, CANCELLED, Report, Step};
 use crate::registry;
@@ -24,6 +25,7 @@ pub struct Job<'a> {
     pub placed: bool,
     pub closing: Closing<'a>,
     pub cancel: &'a AtomicBool,
+    pub look: Option<&'a Look>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -146,7 +148,18 @@ fn complete(job: &Job, report: Report) -> Result<(), String> {
     }
     report(Step::Register, 0.9, progress::REGISTERING);
     registry::write(layout, job.version, footprint(layout))?;
+    keep_look(job, report);
     link(job, report)
+}
+
+fn keep_look(job: &Job, report: Report) {
+    let Some(chosen) = job.look else {
+        return;
+    };
+    report(Step::Register, 0.92, progress::LOOK);
+    if let Err(reason) = look::write(&job.layout.settings, chosen) {
+        report(Step::Register, 0.92, &progress::unsaved_look(&reason));
+    }
 }
 
 fn footprint(layout: &Layout) -> u32 {
@@ -220,6 +233,7 @@ mod tests {
             placed: false,
             closing: Closing::Force,
             cancel,
+            look: None,
         }
     }
 
@@ -463,5 +477,46 @@ mod tests {
         let file = sandbox.file("fichero", b"x");
         assert!(assess(&file, 1, true).problem.contains("es un fichero"));
         assert!(assess(&sandbox.root, u64::MAX, true).problem.starts_with("no cabe en"));
+    }
+
+    #[test]
+    fn an_install_keeps_the_chosen_look_where_the_app_reads_it() {
+        let sandbox = Sandbox::new("look");
+        let payload = packed(&sample_app(10_000));
+        let setup = sandbox.file("setup.exe", b"setup");
+        let cancel = AtomicBool::new(false);
+        let lines = Lines::new();
+        let chosen = Look {
+            mode: look::Mode::Light,
+            accent: "iris".into(),
+        };
+        let choosing = Job {
+            look: Some(&chosen),
+            ..job(&sandbox, &payload, &setup, &cancel)
+        };
+
+        run(&choosing, &lines.report()).unwrap();
+
+        assert_eq!(look::read(&sandbox.layout.settings), Some(chosen));
+        assert!(lines.said(progress::LOOK));
+    }
+
+    #[test]
+    fn an_install_that_asked_nothing_leaves_the_saved_look_alone() {
+        let sandbox = Sandbox::new("kept-look");
+        let saved = Look {
+            mode: look::Mode::System,
+            accent: "rose".into(),
+        };
+        look::write(&sandbox.layout.settings, &saved).unwrap();
+        let payload = packed(&sample_app(10_000));
+        let setup = sandbox.file("setup.exe", b"setup");
+        let cancel = AtomicBool::new(false);
+        let lines = Lines::new();
+
+        run(&job(&sandbox, &payload, &setup, &cancel), &lines.report()).unwrap();
+
+        assert_eq!(look::read(&sandbox.layout.settings), Some(saved));
+        assert!(!lines.said(progress::LOOK));
     }
 }

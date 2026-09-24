@@ -99,6 +99,7 @@ mod tests {
             placed: false,
             closing: Closing::Force,
             cancel: &cancel,
+            look: None,
         };
         install::run(&job, &|_, _, _| {}).unwrap();
     }

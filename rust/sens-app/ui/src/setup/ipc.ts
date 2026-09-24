@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { Look } from "../shared/look";
 
 export type Mode = "install" | "update" | "uninstall";
 
@@ -16,12 +17,14 @@ export interface SetupState {
   relaunch: boolean;
   desktop: boolean;
   demo: boolean;
+  look: Look | null;
 }
 
 export interface Choice {
   dir: string;
   desktop: boolean;
   startMenu: boolean;
+  look: Look | null;
 }
 
 export interface Progress {

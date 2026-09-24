@@ -32,7 +32,6 @@ export function ProvidersSection() {
   const fault = useStore(settings, (s) => s.fault);
   return (
     <>
-      <h2 className="label">Proveedores</h2>
       <p className="note">
         Con quién trabaja Sens. Sens nunca ve tus credenciales: el inicio de sesión lo hace cada herramienta.
       </p>

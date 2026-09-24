@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "La ventana del instalador no trae marco del sistema: arrastrar, minimizar y cerrar son suyos, y aparece cuando la página ya pintó. El selector de carpetas elige dónde instalar.",
+  "description": "La ventana del instalador no trae marco del sistema: arrastrar, minimizar y cerrar son suyos, y aparece cuando la página ya pintó, en el modo que se elija. El selector de carpetas elige dónde instalar.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -9,6 +9,8 @@
     "core:window:allow-minimize",
     "core:window:allow-close",
     "core:window:allow-show",
+    "core:window:allow-set-theme",
+    "core:window:allow-set-background-color",
     "dialog:allow-open"
   ]
 }

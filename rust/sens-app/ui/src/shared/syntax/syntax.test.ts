@@ -3,11 +3,10 @@ import { describe, expect, it } from "vitest";
 import { languageNamed, languageOf } from "./languages";
 import { paint, paintedNow, paintRows } from "./paint";
 
-// Dark+, as VS Code paints them.
-const KEYWORD = "#569cd6";
-const STRING = "#ce9178";
-const COMMENT = "#6a9955";
-const CONTROL = "#c586c0";
+const KEYWORD = "light-dark(#0000ff, #569cd6)";
+const STRING = "light-dark(#a31515, #ce9178)";
+const COMMENT = "light-dark(#008000, #6a9955)";
+const CONTROL = "light-dark(#af00db, #c586c0)";
 
 const colorsOf = (painted: Awaited<ReturnType<typeof paint>>) => {
   const out: Record<string, string> = {};
@@ -42,7 +41,7 @@ describe("languages", () => {
 });
 
 describe("painting", () => {
-  it("colors code as VS Code's Dark+ does, keeping every character", async () => {
+  it("colors code as VS Code's Light+ and Dark+ do, keeping every character", async () => {
     const text = 'def greet(name):\n    return "hola"  # saludo\n';
     const painted = await paint(text, "python");
     expect(painted!.lines.map((line) => line.map(([part]) => part).join("")).join("\n")).toBe(text);

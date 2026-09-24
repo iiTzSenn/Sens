@@ -12,7 +12,6 @@ import { slideAway } from "../features/panes/motion";
 import { close, focused, keptLayout, newPane, other, paneOf, panes, place, setFocus, sideOf, split, type Kept, type Pane, type Setup, type Side } from "../features/panes/store";
 import { forgetEdits, project, type View } from "../features/project/store";
 import { failRail, fold, loadRail, oweRail, rail } from "../features/rail/store";
-import { enterSettings } from "../features/settings/store";
 import { forgetSite } from "../features/web/store";
 
 // Where the main area goes: a session of a project, a new one, a view over
@@ -21,7 +20,6 @@ import { forgetSite } from "../features/web/store";
 const LOADS: Record<Exclude<View, "">, () => unknown> = {
   capabilities: enterCapabilities,
   artifacts: loadShelf,
-  settings: enterSettings,
 };
 
 export function showView(view: View) {

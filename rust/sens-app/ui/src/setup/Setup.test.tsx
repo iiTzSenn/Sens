@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { look } from "../shared/look";
 import type { Progress, SetupState } from "./ipc";
 import { Setup } from "./Setup";
 import { boot, installer } from "./store";
@@ -54,6 +55,7 @@ const base = (over: Partial<SetupState> = {}): SetupState => ({
   relaunch: false,
   desktop: false,
   demo: false,
+  look: null,
   ...over,
 });
 
@@ -73,6 +75,7 @@ async function press(name: string | RegExp) {
 
 beforeEach(() => {
   installer.setState(installer.getInitialState(), true);
+  look.setState(look.getInitialState(), true);
   for (const one of [fake.install, fake.uninstall, fake.launch, fake.quit, fake.cancel, fake.closeApp]) one.mockReset().mockResolvedValue(undefined);
 });
 
@@ -83,8 +86,37 @@ describe("the installer", () => {
     await open();
 
     expect(screen.getByRole("heading", { name: "Instala Sens." })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Instalar Sens/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Empezar/ })).toBeTruthy();
     expect(screen.getByText(/v0\.17\.0/)).toBeTruthy();
+  });
+
+  it("lets a first install choose how Sens looks, and shows it at once", async () => {
+    await open();
+    await press(/Empezar/);
+
+    expect(screen.getByRole("heading", { name: "Elige cómo se ve." })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /Oscuro/ })).toHaveProperty("checked", true);
+    expect(screen.getByRole("radio", { name: "Señal" })).toHaveProperty("checked", true);
+
+    fireEvent.click(screen.getByRole("radio", { name: /Claro/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Iris" }));
+
+    expect(document.documentElement.dataset).toMatchObject({ mode: "light", accent: "iris" });
+    expect(screen.getByText("Iris")).toBeTruthy();
+
+    await press("Volver");
+    expect(shown()).toBe("welcome");
+    await press(/Empezar/);
+    expect(screen.getByRole("radio", { name: "Iris" })).toHaveProperty("checked", true);
+  });
+
+  it("opens a reinstall in the look already saved and does not ask again", async () => {
+    await open({ installed: { version: "0.17.0", dir: "C:\\Sens" }, look: { mode: "light", accent: "rose" } });
+
+    expect(document.documentElement.dataset).toMatchObject({ mode: "light", accent: "rose" });
+    await press(/Reinstalar Sens/);
+    await vi.waitFor(() => expect(shown()).toBe("done"), { timeout: 5000 });
+    expect(fake.install).toHaveBeenCalledWith(expect.objectContaining({ look: null }));
   });
 
   it("offers to update an older Sens and to reinstall the same one", async () => {
@@ -107,10 +139,21 @@ describe("the installer", () => {
 
     await press("Personalizar instalación");
     fireEvent.click(screen.getByLabelText("Acceso directo en el escritorio"));
+    await press(/Continuar/);
+    fireEvent.click(screen.getByRole("radio", { name: /Sistema/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Hielo" }));
+    await press("Volver");
+    expect(shown()).toBe("custom");
+    await press(/Continuar/);
     await press(/Instalar Sens/);
     await vi.waitFor(() => expect(shown()).toBe("done"), { timeout: 5000 });
 
-    expect(fake.install).toHaveBeenCalledWith({ dir: "C:\\Users\\ada\\AppData\\Local\\Sens", desktop: false, startMenu: true });
+    expect(fake.install).toHaveBeenCalledWith({
+      dir: "C:\\Users\\ada\\AppData\\Local\\Sens",
+      desktop: false,
+      startMenu: true,
+      look: { mode: "system", accent: "ice" },
+    });
     expect(await screen.findByRole("heading", { name: "Sens está lista." })).toBeTruthy();
     expect(installer.getState().lines).toContain("Listo en 1,2 s");
   });
@@ -119,6 +162,7 @@ describe("the installer", () => {
     await open();
     fake.install.mockRejectedValueOnce("no pude escribir C:\\Sens: acceso denegado");
 
+    await press(/Empezar/);
     await press(/Instalar Sens/);
     await vi.waitFor(() => expect(shown()).toBe("error"), { timeout: 5000 });
     expect(await screen.findByText("No pude escribir C:\\Sens: acceso denegado")).toBeTruthy();
@@ -140,6 +184,7 @@ describe("the installer", () => {
     );
     fake.closeApp.mockResolvedValue(true);
 
+    await press(/Empezar/);
     await press(/Instalar Sens/);
     expect(await screen.findByRole("heading", { name: "Sens está abierta." })).toBeTruthy();
     await press("Cerrar Sens");

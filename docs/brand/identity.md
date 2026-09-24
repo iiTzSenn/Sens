@@ -56,13 +56,16 @@ fewer colors, less copy, and clearer hierarchy.
 | carbon-800 | `#1A1D1C` | 26, 29, 28 | Elevated panels |
 | carbon-700 | `#252927` | 37, 41, 39 | Borders and interactive surfaces |
 | carbon-600 | `#363B38` | 54, 59, 56 | Strong borders, disabled controls |
-| alloy-500 | `#747B77` | 116, 123, 119 | Secondary text on light surfaces |
+| alloy-600 | `#595F5C` | 89, 95, 92 | Secondary text on light surfaces |
+| alloy-500 | `#747B77` | 116, 123, 119 | Tertiary text on light surfaces |
 | alloy-400 | `#929995` | 146, 153, 149 | Secondary text on dark surfaces |
 | alloy-300 | `#B5BBB7` | 181, 187, 183 | Tertiary light content |
+| bone-300 | `#D1CFC8` | 209, 207, 200 | Strong borders on light surfaces |
 | bone-200 | `#DDDCD5` | 221, 220, 213 | Dividers on light surfaces |
 | bone-100 | `#ECEAE3` | 236, 234, 227 | Secondary light surface |
 | bone-50 | `#F4F1EA` | 244, 241, 234 | Primary light background |
 | paper | `#FBFAF6` | 251, 250, 246 | Highest light surface |
+| signal-800 | `#4E700D` | 78, 112, 13 | Signal as text, focus and indicators on light surfaces |
 | signal-500 | `#C7FF4A` | 199, 255, 74 | Brand signal / active intelligence |
 | signal-600 | `#A9E52D` | 169, 229, 45 | Signal on light backgrounds |
 | signal-700 | `#78AA12` | 120, 170, 18 | Signal text on very light surfaces |
@@ -131,17 +134,26 @@ For dead-code confidence:
 - low-confidence / verify first: danger;
 - do not invert these meanings merely to follow conventional severity rankings.
 
+On light surfaces the four tones above fall under 3:1 as text. The light
+theme uses their deep variants for text, icons and edges — `success-700`
+`#11733E`, `warning-700` `#895B00`, `danger-700` `#B63132`, `info-700`
+`#2E6B9C`, each at least 4.5:1 on bone — and keeps the bright ones for fills
+with carbon text (a destructive button, the window's close control).
+
 ### 3.4 Light theme
 
 - Page background: bone-50.
 - Primary surface: paper.
 - Elevated/secondary surface: bone-100.
+- Interactive surface and selection: bone-200.
 - Primary text: carbon-950.
-- Secondary text: alloy-500.
-- Hairline/divider: bone-200.
-- Active selection: signal-100 background with signal-700 foreground.
+- Secondary text: carbon-600; muted text: alloy-600; tertiary: alloy-500.
+- Hairline/divider: bone-200; strong border: bone-300; edge: alloy-300.
+- Active selection: signal-100 background with signal-800 foreground.
 - Primary dark button: carbon-900 background, paper text.
-- Signal button is reserved for the single key analysis action on a view.
+- Signal button is reserved for the single key analysis action on a view; on
+  light it fills with signal-600 and keeps carbon text.
+- The mark keeps its carbon body; only the page around it turns light.
 
 Avoid pure white `#FFFFFF` across large areas. Bone creates a quieter, more
 physical identity.
@@ -166,17 +178,20 @@ icons, values, cursor states, and the brand incision.
 - Body text must target WCAG AA contrast: at least 4.5:1.
 - Large text and meaningful icons must reach at least 3:1.
 - Never communicate state by color alone. Pair it with an icon, label, pattern, or position.
-- signal-500 is not suitable for small text on bone-50; use signal-700.
+- signal-500 is not suitable for small text on bone-50; use signal-800
+  (signal-700 reaches only 2.5:1).
 - Avoid alloy-500 for tiny text on dark backgrounds; use alloy-400 or lighter.
-- Focus rings: 2 px signal-500 on dark UI; 2 px signal-700 with 2 px paper separation on light UI.
+- Focus rings: 2 px of the accent's 500 on dark UI; 2 px of its 800 on light UI.
 
 ### 3.7 Code syntax colors
 
 One exception to 3.1 and to the rule against a rainbow palette: code shows
-the colors of VS Code's Dark+ theme, so a keyword, a string, a type or a
-comment reads as it does in the editor the user already knows. Coloring by
-grammar is a functional need: it tells structure at a glance, and a palette of
-our own would have to be learned.
+the colors of VS Code's Dark+ theme, and of Light+ in the light theme, so a
+keyword, a string, a type or a comment reads as it does in the editor the user
+already knows. Coloring by grammar is a functional need: it tells structure at
+a glance, and a palette of our own would have to be learned. Each token
+carries both colors as `light-dark()`, so a change of mode repaints code
+without coloring it again.
 
 - The grammars are VS Code's own TextMate grammars, through Shiki; GitHub
   Linguist decides which language a file is, by its name, extension or
@@ -185,12 +200,69 @@ our own would have to be learned.
   and diffs (removed lines read as the file before, the rest as the file
   after). Paths, logs and machine output stay mono in Alloy.
 - Plain text keeps the surface's own text token; only tokens a grammar names
-  take a theme color. Backgrounds stay Carbon: the theme's own is not used.
+  take a theme color. Backgrounds stay Carbon, or Bone in the light theme: the
+  theme's own is not used.
 - The theme's colors are not edited, and Signal never appears among them.
 - The table is generated from the installed packages with
   `npm run languages -w sens-app-ui`. Upgrade shiki or linguist-languages,
   then regenerate.
 
+### 3.8 Themes: mode and accent
+
+A person chooses how Sens looks — in the installer the first time, and in
+Ajustes › Apariencia afterwards. A look is two independent choices:
+
+- **Mode**: Oscuro (the default and the brand's own), Claro, or Sistema, which
+  follows Windows and changes with it.
+- **Accent**: the color Signal takes. Señal (`signal`, the default), Hielo
+  (`ice`), Iris (`iris`), Rosa (`rose`) or Neutro (`neutral`).
+
+The accent replaces Signal and nothing else. It inherits every meaning and
+every restriction of 3.2 — scanning, focus, a relevant result, confirmed
+completion, the S cut — and the 5% budget. Functional colors (3.3) never
+change with it; that is why no accent sits near their hues: a green, amber,
+orange or red accent would make "working" and "done" read as "success",
+"waiting" or "danger".
+
+Each colored accent has the same ramp as Signal, drawn in OKLCH at its own
+hue so the stops carry the same weight:
+
+| Stop | Signal | Ice | Iris | Rose | Role |
+| --- | --- | --- | --- | --- | --- |
+| 100 | `#F0FFD0` | `#E9FBFF` | `#F7F5FF` | `#FFF3F7` | Hot core of the lit cut; light featured surface |
+| 200 | `#E4FFA5` | `#CCF5FF` | `#EDEAFF` | `#FFE5EF` | Text on the dark featured surface; light featured edge |
+| 500 | `#C7FF4A` | `#4EE1FF` | `#B6A2FF` | `#FF8ABE` | The accent on dark; the glow of the cut in both modes |
+| 600 | `#A9E52D` | `#00C9E9` | `#A184F7` | `#ED69A8` | Hover on dark; accent fills on light |
+| 700 | `#78AA12` | `#009BB4` | `#836CCA` | `#C15588` | Link underline and shimmer edge on dark |
+| 800 | `#4E700D` | `#007082` | `#665798` | `#914669` | The accent on light: focus, indicators, short text (≥ 4.5:1 on bone) |
+| tint-900 | `#1A1F16` | `#131F22` | `#1D1C25` | `#241A1E` | Featured dark surface |
+| tint-700 | `#353E2A` | `#243F45` | `#3B374B` | `#49333C` | Edge of the featured dark surface |
+
+Carbon text reaches at least 6.6:1 on every 500 and 600. Neutro builds its
+ramp from Bone, Alloy and Carbon: the cut glows bone, fills are bone on dark
+and carbon on light.
+
+Interfaces never name a ramp. They use roles, which the tokens resolve for the
+chosen mode and accent:
+
+| Role | Dark | Light |
+| --- | --- | --- |
+| `--focus` | 500 | 800 |
+| `--accent-text` | 600 | 800 |
+| `--accent-soft` | 200 | 800 |
+| `--accent-line` | 700 | 600 |
+| `--accent-fill` / `--accent-fill-hover` | 500 / 600 | 600 / 500 |
+| `--accent-ink` | carbon-950 | carbon-950 (paper for Neutro) |
+| `--tint` / `--tint-edge` | tint-900 / tint-700 | 100 / 200 |
+| `--glow` / `--glow-hot` | 500 / 100 | 500 / 100 |
+| `--glint-edge` / `--glint-peak` | 700 / 200 | 800 / 600 |
+| `--grain-1..3` | 200, 500, 700 | 600, 700, 800 |
+
+Motion follows the accent: the lit cut of the stone, the grain inside the
+empty chat's "sens AI", the pixels of maximum effort, the orbit of a working
+composer and the shimmer of a live step all draw in the chosen accent. In the
+light theme the stone keeps its carbon body and its shadow; its glow stays on
+the body, since light added to a bone page reads as haze.
 ## 4. Logo and symbol
 
 ### 4.1 Construction
@@ -519,9 +591,9 @@ retype these values by hand.
   --sens-surface: var(--sens-paper);
   --sens-surface-subtle: var(--sens-bone-100);
   --sens-text: var(--sens-carbon-950);
-  --sens-text-muted: var(--sens-alloy-500);
+  --sens-text-muted: var(--sens-alloy-600);
   --sens-border: var(--sens-bone-200);
-  --sens-focus: var(--sens-signal-700);
+  --sens-focus: var(--sens-signal-800);
 }
 
 [data-theme="dark"] {
@@ -535,24 +607,32 @@ retype these values by hand.
 }
 ```
 
+The desktop app's own tokens (`rust/sens-app/ui/src/shared/tokens.css`) add
+the ramps of 3.8 and resolve the roles from two attributes the page carries on
+`<html>`: `data-mode` (`dark` or `light`, already resolved from Sistema) and
+`data-accent`. A new accent needs its ramp in `tokens.ts`, its rule in
+`tokens.css` and its entry in `shared/look.ts`; the brand tests hold the three
+together.
+
 ## 13. Instructions for Claude
 
 When creating or modifying any Sens visual asset or interface:
 
 1. Read this entire guide before proposing visual changes.
 2. Begin by stating the user task and the single most important information/action on the screen.
-3. Reuse the defined tokens. Do not invent another blue, purple, green, radius, shadow, or type scale unless a documented functional need exists. Code syntax colors are one (3.7).
-4. Keep Signal below roughly 5% of the visible composition.
-5. Use Signal only for active intelligence, focus, relevant results, or confirmed completion.
-6. Use semantic colors for warning, danger, success, and info; include a non-color cue.
-7. Prefer spacing, typography, and tone over extra containers.
-8. Remove decorative elements that do not explain state, structure, or action.
-9. Preserve the S-cut symbol's silhouette and negative space. Never reinterpret it as a generic network, spark, bot, eye, or lightning bolt.
-10. Use Geist Sans for product language and Geist Mono only for code/data.
-11. Take icons from Lucide, as SVG, with an explicit 1.5 px stroke below 24 px. Draw an exclusive one only when a screen needs a meaning Lucide does not carry. File type icons are the one exception (6.5).
-12. Write concise factual copy in sentence case.
-13. Check light and dark variants, keyboard focus, reduced motion, and text contrast.
-14. At the end, explain any deliberate exception to this guide. If there is no exception, say: Sens identity tokens preserved.
+3. Reuse the defined tokens. Do not invent another blue, purple, green, radius, shadow, or type scale unless a documented functional need exists. Code syntax colors are one (3.7); the accent ramps are another (3.8).
+4. Style with roles (`--focus`, `--accent-fill`, `--tint`, `--primary`…), never with a ramp primitive such as `var(--sens-signal-500)`: a primitive ignores the look the person chose.
+5. Keep Signal — whichever accent it takes — below roughly 5% of the visible composition.
+6. Use Signal only for active intelligence, focus, relevant results, or confirmed completion.
+7. Use semantic colors for warning, danger, success, and info; include a non-color cue.
+8. Prefer spacing, typography, and tone over extra containers.
+9. Remove decorative elements that do not explain state, structure, or action.
+10. Preserve the S-cut symbol's silhouette and negative space. Never reinterpret it as a generic network, spark, bot, eye, or lightning bolt.
+11. Use Geist Sans for product language and Geist Mono only for code/data.
+12. Take icons from Lucide, as SVG, with an explicit 1.5 px stroke below 24 px. Draw an exclusive one only when a screen needs a meaning Lucide does not carry. File type icons are the one exception (6.5).
+13. Write concise factual copy in sentence case.
+14. Check light and dark variants, at least two accents (Señal and Neutro show the extremes), keyboard focus, reduced motion, and text contrast.
+15. At the end, explain any deliberate exception to this guide. If there is no exception, say: Sens identity tokens preserved.
 
 ### Compact prompt block
 

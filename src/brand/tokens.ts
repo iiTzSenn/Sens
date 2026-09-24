@@ -4,13 +4,16 @@ export const palette = {
   "carbon-800": "#1a1d1c",
   "carbon-700": "#252927",
   "carbon-600": "#363b38",
+  "alloy-600": "#595f5c",
   "alloy-500": "#747b77",
   "alloy-400": "#929995",
   "alloy-300": "#b5bbb7",
+  "bone-300": "#d1cfc8",
   "bone-200": "#dddcd5",
   "bone-100": "#eceae3",
   "bone-50": "#f4f1ea",
   paper: "#fbfaf6",
+  "signal-800": "#4e700d",
   "signal-700": "#78aa12",
   "signal-600": "#a9e52d",
   "signal-500": "#c7ff4a",
@@ -18,10 +21,38 @@ export const palette = {
   "signal-100": "#f0ffd0",
   "signal-tint-900": "#1a1f16",
   "signal-tint-700": "#353e2a",
+  "ice-800": "#007082",
+  "ice-700": "#009bb4",
+  "ice-600": "#00c9e9",
+  "ice-500": "#4ee1ff",
+  "ice-200": "#ccf5ff",
+  "ice-100": "#e9fbff",
+  "ice-tint-900": "#131f22",
+  "ice-tint-700": "#243f45",
+  "iris-800": "#665798",
+  "iris-700": "#836cca",
+  "iris-600": "#a184f7",
+  "iris-500": "#b6a2ff",
+  "iris-200": "#edeaff",
+  "iris-100": "#f7f5ff",
+  "iris-tint-900": "#1d1c25",
+  "iris-tint-700": "#3b374b",
+  "rose-800": "#914669",
+  "rose-700": "#c15588",
+  "rose-600": "#ed69a8",
+  "rose-500": "#ff8abe",
+  "rose-200": "#ffe5ef",
+  "rose-100": "#fff3f7",
+  "rose-tint-900": "#241a1e",
+  "rose-tint-700": "#49333c",
   success: "#43c878",
   warning: "#e7b84b",
   danger: "#e7655f",
   info: "#6fa7d8",
+  "success-700": "#11733e",
+  "warning-700": "#895b00",
+  "danger-700": "#b63132",
+  "info-700": "#2e6b9c",
   "lang-amber": "#d8b24a",
   "lang-azure": "#5b8fc9",
   "lang-ember": "#d08248",
@@ -36,15 +67,21 @@ export const hex = (token: PaletteToken): string => palette[token];
 
 export const cssVar = (token: PaletteToken): string => `var(--sens-${token})`;
 
+export const accents = ["signal", "ice", "iris", "rose", "neutral"] as const;
+
+export type Accent = (typeof accents)[number];
+
+export const ramp = ["100", "200", "500", "600", "700", "800", "tint-900", "tint-700"] as const;
+
 
 const lightSurfaces: Record<string, PaletteToken> = {
   bg: "bone-50",
   surface: "paper",
   "surface-subtle": "bone-100",
   text: "carbon-950",
-  "text-muted": "alloy-500",
+  "text-muted": "alloy-600",
   border: "bone-200",
-  focus: "signal-700",
+  focus: "signal-800",
 };
 
 const darkSurfaces: Record<string, PaletteToken> = {

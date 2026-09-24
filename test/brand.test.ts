@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import {
+  accents,
   palette,
   radius,
+  ramp,
   motion,
   type PaletteToken,
 } from "../src/brand/tokens.js";
@@ -47,6 +49,54 @@ describe("brand tokens", () => {
   it("loads the stylesheet from the desktop shell's entry", () => {
     expect(read("rust/sens-app/ui/index.html")).toContain('src="/src/main.ts"');
     expect(read("rust/sens-app/ui/src/main.ts")).toContain('import "./styles.css";');
+  });
+});
+
+describe("themes", () => {
+  const tokens = read("rust/sens-app/ui/src/shared/tokens.css");
+  const block = (selector: string) => {
+    const at = tokens.indexOf(`${selector} {`);
+    expect(at, selector).toBeGreaterThanOrEqual(0);
+    return tokens.slice(at, tokens.indexOf("}", at));
+  };
+  const declared = (css: string) => new Set([...css.matchAll(/(--[\w-]+):/g)].map((m) => m[1]));
+
+  it("gives every accent the whole ramp, from its own primitives", () => {
+    for (const accent of accents) {
+      const selector = accent === "signal" ? `:root, [data-accent="signal"]` : `[data-accent="${accent}"]`;
+      const rule = block(selector);
+      for (const stop of ramp) {
+        expect(rule, `${accent} ${stop}`).toContain(`--accent-${stop}: var(--sens-`);
+        if (accent !== "neutral") expect(palette, `${accent}-${stop}`).toHaveProperty(`${accent}-${stop}`);
+      }
+    }
+  });
+
+  it("offers in the interface exactly the accents the brand defines", () => {
+    const look = read("rust/sens-app/ui/src/shared/look.ts");
+    const offered = [...look.matchAll(/\{ id: "(\w+)", label: "[^"]+" \}/g)].map((m) => m[1]).filter((id) => !["dark", "light", "system"].includes(id));
+    expect(offered).toEqual([...accents]);
+  });
+
+  it("sets the same roles in light and dark", () => {
+    const dark = declared(block(`:root, [data-mode="dark"]`));
+    const light = declared(block(`[data-mode="light"]`));
+    expect([...light].sort()).toEqual([...dark].sort());
+    for (const role of ["--focus", "--accent-fill", "--accent-ink", "--tint", "--glow", "--grain-1", "--primary", "--ground", "--text"]) {
+      expect(dark, role).toContain(role);
+    }
+  });
+
+  it("lets the accent reach every surface: only the tokens name a ramp", () => {
+    for (const file of appSources.filter((one) => !one.endsWith("shared/tokens.css"))) {
+      expect(read(file), file).not.toMatch(/var\(--sens-(signal|ice|iris|rose)-/);
+    }
+  });
+
+  it("hides the page until it knows which mode to paint", () => {
+    expect(tokens).toContain(":root:not([data-mode]) body { display: none; }");
+    expect(read("rust/sens-app/ui/src/main.ts")).toContain("showLook(lookOf(window.__SENS_LOOK__));");
+    expect(read("rust/sens-app/ui/src/setup/main.ts")).toContain("showLook(FIRST_LOOK);");
   });
 });
 
@@ -147,7 +197,7 @@ describe("the desktop shell", () => {
   });
 
   it("spends signal on the send button, the one key action", () => {
-    expect(shell).toContain(".send { background: var(--focus);");
+    expect(shell).toContain(".send { background: var(--accent-fill);");
   });
 
   it("builds the model picker from the backend catalogue", () => {

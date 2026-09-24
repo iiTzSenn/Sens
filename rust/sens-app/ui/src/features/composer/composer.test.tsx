@@ -3,11 +3,13 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Card } from "../../ipc/types";
 import { dialog } from "../../app/modal";
-import { chooseFolder, showView } from "../../app/session";
+import { chooseFolder } from "../../app/session";
 import { blank } from "../chat/store";
 import { focused } from "../panes/store";
 import { accountLine, choose, loadCatalog, models, noteLimits } from "../models/store";
 import { project } from "../project/store";
+import { settingsSheet } from "../settings/sheet";
+import { settings } from "../settings/store";
 import { Composer } from "./Composer";
 import { BYPASS, composer, currentSettings, readRepo, readTrust } from "./store";
 
@@ -191,7 +193,8 @@ describe("the composer", () => {
     const update = within(picker).getByRole("menuitem", { name: "Actualizar Claude Code…" });
     expect(update.title).toBe("Hay una versión nueva: v2.1.281");
     fireEvent.click(update);
-    expect(showView).toHaveBeenCalledWith("settings");
+    expect(settingsSheet.getState().open).toBe(true);
+    expect(settings.getState().section).toBe("providers");
   });
 
   it("sets the permission mode, thinking and effort for the next turn", async () => {

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { Look } from "../shared/look";
 import type {
   Account,
   Adopted,
@@ -42,6 +43,8 @@ export const commands = {
   saveProfile: (name: string) => invoke<void>("save_profile", { name }),
   setUpdateCheck: (on: boolean) => invoke<void>("set_update_check", { on }),
   setWelcomed: (on: boolean) => invoke<void>("set_welcomed", { on }),
+  look: () => invoke<Look>("look"),
+  setLook: (look: Look) => invoke<void>("set_look", { look }),
   welcomeScan: () => invoke<Found>("welcome_scan"),
   welcomeAdopt: (roots: string[]) => invoke<Adopted>("welcome_adopt", { roots }),
   welcomeServers: (ids: string[], roots: string[]) => invoke<Imported>("welcome_servers", { ids, roots }),

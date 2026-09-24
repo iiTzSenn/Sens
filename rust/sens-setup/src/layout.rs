@@ -25,19 +25,22 @@ pub struct Layout {
     pub remembered_key: String,
     pub start_menu: PathBuf,
     pub desktop: PathBuf,
+    pub settings: PathBuf,
     pub data: Vec<PathBuf>,
 }
 
 impl Layout {
     pub fn for_user(dir: Option<PathBuf>) -> Result<Layout, String> {
         let local = known(&FOLDERID_LocalAppData)?;
+        let settings = known(&FOLDERID_RoamingAppData)?.join(DATA);
         let mut layout = Layout {
             dir: local.join(PRODUCT),
             uninstall_key: UNINSTALL_KEY.into(),
             remembered_key: REMEMBERED_KEY.into(),
             start_menu: known(&FOLDERID_Programs)?.join(LINK),
             desktop: known(&FOLDERID_Desktop)?.join(LINK),
-            data: vec![known(&FOLDERID_RoamingAppData)?.join(DATA), local.join(DATA)],
+            data: vec![settings.clone(), local.join(DATA)],
+            settings,
         };
         if let Some(dir) = dir.or_else(|| registry::installed_dir(&layout)) {
             layout.dir = dir;
@@ -114,6 +117,7 @@ pub mod sandbox {
                 remembered_key: format!(r"{key}\sens\Sens"),
                 start_menu: root.join("Programs").join(LINK),
                 desktop: root.join("Desktop").join(LINK),
+                settings: root.join("Roaming").join(DATA),
                 data: vec![root.join("Roaming").join(DATA), root.join("Local").join(DATA)],
             };
             Sandbox { layout, root, key }

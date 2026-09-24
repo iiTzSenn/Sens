@@ -4,13 +4,16 @@
     --sens-carbon-800: #1a1d1c;
     --sens-carbon-700: #252927;
     --sens-carbon-600: #363b38;
+    --sens-alloy-600: #595f5c;
     --sens-alloy-500: #747b77;
     --sens-alloy-400: #929995;
     --sens-alloy-300: #b5bbb7;
+    --sens-bone-300: #d1cfc8;
     --sens-bone-200: #dddcd5;
     --sens-bone-100: #eceae3;
     --sens-bone-50: #f4f1ea;
     --sens-paper: #fbfaf6;
+    --sens-signal-800: #4e700d;
     --sens-signal-700: #78aa12;
     --sens-signal-600: #a9e52d;
     --sens-signal-500: #c7ff4a;
@@ -18,16 +21,114 @@
     --sens-signal-100: #f0ffd0;
     --sens-signal-tint-900: #1a1f16;
     --sens-signal-tint-700: #353e2a;
+    --sens-ice-800: #007082;
+    --sens-ice-700: #009bb4;
+    --sens-ice-600: #00c9e9;
+    --sens-ice-500: #4ee1ff;
+    --sens-ice-200: #ccf5ff;
+    --sens-ice-100: #e9fbff;
+    --sens-ice-tint-900: #131f22;
+    --sens-ice-tint-700: #243f45;
+    --sens-iris-800: #665798;
+    --sens-iris-700: #836cca;
+    --sens-iris-600: #a184f7;
+    --sens-iris-500: #b6a2ff;
+    --sens-iris-200: #edeaff;
+    --sens-iris-100: #f7f5ff;
+    --sens-iris-tint-900: #1d1c25;
+    --sens-iris-tint-700: #3b374b;
+    --sens-rose-800: #914669;
+    --sens-rose-700: #c15588;
+    --sens-rose-600: #ed69a8;
+    --sens-rose-500: #ff8abe;
+    --sens-rose-200: #ffe5ef;
+    --sens-rose-100: #fff3f7;
+    --sens-rose-tint-900: #241a1e;
+    --sens-rose-tint-700: #49333c;
     --sens-success: #43c878;
     --sens-warning: #e7b84b;
     --sens-danger: #e7655f;
     --sens-info: #6fa7d8;
+    --sens-success-700: #11733e;
+    --sens-warning-700: #895b00;
+    --sens-danger-700: #b63132;
+    --sens-info-700: #2e6b9c;
     --sens-lang-amber: #d8b24a;
     --sens-lang-azure: #5b8fc9;
     --sens-lang-ember: #d08248;
     --sens-lang-moss: #5aa86f;
     --sens-lang-iris: #9b87c4;
     --sens-lang-stone: #8a918d;
+
+    --r-key: 4px;
+    --r-control: 8px;
+    --r-card: 12px;
+    --r-sheet: 16px;
+    --fast: 140ms;
+    --slow: 200ms;
+    --curve: cubic-bezier(.2, .6, .3, 1);
+
+    --ui: "Space Grotesk", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+
+  :root, [data-accent="signal"] {
+    --accent-100: var(--sens-signal-100);
+    --accent-200: var(--sens-signal-200);
+    --accent-500: var(--sens-signal-500);
+    --accent-600: var(--sens-signal-600);
+    --accent-700: var(--sens-signal-700);
+    --accent-800: var(--sens-signal-800);
+    --accent-tint-900: var(--sens-signal-tint-900);
+    --accent-tint-700: var(--sens-signal-tint-700);
+  }
+
+  [data-accent="ice"] {
+    --accent-100: var(--sens-ice-100);
+    --accent-200: var(--sens-ice-200);
+    --accent-500: var(--sens-ice-500);
+    --accent-600: var(--sens-ice-600);
+    --accent-700: var(--sens-ice-700);
+    --accent-800: var(--sens-ice-800);
+    --accent-tint-900: var(--sens-ice-tint-900);
+    --accent-tint-700: var(--sens-ice-tint-700);
+  }
+
+  [data-accent="iris"] {
+    --accent-100: var(--sens-iris-100);
+    --accent-200: var(--sens-iris-200);
+    --accent-500: var(--sens-iris-500);
+    --accent-600: var(--sens-iris-600);
+    --accent-700: var(--sens-iris-700);
+    --accent-800: var(--sens-iris-800);
+    --accent-tint-900: var(--sens-iris-tint-900);
+    --accent-tint-700: var(--sens-iris-tint-700);
+  }
+
+  [data-accent="rose"] {
+    --accent-100: var(--sens-rose-100);
+    --accent-200: var(--sens-rose-200);
+    --accent-500: var(--sens-rose-500);
+    --accent-600: var(--sens-rose-600);
+    --accent-700: var(--sens-rose-700);
+    --accent-800: var(--sens-rose-800);
+    --accent-tint-900: var(--sens-rose-tint-900);
+    --accent-tint-700: var(--sens-rose-tint-700);
+  }
+
+  [data-accent="neutral"] {
+    --accent-100: var(--sens-paper);
+    --accent-200: var(--sens-bone-100);
+    --accent-500: var(--sens-bone-50);
+    --accent-600: var(--sens-bone-200);
+    --accent-700: var(--sens-alloy-400);
+    --accent-800: var(--sens-carbon-900);
+    --accent-tint-900: var(--sens-carbon-800);
+    --accent-tint-700: var(--sens-carbon-700);
+  }
+
+  :root, [data-mode="dark"] {
+    color-scheme: dark;
 
     --ground: var(--sens-carbon-950);
     --panel: var(--sens-carbon-900);
@@ -43,19 +144,91 @@
     --red: var(--sens-danger);
     --green: var(--sens-success);
     --amber: var(--sens-warning);
-    --focus: var(--sens-signal-500);
+    --blue: var(--sens-info);
+    --scrim: color-mix(in srgb, var(--sens-carbon-950) 72%, transparent);
 
-    --r-key: 4px;
-    --r-control: 8px;
-    --r-card: 12px;
-    --r-sheet: 16px;
-    --fast: 140ms;
-    --slow: 200ms;
-    --curve: cubic-bezier(.2, .6, .3, 1);
+    --primary: var(--sens-bone-50);
+    --primary-ink: var(--sens-carbon-950);
+    --primary-hover: var(--sens-bone-200);
+    --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230c0d0d' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+    --mark-body: var(--sens-carbon-800);
 
-    --ui: "Space Grotesk", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --focus: var(--accent-500);
+    --accent-text: var(--accent-600);
+    --accent-soft: var(--accent-200);
+    --accent-line: var(--accent-700);
+    --accent-fill: var(--accent-500);
+    --accent-fill-hover: var(--accent-600);
+    --accent-ink: var(--sens-carbon-950);
+    --tint: var(--accent-tint-900);
+    --tint-edge: var(--accent-tint-700);
+    --glint-edge: var(--accent-700);
+    --glint-peak: var(--accent-200);
+    --glow: var(--accent-500);
+    --glow-hot: var(--accent-100);
+    --grain-1: var(--accent-200);
+    --grain-2: var(--accent-500);
+    --grain-3: var(--accent-700);
   }
+
+  [data-mode="light"] {
+    color-scheme: light;
+
+    --ground: var(--sens-bone-50);
+    --panel: var(--sens-paper);
+    --card: var(--sens-bone-100);
+    --raise: var(--sens-bone-200);
+    --hair: var(--sens-bone-200);
+    --hair-strong: var(--sens-bone-300);
+    --edge: var(--sens-alloy-300);
+    --text: var(--sens-carbon-950);
+    --dim: var(--sens-carbon-600);
+    --faint: var(--sens-alloy-600);
+    --ghost: var(--sens-alloy-500);
+    --red: var(--sens-danger-700);
+    --green: var(--sens-success-700);
+    --amber: var(--sens-warning-700);
+    --blue: var(--sens-info-700);
+    --scrim: color-mix(in srgb, var(--sens-carbon-950) 28%, transparent);
+
+    --primary: var(--sens-carbon-900);
+    --primary-ink: var(--sens-paper);
+    --primary-hover: var(--sens-carbon-700);
+    --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbfaf6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+    --mark-body: var(--sens-carbon-900);
+
+    --focus: var(--accent-800);
+    --accent-text: var(--accent-800);
+    --accent-soft: var(--accent-800);
+    --accent-line: var(--accent-600);
+    --accent-fill: var(--accent-600);
+    --accent-fill-hover: var(--accent-500);
+    --accent-ink: var(--sens-carbon-950);
+    --tint: var(--accent-100);
+    --tint-edge: var(--accent-200);
+    --glint-edge: var(--accent-800);
+    --glint-peak: var(--accent-600);
+    --glow: var(--accent-500);
+    --glow-hot: var(--accent-100);
+    --grain-1: var(--accent-600);
+    --grain-2: var(--accent-700);
+    --grain-3: var(--accent-800);
+  }
+
+  [data-accent="neutral"][data-mode="light"], [data-accent="neutral"] [data-mode="light"] {
+    --accent-line: var(--sens-alloy-400);
+    --accent-fill: var(--sens-carbon-900);
+    --accent-fill-hover: var(--sens-carbon-700);
+    --accent-ink: var(--sens-paper);
+    --tint: var(--sens-bone-100);
+    --tint-edge: var(--sens-bone-200);
+    --glint-peak: var(--sens-alloy-400);
+    --grain-1: var(--sens-alloy-400);
+    --grain-2: var(--sens-carbon-600);
+    --grain-3: var(--sens-carbon-900);
+  }
+
+  :root:not([data-mode]) body { display: none; }
 
   @font-face {
     font-family: "Space Grotesk";

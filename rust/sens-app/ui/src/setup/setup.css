@@ -1,5 +1,6 @@
 @import "../shared/tokens.css";
 @import "../shared/stage.css";
+@import "../shared/look.css";
 
 * { box-sizing: border-box; }
 html, body, #setup { height: 100%; margin: 0; }
@@ -59,7 +60,7 @@ body {
 .track { position: relative; flex: 1; height: 8px; overflow: hidden; border-radius: 999px; background: var(--raise); }
 .track i {
   position: absolute; inset: 0 auto 0 0; width: 0; overflow: hidden;
-  border-radius: inherit; background: var(--sens-signal-500);
+  border-radius: inherit; background: var(--accent-fill);
   transition: width 520ms var(--curve);
 }
 .track i::after {
@@ -88,3 +89,12 @@ body {
 .made { font-size: 12px; color: var(--faint); }
 .foot .cancel { margin-left: auto; }
 .setup[data-screen="busy"] .foot, .setup[data-screen="running"] .foot { border-top-color: var(--hair-strong); }
+
+.look-field { margin-top: 24px; }
+.look-field > .label { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.look-field > .label b { font-size: 13px; font-weight: 500; letter-spacing: normal; text-transform: none; color: var(--text); }
+.setup .mode-choice { height: 44px; padding: 0 12px; place-content: center; border-radius: var(--r-control); }
+.setup .mode-name { font-size: 14px; }
+.setup .accents { gap: 14px; }
+.setup .swatch { width: 30px; height: 30px; }
+.setup[data-screen="look"] .actions { margin-top: 30px; }

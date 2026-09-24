@@ -2,6 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { openPicture } from "../../app/Dialog";
 import { seconds, whole } from "../../shared/format.js";
+import { look } from "../../shared/look";
 import { useIds, usePane } from "../panes/context";
 import { Ask } from "./Ask";
 import { grain } from "./grain";
@@ -214,6 +215,7 @@ function Live({ said, began }: { said: string; began: number }) {
 function Hello({ hint }: { hint: string }) {
   const mark = useRef<HTMLDivElement>(null);
   const [lit, setLit] = useState(false);
+  const tone = useStore(look, (s) => `${s.shown} ${s.chosen.accent}`);
 
   useEffect(() => {
     if (!mark.current) return;
@@ -226,7 +228,7 @@ function Hello({ hint }: { hint: string }) {
       stop();
       canvas.remove();
     };
-  }, []);
+  }, [tone]);
 
   return (
     <div className="hello">

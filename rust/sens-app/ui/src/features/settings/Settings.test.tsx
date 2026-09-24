@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClaudeCodeProgress, ProviderState } from "../../ipc/types";
 import { dialog } from "../../app/modal";
 import { models, readAccount, refreshModels } from "../models/store";
 import { profile } from "../profile/store";
+import { look } from "../../shared/look";
 import { updates } from "../updates/store";
-import { Settings } from "./Settings";
-import { enterSettings, settings, showSection } from "./store";
+import { Settings, SettingsDialog } from "./Settings";
+import { settingsSheet } from "./sheet";
+import { enterSettings, openSettings, settings, showSection, type Section } from "./store";
 
 const ipc = vi.hoisted(() => ({
   commands: {
@@ -24,6 +26,7 @@ const ipc = vi.hoisted(() => ({
     claudeCodeInstall: vi.fn(),
     claudeCodeNewer: vi.fn(),
     claudeCodeUpdate: vi.fn(),
+    setLook: vi.fn(),
   },
   heard: { claudeCode: (_: ClaudeCodeProgress) => {} },
 }));
@@ -59,13 +62,23 @@ function later<T = void>() {
   return { promise, settle };
 }
 
-async function open(section: "general" | "providers") {
+async function open(section: Section) {
   render(<Settings />);
   await act(async () => {
     showSection(section);
     enterSettings();
   });
 }
+
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+    this.dispatchEvent(new Event("close"));
+  };
+});
 
 beforeEach(() => {
   settings.setState(settings.getInitialState(), true);
@@ -75,6 +88,10 @@ beforeEach(() => {
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.providersState.mockResolvedValue([claude()]);
   dialog.setState(dialog.getInitialState(), true);
+  look.setState(look.getInitialState(), true);
+  settingsSheet.setState(settingsSheet.getInitialState(), true);
+  delete document.documentElement.dataset.mode;
+  delete document.documentElement.dataset.accent;
 });
 
 afterEach(cleanup);
@@ -117,6 +134,51 @@ describe("general settings", () => {
     await open("general");
     fireEvent.click(screen.getByText("Ver Sens 9.9.9"));
     expect(dialog.getState()).toMatchObject({ open: true, title: "Sens 9.9.9" });
+  });
+});
+
+describe("the settings sheet", () => {
+  it("opens over the window on the section asked for, and gives the focus back when it closes", async () => {
+    const opener = Object.assign(document.createElement("button"), { textContent: "Ajustes" });
+    document.body.append(opener);
+    render(<SettingsDialog />);
+    expect(screen.queryByRole("navigation", { name: "Secciones de ajustes" })).toBeNull();
+
+    await act(async () => openSettings("look", opener));
+    expect(screen.getByRole("heading", { name: "Apariencia" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Apariencia/ }).getAttribute("aria-current")).toBe("true");
+
+    await act(async () => fireEvent.click(screen.getByLabelText("Cerrar ajustes")));
+    expect(settingsSheet.getState().open).toBe(false);
+    expect(screen.queryByRole("navigation", { name: "Secciones de ajustes" })).toBeNull();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+});
+
+describe("appearance settings", () => {
+  it("shows the chosen look at once and keeps it", async () => {
+    await open("look");
+    expect(screen.getByRole("radio", { name: /Oscuro/ })).toHaveProperty("checked", true);
+
+    await act(async () => fireEvent.click(screen.getByRole("radio", { name: /Claro/ })));
+    expect(document.documentElement.dataset).toMatchObject({ mode: "light", accent: "signal" });
+    await act(async () => fireEvent.click(screen.getByRole("radio", { name: "Rosa" })));
+
+    expect(ipc.commands.setLook).toHaveBeenLastCalledWith({ mode: "light", accent: "rose" });
+    expect(document.documentElement.dataset.accent).toBe("rose");
+    expect(screen.getByRole("radio", { name: "Rosa" })).toHaveProperty("checked", true);
+  });
+
+  it("goes back to the look it had when the new one cannot be kept", async () => {
+    ipc.commands.setLook.mockRejectedValue("sin permiso");
+    await open("look");
+
+    await act(async () => fireEvent.click(screen.getByRole("radio", { name: "Iris" })));
+
+    expect(document.documentElement.dataset.accent).toBe("signal");
+    expect(screen.getByRole("radio", { name: "Señal" })).toHaveProperty("checked", true);
+    expect(screen.getByRole("alert").textContent).toBe("sin permiso");
   });
 });
 

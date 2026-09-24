@@ -67,7 +67,7 @@ That launches the app against your local sources. To produce the Windows install
 npm run app:installer
 ```
 
-The installer is Sens's own: a small window drawn in HTML that carries the app inside it, installs per user without UAC, and takes over an install made by the old NSIS setup in place. The first time Sens opens, a welcome sets your name, checks Claude Code, and brings your Claude Code sessions and the MCP servers of other apps.
+The installer is Sens's own: a small window drawn in HTML that carries the app inside it, installs per user without UAC, and takes over an install made by the old NSIS setup in place. Before it installs, it asks how Sens should look — dark, light or as Windows, and one of five accents — and the whole window, the stone included, changes as you choose. **Ajustes › Apariencia** changes it later. The first time Sens opens, a welcome sets your name, checks Claude Code, and brings your Claude Code sessions and the MCP servers of other apps.
 
 It will refuse to build an unsigned one by accident. Give it a certificate from the Windows store with `SENS_SIGN_THUMBPRINT`, your own signing tool with `SENS_SIGN_COMMAND` (which must contain `%1`), or pass `--unsigned` when you know that is what you want. macOS needs notarization, which is a different certificate and a different story — not done yet.
 
@@ -80,11 +80,11 @@ cargo test --manifest-path rust/sens-agent/Cargo.toml   # the chat engine
 cargo test --manifest-path rust/sens-app/Cargo.toml     # the app: capabilities, market, sessions
 npm run typecheck
 npm run brand            # regenerate logo, icons and banner
-npm run dev:setup -w sens-app-ui   # the installer in a browser: ?mode=update, ?mode=uninstall, ?running=1, ?fail=extract
+npm run dev:setup -w sens-app-ui   # the installer in a browser: ?mode=update, ?mode=uninstall, ?running=1, ?fail=extract, ?look=light.iris
 npm run setup:dev        # the installer in its real window, as a demo that writes nothing
 ```
 
-The app's own dev server shows the welcome with `?welcome` in the URL.
+The app's own dev server shows the welcome with `?welcome` in the URL, and any look with `?look=light.iris`.
 
 Anything visual — interface, asset, terminal output, marketing — follows [the Sens visual identity](docs/brand/identity.md). Colours live in `src/brand/tokens.ts` and the mark's geometry in `src/brand/mark.ts`: import the token instead of retyping a hex, and edit the generator rather than the generated asset.
 

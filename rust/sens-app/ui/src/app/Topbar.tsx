@@ -42,11 +42,11 @@ export function Topbar() {
             </clipPath>
           </defs>
           <g clipPath="url(#sens-brand-body)">
-            <rect width="48" height="48" fill="var(--sens-carbon-800)" />
+            <rect width="48" height="48" fill="var(--mark-body)" />
             <path
               d="M48 13C41 13 35 8.5 29 8.5C21 8.5 13.5 13 13.5 18.5C13.5 23 19 21.8 24 24C29 26.2 34.5 25 34.5 29.5C34.5 35 27 39.5 19 39.5C13 39.5 7 35 0 35"
               fill="none"
-              stroke="var(--sens-signal-500)"
+              stroke="var(--glow)"
               strokeWidth="4.6"
               strokeLinecap="round"
             />

@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useStore } from "zustand";
 import type { Card, Provider } from "../../ipc/types";
-import { showView } from "../../app/session";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
+import { look } from "../../shared/look";
 import { PanelForm, openPanel } from "../../shared/Panel";
 import { useSheet, type Sheet } from "../../shared/useSheet";
 import { accountLine, chosenCard, chosenLabel, choose, models, modelsOf, offeredBy, readAccount, refreshModels, refreshWhenDue, saidOf, signInWanted, toggleHidden } from "../models/store";
 import { useIds, usePane } from "../panes/context";
 import type { Pane } from "../panes/store";
-import { settings, showSection } from "../settings/store";
+import { openSettings, settings } from "../settings/store";
 import { BYPASS, EFFORT_NAMES, MODES, chooseMode, composer, effortLevels, effortNow, modeNow, pickEffort, toggleThinking, trustProject, trustedHere } from "./store";
 
 // A choice in a knob's menu: its name, what it means, and a tick when chosen.
@@ -56,8 +56,7 @@ export function ModelPicker() {
   const [editing, setEditing] = useState(false);
   const toProviders = () => {
     sheet.shut();
-    showSection("providers");
-    showView("settings");
+    openSettings("providers", sheet.anchor.current);
   };
 
   useEffect(() => {
@@ -338,6 +337,7 @@ const FRONT_SOFT = 0.18;
 function Pixels({ running }: { running: boolean }) {
   const id = useIds();
   const canvas = useRef<HTMLCanvasElement>(null);
+  const tone = useStore(look, (s) => `${s.shown} ${s.chosen.accent}`);
 
   useEffect(() => {
     const board = canvas.current;
@@ -397,7 +397,7 @@ function Pixels({ running }: { running: boolean }) {
     };
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, [running]);
+  }, [running, tone]);
 
   return <canvas className="effort-fill" id={id("effort-pixels")} ref={canvas} aria-hidden="true" />;
 }

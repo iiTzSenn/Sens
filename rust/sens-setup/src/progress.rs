@@ -8,6 +8,7 @@ pub const UNINSTALLER: &str = "Copiando el desinstalador";
 pub const REGISTERING: &str = "Registrando Sens en Windows";
 pub const START_MENU: &str = "Acceso directo en el menú Inicio";
 pub const DESKTOP: &str = "Acceso directo en el escritorio";
+pub const LOOK: &str = "Guardando tu apariencia";
 pub const WAITING: &str = "Sens está abierta; esperando a que se cierre";
 pub const CLOSED: &str = "Sens se ha cerrado";
 pub const UNSEEN: &str = "Sens seguía abierta sin ventana; cerrándola";
@@ -50,6 +51,10 @@ pub fn placing(dir: &Path) -> String {
 
 pub fn deleting(dir: &Path) -> String {
     format!("Borrando sens-app.exe y el desinstalador de {}", dir.display())
+}
+
+pub fn unsaved_look(reason: &str) -> String {
+    format!("Tu apariencia no se guardó: {reason}")
 }
 
 pub fn finished(elapsed: Duration) -> String {

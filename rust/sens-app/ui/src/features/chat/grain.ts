@@ -1,8 +1,8 @@
 // The welcome's "sens", filled with a moving, grainy gradient of the Signal
 // tones, drawn by WebGL2 on a canvas behind the letters.
 
-const TOKENS = ["--sens-signal-200", "--sens-signal-500", "--sens-signal-700"];
-const GROUND = "--sens-carbon-950";
+const TOKENS = ["--grain-1", "--grain-2", "--grain-3"];
+const GROUND = "--ground";
 
 const VERTEX = `#version 300 es
 in vec2 position;
@@ -18,6 +18,7 @@ uniform vec3 uColor1;
 uniform vec3 uColor2;
 uniform vec3 uColor3;
 uniform vec3 uGround;
+uniform float uLight;
 out vec4 fragColor;
 const float TIME_SPEED = 0.45;
 const float WARP_STRENGTH = 2.2;
@@ -55,7 +56,8 @@ vec3 layer2=mix(uColor2,uColor1,S(edge0,edge1,tuv.x));
 vec3 col=mix(layer1,layer2,S(0.5+BLEND_SOFTNESS,-0.3-BLEND_SOFTNESS,tuv.y));
 float grain=fract(sin(dot(uv*GRAIN_SCALE,vec2(12.9898,78.233)))*43758.5453);
 col+=(grain-0.5)*GRAIN_AMOUNT;
-col=max(clamp((col-0.5)*CONTRAST+0.5,0.0,1.0),uGround);
+col=clamp((col-0.5)*CONTRAST+0.5,0.0,1.0);
+col=uLight>0.5?min(col,uGround):max(col,uGround);
 fragColor=vec4(col,1.0);
 }`;
 
@@ -98,6 +100,7 @@ export function grain(canvas: HTMLCanvasElement, mark: HTMLElement): (() => void
   gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
   TOKENS.forEach((token, at) => gl.uniform3fv(gl.getUniformLocation(made, `uColor${at + 1}`), tokenRgb(token)));
   gl.uniform3fv(gl.getUniformLocation(made, "uGround"), tokenRgb(GROUND));
+  gl.uniform1f(gl.getUniformLocation(made, "uLight"), document.documentElement.dataset.mode === "light" ? 1 : 0);
   const resolution = gl.getUniformLocation(made, "iResolution");
   const clock = gl.getUniformLocation(made, "iTime");
 

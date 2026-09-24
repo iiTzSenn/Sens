@@ -10,6 +10,7 @@ use crate::install::{self, Job, Place};
 use crate::launch::{Launch, Mode};
 use crate::layout::Layout;
 use crate::log::Log;
+use crate::look::{self, Look};
 use crate::progress::Step;
 use crate::registry::{self, Installed};
 use crate::running::{self, Closing};
@@ -45,6 +46,7 @@ struct SetupState {
     relaunch: bool,
     desktop: bool,
     demo: bool,
+    look: Option<Look>,
 }
 
 #[derive(Deserialize)]
@@ -53,6 +55,8 @@ struct Choice {
     dir: String,
     desktop: bool,
     start_menu: bool,
+    #[serde(default)]
+    look: Option<Look>,
 }
 
 #[derive(Serialize, Clone)]
@@ -85,6 +89,7 @@ fn setup_state(setup: State<Setup>) -> SetupState {
         relaunch: setup.launch.relaunch,
         desktop: layout.desktop.exists(),
         demo: payload::embedded().is_none(),
+        look: look::read(&layout.settings),
     }
 }
 
@@ -107,7 +112,7 @@ fn setup_install(app: AppHandle, setup: State<Setup>, choice: Choice) -> Result<
     };
     let report = reporter(&app, &setup.log);
     let Some(payload) = payload::embedded() else {
-        return demo::install(&dir, choice.start_menu, choice.desktop, &setup.cancel, &report);
+        return demo::install(&dir, choice.start_menu, choice.desktop, choice.look.is_some(), &setup.cancel, &report);
     };
     let exe = std::env::current_exe().map_err(|error| format!("no encuentro el instalador: {error}"))?;
     let ask = || ask_about_the_open_app(&app);
@@ -123,6 +128,7 @@ fn setup_install(app: AppHandle, setup: State<Setup>, choice: Choice) -> Result<
         placed: setup.placed.lock().unwrap().as_ref() == Some(&dir),
         closing: if waits { Closing::Wait(&ask) } else { Closing::Ask(&ask) },
         cancel: &setup.cancel,
+        look: choice.look.as_ref(),
     };
     install::run(&job, &report).map_err(|failure| {
         if failure.placed {
