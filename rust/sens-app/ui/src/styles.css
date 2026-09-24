@@ -139,11 +139,11 @@
   .update-pill:hover { background: var(--sens-signal-tint-700); color: var(--sens-signal-100); }
   .update-ping {
     position: absolute; top: -3px; right: -3px; width: 8px; height: 8px;
-    border-radius: 50%; background: var(--focus); box-shadow: 0 0 0 2px var(--panel);
+    border-radius: 50%; background: var(--focus); outline: 2px solid var(--panel);
   }
   .update-ping::after {
     content: ''; position: absolute; inset: 0; border-radius: 50%;
-    background: var(--focus); animation: ping 1.8s cubic-bezier(0, 0, .2, 1) infinite;
+    background: var(--focus); animation: ping 1.8s var(--curve) infinite;
   }
   @keyframes ping { 70%, 100% { transform: scale(2.6); opacity: 0; } }
   .update-pill[hidden] { display: none; }
