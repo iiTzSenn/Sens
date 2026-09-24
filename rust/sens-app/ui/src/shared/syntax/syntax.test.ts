@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { languageNamed, languageOf } from "./languages";
-import { paint, paintCode, paintedNow, paintRows } from "./paint";
+import { paint, paintedNow, paintRows } from "./paint";
 
 // Dark+, as VS Code paints them.
 const KEYWORD = "#569cd6";
@@ -58,18 +58,6 @@ describe("painting", () => {
   it("skips a text no longer wanted when its turn comes", async () => {
     expect(await paint("let skipped = 1;", "javascript", () => false)).toBeNull();
     expect(paintedNow("let skipped = 1;", "javascript")).toBeNull();
-  });
-
-  it("fills a code block, and colors it once it is on screen", async () => {
-    const code = document.createElement("code");
-    document.body.append(code);
-    paintCode(code, "const a = 'x';\nlet b;", "typescript");
-    expect(code.textContent).toBe("const a = 'x';\nlet b;");
-    await paint("const a = 'x';\nlet b;", "typescript");
-    await new Promise((settle) => setTimeout(settle));
-    expect(code.textContent).toBe("const a = 'x';\nlet b;");
-    expect([...code.querySelectorAll("span")].find((span) => span.textContent === "const")?.style.color).toBe("rgb(86, 156, 214)");
-    code.remove();
   });
 
   it("reads a diff's removed rows as the file before and the rest as the file after", async () => {

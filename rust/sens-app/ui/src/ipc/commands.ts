@@ -4,7 +4,9 @@ import type {
   Artifact,
   Capabilities,
   Changes,
+  ChatEvent,
   ClaudeCodeProgress,
+  Decision,
   Detail,
   Entry,
   Frame,
@@ -12,11 +14,15 @@ import type {
   IndexedFile,
   Listing,
   Market,
+  Message,
   Method,
   NewServer,
   Profile,
   ProviderState,
+  SessionEntry,
+  Settings,
   UpdateCheck,
+  UpdateStage,
   Workspace,
 } from "./types";
 
@@ -29,6 +35,10 @@ export const commands = {
   saveProfile: (name: string) => invoke<void>("save_profile", { name }),
   setUpdateCheck: (on: boolean) => invoke<void>("set_update_check", { on }),
   updateCheck: (manual: boolean) => invoke<UpdateCheck>("update_check", { manual }),
+  // Downloads, verifies and installs the update, then Sens restarts.
+  updateInstall: () => invoke<void>("update_install"),
+  // How many sessions are working right now, in any project.
+  chatWorking: () => invoke<number>("chat_working"),
   providersState: () => invoke<ProviderState[]>("providers_state"),
   setProviderMethod: (id: string, method: Method) => invoke<void>("set_provider_method", { id, method }),
   saveApiKey: (id: string, key: string) => invoke<void>("save_api_key", { id, key }),
@@ -54,6 +64,19 @@ export const commands = {
   marketInstall: (root: string, id: string, values: Record<string, string>) =>
     invoke<string>("market_install", { root, id, values }),
   marketUpdate: (id: string, name: string) => invoke<void>("market_update", { id, name }),
+
+  // A session and its chat with Claude Code.
+  replay: (root: string, id: string) => invoke<SessionEntry[]>("replay", { root, id }),
+  newSessionId: () => invoke<string>("new_session_id"),
+  openSession: (root: string, id: string | null) => invoke<string>("open_session", { root, id }),
+  chatWarm: (root: string, sessionId: string, settings: Settings) => invoke<void>("chat_warm", { root, sessionId, settings }),
+  chatSend: (root: string, sessionId: string, message: Message, settings: Settings) =>
+    invoke<void>("chat_send", { root, sessionId, message, settings }),
+  chatStop: (sessionId: string) => invoke<void>("chat_stop", { sessionId }),
+  chatAnswer: (sessionId: string, request: string, decision: Decision) => invoke<void>("chat_answer", { sessionId, request, decision }),
+  chatBusy: (sessionId: string) => invoke<boolean>("chat_busy", { sessionId }),
+  // The background tasks still running in a session.
+  chatTasks: (sessionId: string) => invoke<string[]>("chat_tasks", { sessionId }),
 
   workspaces: () => invoke<Workspace[]>("workspaces"),
   // A title the model suggests once a session has something to name, if it has none yet.
@@ -90,4 +113,8 @@ export const events = {
   claudeCode: (heard: (progress: ClaudeCodeProgress) => void): Promise<UnlistenFn> =>
     listen<ClaudeCodeProgress>("claude-code", ({ payload }) => heard(payload)),
   browser: (heard: (what: Heard) => void): Promise<UnlistenFn> => listen<Heard>("browser", ({ payload }) => heard(payload)),
+  update: (heard: (stage: UpdateStage) => void): Promise<UnlistenFn> =>
+    listen<{ version: string; stage: UpdateStage }>("update", ({ payload }) => heard(payload.stage)),
+  chat: (heard: (session: string, event: ChatEvent) => void): Promise<UnlistenFn> =>
+    listen<{ session: string; event: ChatEvent }>("chat", ({ payload }) => heard(payload.session, payload.event)),
 };

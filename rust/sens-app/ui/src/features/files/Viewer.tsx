@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { useStore } from "zustand";
 import { FRONT_MATTER } from "../../shared/format.js";
-import { Prose } from "../../shared/Prose";
+import { Markdown } from "../../shared/markdown/Markdown";
 import { languageOf } from "../../shared/syntax/languages";
 import { usePainted, type Look, type Painted, type Runs } from "../../shared/syntax/paint";
 import { useSeen } from "../../shared/useSeen";
@@ -161,7 +161,7 @@ function Reading({ hidden }: { hidden: boolean }) {
   const box = useOpensAtTop<HTMLDivElement>();
   return (
     <div className="reading" ref={box} hidden={hidden}>
-      <Prose text={text.replace(FRONT_MATTER, "")} />
+      <Markdown text={text.replace(FRONT_MATTER, "")} />
     </div>
   );
 }

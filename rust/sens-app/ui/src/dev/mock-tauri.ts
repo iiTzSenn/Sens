@@ -339,6 +339,25 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   },
   title_session: () => null,
   replay: ({ id }) => (id === "demo-1" ? REPLAY : []),
+  new_session_id: () => "demo-new",
+  open_session: ({ id }) => id ?? "demo-new",
+  chat_busy: () => false,
+  chat_tasks: () => [],
+  // A reply as the real one arrives: text in pieces, a command, the end.
+  chat_send: ({ sessionId, message }) => {
+    const session = String(sessionId);
+    const said = `Recibido: «${(message as { text: string }).text}». Te cuento lo que he mirado:\n\n- El **árbol** del proyecto\n- Los ficheros \`src/app.tsx\` y \`main.py\`\n\n${FENCE}ts\nconst listo = true;\n${FENCE}\n\nListo.`;
+    const events: [number, unknown][] = [[80, { kind: "started", model: "demo-model" }]];
+    for (let at = 0; at < said.length; at += 9) events.push([120 + at * 6, { kind: "delta", thinking: false, text: said.slice(at, at + 9) }]);
+    const end = 200 + said.length * 6;
+    events.push(
+      [end, { kind: "said", text: said }],
+      [end + 100, { kind: "tool", id: "run-1", name: "Bash", input: { command: "npm test" } }],
+      [end + 700, { kind: "toolDone", id: "run-1", output: "", error: false, detail: { stdout: "✓ 12 tests", stderr: "" } }],
+      [end + 800, { kind: "finished", ok: true, stopped: false, millis: 2400, turns: 1, tokensIn: 10, tokensOut: 180, error: "" }],
+    );
+    for (const [after, event] of events) setTimeout(() => emit("chat", { session, event }), after);
+  },
   providers: () => [{ id: "claude", vendor: "Anthropic", label: "Claude Code" }],
   models: () => [
     {

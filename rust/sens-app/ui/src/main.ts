@@ -3,6 +3,7 @@ import "./legacy/app.js";
 import { mountShelf } from "./features/artifacts/Shelf";
 import { mountCapabilities } from "./features/capabilities/Capabilities";
 import { mountChanges } from "./features/changes/Changes";
+import { mountThread } from "./features/chat/Thread";
 import { mountTree } from "./features/files/Tree";
 import { mountViewer } from "./features/files/Viewer";
 import { mountRail } from "./features/rail/Rail";
@@ -14,6 +15,7 @@ const byId = (id: string) => document.getElementById(id)!;
 
 // Each zone React owns is mounted here; app.js no longer touches its nodes.
 mountRail(byId("rail"));
+mountThread(byId("chat-thread"));
 mountShelf(byId("shelf-body"));
 mountCapabilities(byId("capabilities-body"));
 mountSettings(byId("settings-body"));

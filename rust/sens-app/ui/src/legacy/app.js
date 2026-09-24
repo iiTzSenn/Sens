@@ -1,39 +1,32 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as dialog from "@tauri-apps/plugin-dialog";
 import { loadShelf } from "../features/artifacts/store";
 import { enterCapabilities } from "../features/capabilities/store";
-import { forgetChanges, loadChanges, soonChanges } from "../features/changes/store";
+import { forgetChanges, loadChanges } from "../features/changes/store";
 import { plain } from "../features/market/search.js";
 import { loadProfile } from "../features/profile/store";
 import { forgetTree, loadFiles } from "../features/files/store";
 import { forgetViewer, openFile, viewer } from "../features/files/view";
-import { forgetEdits, noteEdit, project } from "../features/project/store";
-import { failRail, fold, loadRail, nameSession, oweRail } from "../features/rail/store";
-import { aimSite, enterSite, forgetSite, onProject, reloadSite, syncBrowser } from "../features/web/store";
+import { forgetEdits, project } from "../features/project/store";
+import { failRail, fold, loadRail, oweRail } from "../features/rail/store";
+import { blank, chat, halt, hello, idle, load, notice, send as sendChat, warm as warmChat, warn } from "../features/chat/store";
+import { openUpdate } from "../features/updates/UpdatePanel";
+import { enterSite, forgetSite, syncBrowser } from "../features/web/store";
 import { enterSettings, settings, showSection } from "../features/settings/store";
-import { forgetTasks, noteTask, runningTasks, settleTasks, tasks, tickTasks } from "../features/tasks/store";
-import { TASK_EVENTS } from "../features/tasks/tasks";
+import { runningTasks, tasks, tickTasks } from "../features/tasks/store";
 import { startUpdates, updates } from "../features/updates/store";
 import { API_KEY_SOURCE, PLANS, keyed } from "../shared/account";
-import { compact, seconds, stem, weigh, whole } from "../shared/format.js";
+import { stem, weigh } from "../shared/format.js";
 import { anchorMenu } from "../shared/anchorMenu";
 import { ICONS } from "../shared/icons.js";
 import { sheets } from "../shared/sheets.js";
-import { languageNamed, languageOf } from "../shared/syntax/languages";
-import { paintCode, paintRows, runNodes } from "../shared/syntax/paint";
 import { store, stored } from "../shared/storage.js";
 import { legacy } from "./bridge";
 
 const frame = getCurrentWindow();
 
-const DIFF_PREVIEW = 14;
-
 const body = document.getElementById("body");
-const thread = document.getElementById("thread");
-const inner = document.getElementById("thread-inner");
-const stream = document.getElementById("stream");
 const taskInput = document.getElementById("task");
 const rootLabel = document.getElementById("root");
 const folderBtn = document.getElementById("folder");
@@ -70,7 +63,7 @@ const branchPanel = document.getElementById("branches");
 const branchHere = document.getElementById("branch-here");
 const branchRows = document.getElementById("branch-rows");
 const branchFilter = document.getElementById("branch-filter");
-const chat = document.querySelector("section.chat");
+const chatSection = document.querySelector("section.chat");
 const shelf = document.getElementById("shelf");
 const capsView = document.getElementById("capabilities-view");
 const settingsView = document.getElementById("settings-view");
@@ -80,15 +73,6 @@ const panelBody = document.getElementById("panel-body");
 
 let root = "";
 let repo = null;
-let current = "";
-
-function setCurrent(id) {
-  current = id;
-  project.setState({ session: id });
-}
-let replyNow = null;
-let busy = false;
-let stopping = false;
 
 const el = (tag, className, value) => {
   const node = document.createElement(tag);
@@ -96,1039 +80,6 @@ const el = (tag, className, value) => {
   if (value !== undefined) node.textContent = value;
   return node;
 };
-
-function place(node) {
-  if (!node.classList.contains("hello")) inner.querySelector(".hello")?.remove();
-  inner.append(node);
-  thread.scrollTop = thread.scrollHeight;
-  return node;
-}
-
-const nearBottom = () => thread.scrollHeight - thread.scrollTop - thread.clientHeight < 160;
-
-function paintFades() {
-  const room = thread.scrollHeight - thread.clientHeight;
-  stream.dataset.over = String(thread.scrollTop > 8);
-  stream.dataset.under = String(room - thread.scrollTop > 8);
-}
-
-thread.addEventListener("scroll", paintFades, { passive: true });
-const watchFades = new ResizeObserver(paintFades);
-watchFades.observe(inner);
-watchFades.observe(thread);
-
-function follow(change) {
-  const stick = nearBottom();
-  const made = change();
-  if (stick) thread.scrollTop = thread.scrollHeight;
-  return made;
-}
-
-function tick(parts, tone) {
-  const node = el("div", tone ? `tick ${tone}` : "tick");
-  node.append(el("span", "dot"));
-  const line = el("span");
-  for (const part of [].concat(parts)) {
-    line.append(typeof part === "string" ? document.createTextNode(part) : part);
-  }
-  node.append(line);
-  return place(node);
-}
-
-const bold = (value) => el("b", null, value);
-
-const MARKS = { add: "+", del: "−", "": " ", gap: "⋯" };
-
-// The rows show plain at once and take their language's colors when they come.
-function linesCard(rows, preview = DIFF_PREVIEW, language = null) {
-  const card = el("div", "diff");
-  const lines = el("div", "lines");
-  const colored = paintRows(rows, language, () => card.isConnected);
-  const draw = (from, to) => {
-    rows.slice(from, to).forEach(({ kind, num, text }, at) => {
-      const row = el("div", kind ? `row ${kind}` : "row");
-      const src = el("span", "src", text);
-      row.append(el("span", "num", num ? String(num) : ""), el("span", "mark", MARKS[kind]), src);
-      lines.append(row);
-      colored.then((painted) => {
-        const one = painted[from + at];
-        if (one) src.replaceChildren(...runNodes(one.runs, one.looks));
-      });
-    });
-  };
-
-  draw(0, preview);
-  card.append(lines);
-
-  if (rows.length > preview) {
-    const more = el("button", "more", `mostrar ${rows.length - preview} líneas más`);
-    more.addEventListener("click", () => {
-      draw(preview, rows.length);
-      more.remove();
-    });
-    card.append(more);
-  }
-  return card;
-}
-
-function patchView(hunks, preview, language) {
-  const rows = [];
-  const added = [];
-  let plus = 0;
-  let minus = 0;
-  for (const hunk of hunks) {
-    if (rows.length) rows.push({ kind: "gap", text: "" });
-    let before = hunk.oldStart;
-    let after = hunk.newStart;
-    for (const line of hunk.lines) {
-      const mark = line[0];
-      const text = line.slice(1);
-      if (mark === "+") {
-        rows.push({ kind: "add", num: after, text });
-        added.push(after++);
-        plus++;
-      } else if (mark === "-") {
-        rows.push({ kind: "del", num: before++, text });
-        minus++;
-      } else if (mark === " ") {
-        rows.push({ kind: "", num: after, text });
-        before++;
-        after++;
-      }
-    }
-  }
-  return { node: linesCard(rows, preview, language), plus, minus, added };
-}
-
-const addedRows = (text) => String(text).split("\n").map((line, at) => ({ kind: "add", num: at + 1, text: line }));
-
-function replacedRows(before, after) {
-  return [
-    ...String(before).split("\n").map((text) => ({ kind: "del", text })),
-    ...String(after).split("\n").map((text) => ({ kind: "add", text })),
-  ];
-}
-
-function relative(path) {
-  if (!path) return "";
-  const clean = String(path).replace(/\\/g, "/");
-  const base = root.replace(/\\/g, "/").replace(/\/$/, "");
-  const inside = base && clean.toLowerCase().startsWith(`${base.toLowerCase()}/`);
-  return inside ? clean.slice(base.length + 1) : clean;
-}
-
-const oneLine = (text) => String(text || "").replace(/\s+/g, " ").trim();
-
-function outputBlock(text, bad) {
-  return el("pre", bad ? "out fault" : "out", String(text || "").replace(/\s+$/, ""));
-}
-
-const TODO_ICON = { completed: () => ICONS.check, in_progress: () => ICONS.dot, pending: () => ICONS.circle };
-
-function todoList(todos = []) {
-  const list = el("ul", "todos");
-  for (const todo of todos) {
-    const item = el("li");
-    item.dataset.status = todo.status;
-    item.insertAdjacentHTML("afterbegin", (TODO_ICON[todo.status] || TODO_ICON.pending)());
-    item.append(el("span", null, todo.status === "in_progress" ? todo.activeForm || todo.content : todo.content));
-    list.append(item);
-  }
-  return list;
-}
-
-const progressOf = (todos = []) => `${todos.filter((todo) => todo.status === "completed").length}/${todos.length}`;
-
-function pathLook(icon, verb, input) {
-  const target = relative(input.file_path || input.notebook_path || "");
-  return { icon, verb, target, mono: true, link: target };
-}
-
-function mcpLook(name) {
-  const [, server, tool] = name.split("__");
-  return { icon: ICONS.plug, verb: server, target: tool || "", mono: true, ask: `usar ${server}` };
-}
-
-const LOOKS = {
-  Read: (input) => pathLook(ICONS.fileText, "Leer", input),
-  Edit: (input) => pathLook(ICONS.pencil, "Editar", input),
-  MultiEdit: (input) => pathLook(ICONS.pencil, "Editar", input),
-  NotebookEdit: (input) => pathLook(ICONS.pencil, "Editar", input),
-  Write: (input) => pathLook(ICONS.filePlus, "Escribir", input),
-  Bash: (input) => ({ icon: ICONS.terminal, verb: "Ejecutar", target: oneLine(input.command), mono: true }),
-  PowerShell: (input) => ({ icon: ICONS.terminal, verb: "Ejecutar", target: oneLine(input.command), mono: true }),
-  Grep: (input) => ({ icon: ICONS.search, verb: "Buscar", target: input.pattern, mono: true, meta: input.path ? `en ${relative(input.path)}` : "" }),
-  Glob: (input) => ({ icon: ICONS.files, verb: "Listar", target: input.pattern, mono: true }),
-  WebFetch: (input) => ({ icon: ICONS.globe, site: input.url, verb: "Leer", target: input.url, mono: true, ask: "abrir" }),
-  WebSearch: (input) => ({ icon: ICONS.globe, verb: "Buscar en la web", target: input.query }),
-  TodoWrite: (input) => ({ icon: ICONS.listChecks, verb: "Tareas", target: progressOf(input.todos) }),
-  Task: (input) => ({ icon: ICONS.split, verb: "Delegar", target: input.description || input.subagent_type || "" }),
-  Agent: (input) => ({ icon: ICONS.split, verb: "Delegar", target: input.description || input.subagent_type || "" }),
-  Skill: (input) => ({ icon: ICONS.book, verb: "Usar skill", target: input.skill || input.command || "" }),
-};
-
-function describe(name, input = {}) {
-  if (LOOKS[name]) return LOOKS[name](input);
-  if (name.startsWith("mcp__")) return mcpLook(name);
-  return { icon: ICONS.wrench, verb: name, target: "" };
-}
-
-const SILENT = new Set(["ToolSearch", "AskUserQuestion", "ExitPlanMode"]);
-const EDITS = new Set(["Edit", "MultiEdit", "Write", "NotebookEdit"]);
-const SHELLS = new Set(["Bash", "PowerShell"]);
-
-const SILENCE = /^\(\w+ completed with no output\)$/;
-
-function terminalView(command, run) {
-  const box = el("div", "terminal");
-  const line = el("div", "terminal-command");
-  line.append(el("span", "prompt", "$"), el("span", null, String(command || "")));
-  box.append(line);
-  if (!run) return box;
-
-  const stdout = SILENCE.test(run.stdout.trim()) ? "" : run.stdout.replace(/\s+$/, "");
-  const stderr = run.stderr.replace(/\s+$/, "");
-  if (stdout || stderr) {
-    const out = el("pre", "terminal-output");
-    if (stdout) out.append(stdout);
-    if (stdout && stderr) out.append("\n");
-    if (stderr) out.append(el("span", "stderr", stderr));
-    box.append(out);
-  }
-  box.dataset.state = run.failed ? "failed" : "done";
-  const said = run.failed ? "Terminó con error" : stdout || stderr ? "" : "Sin salida";
-  if (said) box.append(el("div", "terminal-foot", said));
-  return box;
-}
-
-const RESULT_CAP = 12;
-
-function resultRow(line) {
-  const hit = line.match(/^(.+?):(\d+)[:-](.*)$/);
-  const path = relative(hit ? hit[1] : line.trim());
-  const opens = Boolean(root) && !/\s{2,}/.test(path) && /[\\/.]/.test(path);
-  const row = el(opens ? "button" : "div", "result");
-  row.title = line;
-  row.append(el("span", "path", path));
-  if (hit) row.append(el("span", "at", hit[2]), el("span", "hit", hit[3].trim()));
-  if (opens) {
-    row.type = "button";
-    row.addEventListener("click", () => openTouched(path));
-  }
-  return row;
-}
-
-function resultList(lines) {
-  const box = el("div", "results");
-  const draw = (from, to) => {
-    for (const line of lines.slice(from, to)) box.insertBefore(resultRow(line), box.querySelector(".unfold"));
-  };
-  draw(0, RESULT_CAP);
-  if (lines.length > RESULT_CAP) {
-    const more = el("button", "unfold", `Mostrar ${lines.length - RESULT_CAP} más`);
-    more.type = "button";
-    more.addEventListener("click", () => {
-      more.remove();
-      draw(RESULT_CAP, lines.length);
-    });
-    box.append(more);
-  }
-  return box;
-}
-
-const hitsOf = (output) =>
-  String(output || "")
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .filter((line) => line && !/^Found \d+ /.test(line) && !/^No (files|matches) found/.test(line));
-
-function webLink(url) {
-  const link = el("button", "weblink");
-  link.type = "button";
-  link.title = url;
-  link.innerHTML = ICONS.link;
-  link.append(el("span", null, url));
-  link.addEventListener("click", () => outward(url));
-  return link;
-}
-
-const FAVICONS = "https://icons.duckduckgo.com/ip3/";
-const STRIP_CAP = 4;
-
-function hostOf(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch (ignored) {
-    return url;
-  }
-}
-
-function favicon(url) {
-  const box = el("span", "favicon");
-  box.innerHTML = ICONS.globe;
-  let host = "";
-  try {
-    host = new URL(url).hostname;
-  } catch (ignored) {
-    return box;
-  }
-  const img = el("img");
-  img.alt = "";
-  img.referrerPolicy = "no-referrer";
-  img.addEventListener("load", () => box.replaceChildren(img), { once: true });
-  img.src = `${FAVICONS}${host}.ico`;
-  return box;
-}
-
-function paintStrip(strip, links) {
-  strip.replaceChildren(...links.slice(0, STRIP_CAP).map((link) => favicon(link.url)));
-  if (links.length > STRIP_CAP) strip.append(el("span", "more", `+${links.length - STRIP_CAP}`));
-  strip.title = links.map((link) => hostOf(link.url)).join(" · ");
-  strip.hidden = !links.length;
-}
-
-function sourceList(links) {
-  const box = el("div", "results");
-  for (const link of links) {
-    const row = el("button", "result cited");
-    row.type = "button";
-    row.title = link.url;
-    row.append(favicon(link.url), el("span", "path", link.title || hostOf(link.url)), el("span", "hit", hostOf(link.url)));
-    row.addEventListener("click", () => aimSite(link.url));
-    box.append(row);
-  }
-  return box;
-}
-
-const searchSummary = (output) =>
-  String(output || "")
-    .replace(/^Web search results for query:.*\n+/, "")
-    .replace(/^Links: \[.*\]\n*/m, "")
-    .trim();
-
-const consulting = (links) => (links.length === 1 ? `Consultando ${hostOf(links[0].url)}` : `Revisando ${links.length} fuentes`);
-
-function outcome(name, input, output, error, detail) {
-  if (SHELLS.has(name)) {
-    const run = {
-      stdout: typeof detail?.stdout === "string" ? detail.stdout : output,
-      stderr: typeof detail?.stderr === "string" ? detail.stderr : "",
-      failed: error,
-    };
-    return { nodes: [terminalView(input.command, run)] };
-  }
-  if (error) return { nodes: [outputBlock(output, true)] };
-
-  const patch = Array.isArray(detail?.structuredPatch) ? detail.structuredPatch : [];
-  const path = relative(input.file_path || detail?.filePath || "");
-  if (EDITS.has(name) && patch.length) {
-    const view = patchView(patch, DIFF_PREVIEW, languageOf(path));
-    return { nodes: [view.node], meta: `+${view.plus} −${view.minus}`, touched: { path, lines: view.added, plus: view.plus, minus: view.minus } };
-  }
-  if (name === "Write" && detail?.type === "create") {
-    const content = detail.content ?? input.content ?? "";
-    const rows = addedRows(content);
-    return { nodes: [linesCard(rows, DIFF_PREVIEW, languageOf(path, content))], meta: `+${rows.length}`, touched: { path, lines: rows.map((row) => row.num), plus: rows.length, minus: 0 } };
-  }
-  if (name === "Read") {
-    const lines = detail?.file?.numLines;
-    return { nodes: [], meta: lines ? `${lines} líneas` : "" };
-  }
-  if (name === "Glob" || name === "Grep") {
-    const lines = hitsOf(output);
-    const count = name === "Glob" && detail?.numFiles !== undefined ? detail.numFiles : lines.length;
-    return { nodes: lines.length ? [resultList(lines)] : [], meta: `${count} ${count === 1 ? "resultado" : "resultados"}` };
-  }
-  if (name === "TodoWrite") return { nodes: [todoList(input.todos)] };
-  if (name === "WebFetch") {
-    return { nodes: [webLink(input.url), ...(output.trim() ? [foldedBox(prose(output), lengthy(output))] : [])] };
-  }
-  if (name === "WebSearch") {
-    const summary = searchSummary(output);
-    return { nodes: summary ? [foldedBox(prose(summary), lengthy(summary))] : [] };
-  }
-  if (["Task", "Agent"].includes(name)) {
-    return { nodes: output.trim() ? [foldedBox(prose(output), lengthy(output))] : [] };
-  }
-  return { nodes: output.trim() ? [outputBlock(output)] : [] };
-}
-
-function toolCard(name, input) {
-  const look = describe(name, input);
-  const node = el("details", "step");
-  node.dataset.state = "running";
-
-  const icon = el("span", "step-icon");
-  if (look.site) icon.append(favicon(look.site));
-  else icon.innerHTML = look.icon;
-  const target = el(look.link ? "button" : "span", look.mono ? "step-target mono" : "step-target", look.target || "");
-  target.title = look.target || "";
-  if (look.link) {
-    target.type = "button";
-    target.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      openTouched(look.link);
-    });
-  }
-  const meta = el("span", "step-meta", look.meta || "");
-  const strip = el("span", "sources");
-  strip.hidden = true;
-  const summary = el("summary");
-  summary.append(icon, el("span", "step-verb", look.verb), target, strip, meta, el("span", "step-state"));
-  summary.addEventListener("click", (event) => {
-    if (node.classList.contains("empty")) event.preventDefault();
-  });
-
-  const body = el("div", "step-body");
-  if (name === "TodoWrite") body.append(todoList(input.todos));
-  node.append(summary, body);
-  node.classList.toggle("empty", !body.childElementCount);
-
-  const consulted = new Map();
-  let sources = null;
-
-  return {
-    node,
-    consult(links) {
-      for (const link of links) consulted.set(link.url, link);
-      const all = [...consulted.values()];
-      paintStrip(strip, all);
-      const fresh = sourceList(all);
-      if (sources?.isConnected) sources.replaceWith(fresh);
-      else body.prepend(fresh);
-      sources = fresh;
-      node.classList.toggle("empty", !body.childElementCount);
-    },
-    finish(output, error, detail) {
-      node.dataset.state = error ? "failed" : "done";
-      const shown = outcome(name, input, output, error, detail);
-      if (shown.meta !== undefined) meta.textContent = shown.meta;
-      body.replaceChildren(...(sources ? [sources] : []), ...shown.nodes);
-      node.classList.toggle("empty", !body.childElementCount);
-      if (error) node.open = true;
-      if (shown.touched?.path) markTouched(shown.touched);
-    },
-    halt() {
-      if (node.dataset.state === "running") node.dataset.state = "stopped";
-    },
-  };
-}
-
-function answersText(answers) {
-  if (!answers || typeof answers !== "object") return "";
-  return Object.values(answers).map((value) => [].concat(value).join(", ")).join(" · ");
-}
-
-async function decide(card, request, decision) {
-  card.lock();
-  try {
-    await invoke("chat_answer", { sessionId: current, request, decision });
-    card.settle(decision.allow, decision.answers);
-    return true;
-  } catch (reason) {
-    card.unlock(String(reason));
-    return false;
-  }
-}
-
-function askShell(icon, title, target, mono) {
-  const node = el("div", "ask");
-  const glyph = el("span", "ask-icon");
-  glyph.innerHTML = icon;
-  const head = el("div", "ask-head");
-  head.append(glyph, el("span", "ask-title", title));
-  if (target) {
-    const shown = el("span", mono ? "ask-target mono" : "ask-target", target);
-    shown.title = target;
-    head.append(shown);
-  }
-  const body = el("div", "ask-body");
-  const actions = el("div", "ask-actions");
-  const note = el("p", "ask-note");
-  note.hidden = true;
-  node.append(head, body, actions, note);
-
-  const card = {
-    node,
-    body,
-    offer(active, choices, request, after) {
-      if (!active) {
-        actions.hidden = true;
-        return;
-      }
-      node.dataset.state = "waiting";
-      for (const [label, primary, decision] of choices) {
-        const button = el("button", primary ? "primary" : "quiet", label);
-        button.type = "button";
-        button.addEventListener("click", async () => {
-          const chosen = typeof decision === "function" ? decision() : decision;
-          if (!chosen) return;
-          if (await decide(card, request, chosen)) after?.(chosen);
-        });
-        actions.append(button);
-      }
-    },
-    lock() {
-      for (const button of actions.querySelectorAll("button")) button.disabled = true;
-    },
-    unlock(reason) {
-      for (const button of actions.querySelectorAll("button")) button.disabled = false;
-      note.className = "ask-note fault";
-      note.textContent = reason;
-      note.hidden = false;
-    },
-    settle(allowed, answers) {
-      node.dataset.state = allowed ? "allowed" : "refused";
-      actions.replaceChildren();
-      actions.hidden = true;
-      note.className = "ask-note";
-      note.textContent = allowed ? answersText(answers) || "Permitido" : "Rechazado";
-      note.hidden = false;
-    },
-    expire() {
-      if (node.dataset.state === "allowed" || node.dataset.state === "refused") return;
-      node.dataset.state = "expired";
-      actions.replaceChildren();
-      actions.hidden = true;
-      note.className = "ask-note";
-      note.textContent = "Sin respuesta";
-      note.hidden = false;
-    },
-  };
-  return card;
-}
-
-function rememberLabel(suggestions = []) {
-  if (!suggestions.length) return "";
-  const edits = suggestions.some((suggestion) => suggestion.type === "setMode" && suggestion.mode === "acceptEdits");
-  return edits ? "Permitir y aceptar ediciones" : "Permitir siempre en esta sesión";
-}
-
-function adoptMode(suggestions = []) {
-  const switched = suggestions.find((suggestion) => suggestion.type === "setMode");
-  if (switched) chooseMode(switched.mode);
-}
-
-function permissionPreview(tool, input) {
-  if (SHELLS.has(tool)) {
-    return [terminalView(input.command), input.description ? el("p", "ask-note", input.description) : null].filter(Boolean);
-  }
-  const language = languageOf(input.file_path || "", input.content || "");
-  if (tool === "Edit") return [linesCard(replacedRows(input.old_string ?? "", input.new_string ?? ""), DIFF_PREVIEW, language)];
-  if (tool === "Write") return [linesCard(addedRows(input.content ?? ""), DIFF_PREVIEW, language)];
-  if (tool === "WebFetch") return [webLink(input.url), input.prompt ? el("p", "ask-note", input.prompt) : null].filter(Boolean);
-  if (tool === "WebSearch") return [el("p", "ask-note", input.query || "")];
-  return [codeBlock(JSON.stringify(input, null, 2), "json")];
-}
-
-function permissionCard(event, active) {
-  const look = describe(event.tool, event.input);
-  const card = askShell(ICONS.shieldAlert, `Claude quiere ${look.ask || look.verb.toLowerCase()}`, look.target, look.mono);
-  card.body.append(...permissionPreview(event.tool, event.input || {}));
-  const remember = rememberLabel(event.suggestions);
-  const choices = [
-    ["Permitir", true, { allow: true }],
-    remember && [remember, false, { allow: true, remember: true }],
-    ["Rechazar", false, { allow: false }],
-  ].filter(Boolean);
-  card.offer(active, choices, event.request, (decision) => decision.remember && adoptMode(event.suggestions));
-  return card;
-}
-
-function planCard(event, active) {
-  const card = askShell(ICONS.map, "Plan listo para revisar", "");
-  card.body.append(prose(event.input?.plan || ""));
-  card.offer(active, [
-    ["Aprobar y ejecutar", true, { allow: true, mode: "default" }],
-    ["Aprobar y aceptar ediciones", false, { allow: true, mode: "acceptEdits" }],
-    ["Seguir planificando", false, { allow: false, message: "Todavía no apruebo el plan. Sigue refinándolo." }],
-  ], event.request, (decision) => decision.allow && chooseMode(decision.mode));
-  return card;
-}
-
-function questionBlock(question) {
-  const node = el("div", "question");
-  if (question.header) node.append(el("span", "label", question.header));
-  node.append(el("p", "q-text", question.question));
-
-  const options = el("div", "options");
-  const picked = new Set();
-  for (const option of question.options || []) {
-    const button = el("button", "option");
-    button.type = "button";
-    button.setAttribute("aria-pressed", "false");
-    button.append(el("span", null, option.label));
-    if (option.description) button.append(el("small", null, option.description));
-    button.addEventListener("click", () => {
-      if (!question.multiSelect) {
-        picked.clear();
-        for (const other of options.children) other.setAttribute("aria-pressed", "false");
-      }
-      if (picked.has(option.label)) picked.delete(option.label);
-      else picked.add(option.label);
-      button.setAttribute("aria-pressed", String(picked.has(option.label)));
-    });
-    options.append(button);
-  }
-
-  const other = el("input", "field");
-  other.placeholder = "Otra respuesta…";
-  other.autocomplete = "off";
-  node.append(options, other);
-
-  return {
-    node,
-    question: question.question,
-    answer() {
-      const typed = other.value.trim();
-      if (typed) return typed;
-      if (!picked.size) return "";
-      return question.multiSelect ? [...picked] : [...picked][0];
-    },
-  };
-}
-
-function questionCard(event, active) {
-  const questions = event.input?.questions || [];
-  const card = askShell(ICONS.question, questions.length > 1 ? "Claude tiene unas preguntas" : "Claude pregunta", "");
-  const blocks = questions.map(questionBlock);
-  card.body.append(...blocks.map((one) => one.node));
-
-  const collect = () => {
-    const answers = Object.fromEntries(blocks.map((one) => [one.question, one.answer()]));
-    if (Object.values(answers).some((value) => !value || !value.length)) {
-      card.unlock("Responde a cada pregunta o escribe tu respuesta.");
-      return null;
-    }
-    return { allow: true, answers };
-  };
-
-  card.offer(active, [
-    ["Responder", true, collect],
-    ["Que decida Claude", false, { allow: false, message: "El usuario prefiere no responder; decide tú lo más razonable y sigue." }],
-  ], event.request);
-  return card;
-}
-
-function askCard(event, active) {
-  if (event.tool === "AskUserQuestion") return questionCard(event, active);
-  if (event.tool === "ExitPlanMode") return planCard(event, active);
-  return permissionCard(event, active);
-}
-
-function thoughtNode() {
-  const node = el("details", "thought");
-  const summary = el("summary");
-  summary.innerHTML = ICONS.shut;
-  const label = el("span", null, "Razonando…");
-  summary.append(label);
-  const text = el("div", "thought-text");
-  node.append(summary, text);
-  return { node, label, text };
-}
-
-function thought() {
-  return { thinking: true, body: "", done: false, queued: false, ...thoughtNode() };
-}
-
-function paintThought(one) {
-  one.queued = false;
-  one.text.textContent = one.body;
-  one.label.textContent = one.done ? "Razonamiento" : "Razonando…";
-}
-
-function scheduleThought(one) {
-  if (one.queued) return;
-  one.queued = true;
-  requestAnimationFrame(() => one.queued && follow(() => paintThought(one)));
-}
-
-const REVEAL_FLOOR = 3;
-const REVEAL_SPREAD = 8;
-const WORD_REACH = 24;
-const FADE = 150;
-
-function streamed() {
-  return {
-    thinking: false,
-    node: el("div", "said"),
-    target: "",
-    shown: 0,
-    done: false,
-    streaming: false,
-    running: false,
-    frozen: 0,
-    live: null,
-    liveLength: 0,
-    stamps: [],
-  };
-}
-
-function splitBlocks(text) {
-  const blocks = [];
-  let lines = [];
-  let fence = null;
-  for (const line of text.split("\n")) {
-    const marker = line.match(MD_FENCE);
-    if (marker) fence = fence ? (line.trim().startsWith(fence) ? null : fence) : marker[1];
-    if (!fence && !marker && !line.trim()) {
-      if (lines.length) blocks.push(lines.join("\n"));
-      lines = [];
-      continue;
-    }
-    lines.push(line);
-  }
-  if (lines.length) blocks.push(lines.join("\n"));
-  return blocks;
-}
-
-function mended(source) {
-  const fences = source.split("\n").filter((line) => MD_FENCE.test(line)).length;
-  if (fences % 2) return source;
-  let text = source.replace(/!?\[([^\]]*)\]\([^)]*$/, "$1").replace(/!?\[([^\]\n]*)$/, "$1");
-  if ((text.match(/`/g) || []).length % 2) text += "`";
-  const bare = text.replace(/`[^`]*`/g, "");
-  const closers = [];
-  if ((bare.replace(/\*\*/g, "").replace(/^\s*\*\s/gm, "").match(/\*/g) || []).length % 2) closers.push("*");
-  if ((bare.match(/\*\*/g) || []).length % 2) closers.push("**");
-  if ((bare.match(/__/g) || []).length % 2) closers.push("__");
-  return text + closers.join("");
-}
-
-function faded(text, age) {
-  const span = el("span", "fresh", text);
-  span.style.animationDelay = `-${Math.round(age)}ms`;
-  return span;
-}
-
-function glow(page, stamps, now) {
-  const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
-  const nodes = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node);
-  let offset = 0;
-  for (const node of nodes) {
-    const start = offset;
-    const end = offset + node.data.length;
-    offset = end;
-    if (end <= stamps[0].from) continue;
-    const bounds = [start, ...stamps.map((stamp) => stamp.from).filter((at) => at > start && at < end), end];
-    const pieces = [];
-    for (let at = 0; at < bounds.length - 1; at++) {
-      const piece = node.data.slice(bounds[at] - start, bounds[at + 1] - start);
-      const stamp = stamps.findLast((one) => one.from <= bounds[at]);
-      pieces.push(stamp ? faded(piece, now - stamp.time) : document.createTextNode(piece));
-    }
-    node.replaceWith(...pieces);
-  }
-}
-
-function draw(one) {
-  const blocks = splitBlocks(one.target.slice(0, one.shown));
-  while (one.frozen < blocks.length - 1) {
-    const page = prose(blocks[one.frozen]);
-    if (one.live) one.live.replaceWith(page);
-    else one.node.append(page);
-    one.live = null;
-    one.liveLength = 0;
-    one.stamps = [];
-    one.frozen += 1;
-  }
-
-  const now = performance.now();
-  const page = prose(mended(blocks.at(-1) || ""));
-  const length = page.textContent.length;
-  if (length > one.liveLength) one.stamps.push({ from: one.liveLength, time: now });
-  one.liveLength = length;
-  one.stamps = one.stamps.filter((stamp) => now - stamp.time < FADE);
-  if (one.stamps.length) glow(page, one.stamps, now);
-  if (one.live) one.live.replaceWith(page);
-  else one.node.append(page);
-  one.live = page;
-}
-
-function finalDraw(one) {
-  one.node.replaceChildren(prose(one.target));
-  one.frozen = 0;
-  one.live = null;
-}
-
-function advance(one) {
-  one.running = false;
-  const backlog = one.target.length - one.shown;
-  if (backlog <= 0) return;
-  let next = Math.min(one.target.length, one.shown + Math.max(REVEAL_FLOOR, Math.ceil(backlog / REVEAL_SPREAD)));
-  const space = one.target.slice(next, next + WORD_REACH).search(/\s/);
-  if (next < one.target.length && space > 0) next += space;
-  one.shown = next;
-  const finished = one.done && one.shown >= one.target.length;
-  follow(() => (finished ? finalDraw(one) : draw(one)));
-  if (!finished) reveal(one);
-}
-
-function reveal(one) {
-  if (document.hidden) {
-    one.shown = one.target.length;
-    follow(() => (one.done ? finalDraw(one) : draw(one)));
-    return;
-  }
-  if (one.running) return;
-  one.running = true;
-  requestAnimationFrame(() => advance(one));
-}
-
-function feed(one, text) {
-  one.streaming = true;
-  one.target += text;
-  reveal(one);
-}
-
-function settleText(one, text) {
-  one.done = true;
-  const kept = one.target.slice(0, one.shown);
-  one.target = text;
-  if (!one.streaming || !text.startsWith(kept)) {
-    one.shown = text.length;
-    follow(() => finalDraw(one));
-    return;
-  }
-  if (one.shown >= text.length) follow(() => finalDraw(one));
-  else reveal(one);
-}
-
-function flushText(one) {
-  one.done = true;
-  one.shown = one.target.length;
-  follow(() => finalDraw(one));
-}
-
-function footOf(event) {
-  return [
-    event.millis ? seconds(event.millis) : "",
-    event.tokensOut ? `${compact(event.tokensOut)} tokens` : "",
-    event.stopped ? "detenido" : "",
-  ].filter(Boolean).join(" · ");
-}
-
-let shownModel = "";
-
-function announce(who, id) {
-  if (!id) return;
-  const said = modelName(id);
-  if (said === shownModel) return;
-  const first = !shownModel;
-  shownModel = said;
-  if (first) return;
-  who.textContent = said;
-  who.hidden = false;
-}
-
-function opening(model) {
-  const node = el("div", "turn reply");
-  const who = el("div", "who");
-  who.hidden = true;
-  const flow = el("div", "flow");
-  const live = el("div", "live");
-  const liveText = el("span", "live-said");
-  const liveClock = el("span", "live-clock");
-  live.append(el("span", "pulse"), liveText, liveClock);
-  live.hidden = true;
-  node.append(who, flow, live);
-  place(node);
-  announce(who, model);
-
-  const began = performance.now();
-  const tick = () => (liveClock.textContent = seconds(whole(performance.now() - began)));
-  let clock = 0;
-
-  const tools = new Map();
-  const asks = new Map();
-  const unsettled = [];
-  const texts = [];
-  let open = null;
-
-  const append = (child) => follow(() => flow.append(child));
-
-  const close = () => {
-    open = null;
-    live.hidden = true;
-    clearInterval(clock);
-    clock = 0;
-    for (const one of texts) {
-      if (!one.done || one.shown < one.target.length) flushText(one);
-    }
-    for (const one of unsettled.splice(0)) {
-      if (one.thinking) {
-        one.done = true;
-        follow(() => paintThought(one));
-      }
-    }
-    for (const card of asks.values()) card.expire();
-    for (const card of tools.values()) card.halt();
-  };
-
-  return {
-    named(id) {
-      announce(who, id);
-    },
-    working(text) {
-      liveText.textContent = text;
-      live.hidden = false;
-      if (clock) return;
-      tick();
-      clock = setInterval(tick, 1000);
-    },
-    delta(thinking, text) {
-      if (!open || open.thinking !== thinking) {
-        open = thinking ? thought() : streamed();
-        unsettled.push(open);
-        if (!thinking) texts.push(open);
-        append(open.node);
-      }
-      if (!thinking) {
-        feed(open, text);
-        return;
-      }
-      open.body += text;
-      scheduleThought(open);
-    },
-    settle(thinking, text) {
-      const at = unsettled.findIndex((one) => one.thinking === thinking);
-      const one = at >= 0 ? unsettled.splice(at, 1)[0] : thinking ? thought() : streamed();
-      if (at < 0) {
-        if (!thinking) texts.push(one);
-        append(one.node);
-      }
-      if (open === one) open = null;
-      if (!thinking) {
-        settleText(one, text);
-        return;
-      }
-      one.body = text;
-      one.done = true;
-      follow(() => paintThought(one));
-    },
-    tool(id, name, input) {
-      open = null;
-      if (SILENT.has(name)) return;
-      const card = toolCard(name, input || {});
-      tools.set(id, card);
-      append(card.node);
-    },
-    toolDone(id, output, error, detail) {
-      const card = tools.get(id);
-      if (card) follow(() => card.finish(output, error, detail));
-    },
-    consulted(id, links) {
-      const card = tools.get(id);
-      if (card) follow(() => card.consult(links));
-    },
-    asking(event, active) {
-      open = null;
-      const card = askCard(event, active);
-      asks.set(event.request, card);
-      append(card.node);
-    },
-    answered(event) {
-      asks.get(event.request)?.settle(event.allowed, event.answers);
-    },
-    finished(event) {
-      close();
-      if (event.error) append(el("p", "reply-fault", event.error));
-      const foot = footOf(event);
-      if (foot) append(el("div", "reply-foot", foot));
-    },
-    failed(reason) {
-      close();
-      append(el("p", "reply-fault", reason));
-    },
-  };
-}
-
-function statusOf(name, input) {
-  const look = describe(name, input || {});
-  return [look.verb, look.target].filter(Boolean).join(" · ");
-}
-
-function route(reply, event, live) {
-  switch (event.kind) {
-    case "started":
-      reply.named(event.model);
-      if (live) reply.working("Trabajando…");
-      break;
-    case "delta":
-      reply.delta(event.thinking, event.text);
-      if (live) reply.working(event.thinking ? "Razonando…" : "Escribiendo…");
-      break;
-    case "said":
-      reply.settle(false, event.text);
-      break;
-    case "thought":
-      reply.settle(true, event.text);
-      break;
-    case "tool":
-      reply.tool(event.id, event.name, event.input);
-      if (live && !SILENT.has(event.name)) reply.working(statusOf(event.name, event.input));
-      break;
-    case "toolDone":
-      reply.toolDone(event.id, event.output, event.error, event.detail);
-      break;
-    case "consulted":
-      reply.consulted(event.tool, event.links);
-      if (live) reply.working(consulting(event.links));
-      break;
-    case "asking":
-      reply.asking(event, live);
-      if (live) reply.working("Esperando tu respuesta");
-      break;
-    case "answered":
-      reply.answered(event);
-      break;
-    case "finished":
-      reply.finished(event);
-      break;
-    case "failed":
-      reply.failed(event.reason);
-      break;
-  }
-}
-
-const inRoot = (relative) => `${root.replace(/[\\/]+$/, "")}/${relative}`;
-
-function pictureRow(sources) {
-  const row = el("div", "asked-pictures");
-  for (const source of sources) {
-    const button = el("button");
-    button.type = "button";
-    button.title = "Ver imagen";
-    button.setAttribute("aria-label", button.title);
-    const img = el("img");
-    img.alt = "";
-    button.append(img);
-    Promise.resolve(source).then((src) => (img.src = src), () => button.remove());
-    button.addEventListener("click", () => {
-      if (!img.src) return;
-      const shown = el("img", "sight");
-      shown.alt = "Imagen enviada";
-      shown.src = img.src;
-      preview("Imagen enviada", button, shown);
-    });
-    row.append(button);
-  }
-  return row;
-}
-
-function asked(text, files = [], pictures = []) {
-  const node = el("div", "turn you");
-  node.append(el("div", "body-text", text));
-  if (pictures.length) node.append(pictureRow(pictures));
-  if (files.length) {
-    const list = el("div", "asked-files");
-    for (const file of files) list.append(el("span", null, file));
-    node.append(list);
-  }
-  return place(node);
-}
 
 let showing = "";
 
@@ -1145,18 +96,6 @@ function showTool(name) {
 function closeTools() {
   body.dataset.code = "closed";
   syncBrowser();
-}
-
-function markTouched(edit) {
-  noteEdit(edit);
-  if (viewer.getState().opened === edit.path) openFile(edit.path);
-  if (onProject() && panelShows("web")) reloadSite();
-  if (panelShows("changes")) soonChanges();
-}
-
-function openTouched(path) {
-  showTool("files");
-  openFile(path);
 }
 
 const TOOLS = {
@@ -1193,261 +132,26 @@ function paintToolMenu() {
   anchorMenu(toolMenu, toolBtn);
 }
 
-const CLOSING = new Set(["finished", "failed"]);
-
-const HINTS = [
-  "Pregunta lo que necesites, pega un error o señálame un fichero.",
-  "Cuéntame qué quieres cambiar y empiezo por leer el proyecto.",
-  "Pégame una traza y busco de dónde sale.",
-  "Pregúntame por un símbolo y te digo quién lo usa.",
-  "¿Por dónde empezamos? Describe el problema y lo miro.",
-  "Dime un fichero y te lo explico antes de tocarlo.",
-  "Empieza por lo que te esté bloqueando ahora mismo.",
-  "Pídeme un resumen del proyecto y te lo cuento por dentro.",
-];
-
-let lastHint = -1;
-
-function nextHint() {
-  let at = lastHint;
-  while (HINTS.length > 1 && at === lastHint) at = Math.floor(Math.random() * HINTS.length);
-  lastHint = at;
-  return HINTS[Math.max(at, 0)];
-}
-
-const NO_ROOT = "Elige una carpeta de trabajo para empezar.";
-
-function hello() {
-  const box = el("div", "hello");
-  const mark = el("div", "hello-mark");
-  mark.append(el("span", "hello-word", "sens"));
-  box.append(mark, el("p", "hello-hint", root ? nextHint() : NO_ROOT));
-  place(box);
-  grainient(mark);
-  return box;
-}
-
-const GRAIN_TOKENS = ["--sens-signal-200", "--sens-signal-500", "--sens-signal-700"];
-const GRAIN_VERTEX = `#version 300 es
-in vec2 position;
-void main() {
-gl_Position = vec4(position, 0.0, 1.0);
-}`;
-const GRAIN_FRAGMENT = `#version 300 es
-precision highp float;
-uniform vec2 iResolution;
-uniform float iTime;
-uniform vec3 uColor1;
-uniform vec3 uColor2;
-uniform vec3 uColor3;
-out vec4 fragColor;
-const float TIME_SPEED = 0.45;
-const float WARP_STRENGTH = 2.2;
-const float WARP_FREQUENCY = 6.0;
-const float WARP_SPEED = 2.6;
-const float WARP_AMPLITUDE = 14.0;
-const float BLEND_SOFTNESS = 0.04;
-const float ROTATION_AMOUNT = 420.0;
-const float NOISE_SCALE = 2.0;
-const float GRAIN_AMOUNT = 0.12;
-const float GRAIN_SCALE = 2.0;
-const float CONTRAST = 1.5;
-const float ZOOM = 0.55;
-#define S(a,b,t) smoothstep(a,b,t)
-mat2 Rot(float a){float s=sin(a),c=cos(a);return mat2(c,-s,s,c);}
-vec2 hash(vec2 p){p=vec2(dot(p,vec2(2127.1,81.17)),dot(p,vec2(1269.5,283.37)));return fract(sin(p)*43758.5453);}
-float noise(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);float n=mix(mix(dot(-1.0+2.0*hash(i+vec2(0.0,0.0)),f-vec2(0.0,0.0)),dot(-1.0+2.0*hash(i+vec2(1.0,0.0)),f-vec2(1.0,0.0)),u.x),mix(dot(-1.0+2.0*hash(i+vec2(0.0,1.0)),f-vec2(0.0,1.0)),dot(-1.0+2.0*hash(i+vec2(1.0,1.0)),f-vec2(1.0,1.0)),u.x),u.y);return 0.5+0.5*n;}
-void main(){
-float t=iTime*TIME_SPEED;
-vec2 uv=gl_FragCoord.xy/iResolution.xy;
-float ratio=iResolution.x/iResolution.y;
-vec2 tuv=(uv-0.5)/ZOOM;
-float degree=noise(vec2(t*0.1,tuv.x*tuv.y)*NOISE_SCALE);
-tuv.y*=1.0/ratio;
-tuv*=Rot(radians((degree-0.5)*ROTATION_AMOUNT+180.0));
-tuv.y*=ratio;
-float amplitude=WARP_AMPLITUDE/WARP_STRENGTH;
-float warpTime=t*WARP_SPEED;
-tuv.x+=sin(tuv.y*WARP_FREQUENCY+warpTime)/amplitude;
-tuv.y+=sin(tuv.x*(WARP_FREQUENCY*1.5)+warpTime)/(amplitude*0.5);
-float edge0=-0.3-BLEND_SOFTNESS;
-float edge1=0.2+BLEND_SOFTNESS;
-vec3 layer1=mix(uColor3,uColor2,S(edge0,edge1,tuv.x));
-vec3 layer2=mix(uColor2,uColor1,S(edge0,edge1,tuv.x));
-vec3 col=mix(layer1,layer2,S(0.5+BLEND_SOFTNESS,-0.3-BLEND_SOFTNESS,tuv.y));
-float grain=fract(sin(dot(uv*GRAIN_SCALE,vec2(12.9898,78.233)))*43758.5453);
-col+=(grain-0.5)*GRAIN_AMOUNT;
-col=clamp((col-0.5)*CONTRAST+0.5,0.0,1.0);
-fragColor=vec4(col,1.0);
-}`;
-
-function tokenRgb(name) {
-  const hex = getComputedStyle(document.documentElement).getPropertyValue(name).trim().replace("#", "");
-  return [0, 2, 4].map((at) => parseInt(hex.slice(at, at + 2), 16) / 255);
-}
-
-function shader(gl, kind, source) {
-  const made = gl.createShader(kind);
-  gl.shaderSource(made, source);
-  gl.compileShader(made);
-  return gl.getShaderParameter(made, gl.COMPILE_STATUS) ? made : null;
-}
-
-function grainProgram(gl) {
-  const vertex = shader(gl, gl.VERTEX_SHADER, GRAIN_VERTEX);
-  const fragment = shader(gl, gl.FRAGMENT_SHADER, GRAIN_FRAGMENT);
-  if (!vertex || !fragment) return null;
-  const program = gl.createProgram();
-  gl.attachShader(program, vertex);
-  gl.attachShader(program, fragment);
-  gl.linkProgram(program);
-  return gl.getProgramParameter(program, gl.LINK_STATUS) ? program : null;
-}
-
-function grainient(mark) {
-  const canvas = el("canvas");
-  canvas.setAttribute("aria-hidden", "true");
-  const gl = canvas.getContext("webgl2", { alpha: false, antialias: false });
-  const program = gl && grainProgram(gl);
-  if (!program) return;
-
-  gl.useProgram(program);
-  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-  const position = gl.getAttribLocation(program, "position");
-  gl.enableVertexAttribArray(position);
-  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-  GRAIN_TOKENS.forEach((token, at) => gl.uniform3fv(gl.getUniformLocation(program, `uColor${at + 1}`), tokenRgb(token)));
-  const resolution = gl.getUniformLocation(program, "iResolution");
-  const clock = gl.getUniformLocation(program, "iTime");
-
-  const fit = () => {
-    const box = mark.getBoundingClientRect();
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.max(1, Math.round(box.width * ratio));
-    canvas.height = Math.max(1, Math.round(box.height * ratio));
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.uniform2f(resolution, canvas.width, canvas.height);
-  };
-  const watcher = new ResizeObserver(fit);
-  watcher.observe(mark);
-  mark.prepend(canvas);
-  mark.dataset.grain = "on";
-  fit();
-
-  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const started = performance.now();
-  let shown = false;
-  let pending = 0;
-  const release = () => {
-    watcher.disconnect();
-    sight.disconnect();
-    gl.getExtension("WEBGL_lose_context")?.loseContext();
-  };
-  const frame = (now) => {
-    pending = 0;
-    if (!canvas.isConnected) return release();
-    gl.uniform1f(clock, (now - started) / 1000);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    if (shown && !still) pending = requestAnimationFrame(frame);
-  };
-  const sight = new IntersectionObserver(([seen]) => {
-    if (!canvas.isConnected) return release();
-    shown = seen.isIntersecting;
-    if (shown && !pending) pending = requestAnimationFrame(frame);
-  });
-  sight.observe(mark);
-  pending = requestAnimationFrame(frame);
-}
-
-let pendingId = null;
-let warmed = "";
-
-function blank(id) {
-  setCurrent(id);
-  shownModel = "";
-  replyNow = null;
-  pendingId = null;
-  warmed = "";
-  inner.replaceChildren();
-  forgetTasks();
-}
-
-async function warm() {
-  if (!root || busy || !choice.provider) return;
-  const settings = currentSettings();
-  try {
-    const id = current || (await (pendingId ||= invoke("new_session_id")));
-    const key = JSON.stringify([root, id, settings]);
-    if (key === warmed) return;
-    warmed = key;
-    await invoke("chat_warm", { root, sessionId: id, settings });
-  } catch (ignored) {
-    warmed = "";
-  }
-}
-
-function answeredIn(entries) {
-  return new Set(
-    entries
-      .filter((entry) => entry.kind === "agent" && entry.event.kind === "answered")
-      .map((entry) => entry.event.request),
-  );
-}
-
-async function load(id) {
-  blank(id);
-  const [entries, running, alive] = await Promise.all([
-    invoke("replay", { root, id }),
-    invoke("chat_busy", { sessionId: id }),
-    invoke("chat_tasks", { sessionId: id }),
-  ]);
-  const answered = answeredIn(entries);
-  let reply = null;
-  thread.dataset.replaying = "true";
-  requestAnimationFrame(() => requestAnimationFrame(() => delete thread.dataset.replaying));
-
-  for (const entry of entries) {
-    if (entry.kind === "task") {
-      const pictures = (entry.images || []).map((path) => invoke("artifact_data", { path: inRoot(path) }));
-      asked(entry.text, entry.files, pictures);
-      reply = null;
-      continue;
-    }
-    if (entry.kind !== "agent") continue;
-    const event = entry.event;
-    noteTask(event, entry.at);
-    if (TASK_EVENTS.has(event.kind)) continue;
-    reply ??= opening(event.kind === "started" ? event.model : "");
-    const waiting = running && event.kind === "asking" && !answered.has(event.request);
-    route(reply, event, waiting);
-    if (CLOSING.has(event.kind)) reply = null;
-  }
-
-  if (running) {
-    replyNow = reply || opening("");
-    replyNow.working("Trabajando…");
-  }
-  settleTasks(alive);
-  idle(!running);
-  if (!inner.childElementCount) hello();
-  await loadRail();
-}
-
-function idle(on) {
-  busy = !on;
-  stopping = false;
+// The composer follows the chat: busy while Claude works, stopping while it stops.
+function paintBusy() {
+  const { busy, stopping } = chat.getState();
   composerBox.dataset.busy = String(busy);
-  composerBox.dataset.stopping = "false";
+  composerBox.dataset.stopping = String(stopping);
   taskInput.disabled = !root;
-  if (busy) reseedLap();
   syncSend();
 }
 
+chat.subscribe((now, before) => {
+  if (now.busy === before.busy && now.stopping === before.stopping) return;
+  if (now.busy && !before.busy) reseedLap();
+  paintBusy();
+});
+
+const warm = () => warmChat(currentSettings());
+
 async function enter(picked) {
   root = picked;
-  project.setState({ root: picked });
-  setCurrent("");
+  project.setState({ root: picked, session: "" });
   rootLabel.textContent = stem(picked);
   folderBtn.title = picked;
   forgetEdits();
@@ -1457,6 +161,7 @@ async function enter(picked) {
   forgetViewer();
   forgetTree();
   idle(true);
+  paintBusy();
   if (showing) VIEWS[showing].load();
   await invoke("remember", { root: picked }).catch(oweRail);
   await readRepo();
@@ -1508,254 +213,13 @@ const VIEWS = {
 function showView(name) {
   showing = name;
   project.setState({ view: name });
-  chat.hidden = Boolean(name);
+  chatSection.hidden = Boolean(name);
   for (const [id, one] of Object.entries(VIEWS)) one.node.hidden = id !== name;
   if (name) VIEWS[name].load();
 }
 
 function toChat() {
   if (showing) showView("");
-}
-
-const MD_FENCE = /^\s*(`{3,}|~{3,})\s*([\w#+.-]*)/;
-const MD_HEAD = /^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
-const MD_ITEM = /^(\s*)(?:([-*+])|(\d+)[.)])\s+(.*)$/;
-const MD_INLINE = /(`+)(.+?)\1|\*\*(.+?)\*\*|__(.+?)__|\*(?!\s)(.+?)\*|(?<!\w)_(?!\s)(.+?)_(?!\w)|!?\[([^\]]*)\]\(([^)\s]*)[^)]*\)/g;
-const WEB = /^https?:\/\//i;
-const CODE_FOLD = 30;
-const TONGUES = {
-  js: "amber", mjs: "amber", cjs: "amber", jsx: "amber", json: "amber",
-  zig: "amber", jsonc: "amber", json5: "amber",
-  ts: "azure", tsx: "azure", mts: "azure", cts: "azure", css: "azure", scss: "azure", sass: "azure", less: "azure",
-  vue: "azure", svelte: "azure", c: "azure", h: "azure", cc: "azure", cpp: "azure", hpp: "azure", cxx: "azure",
-  lua: "azure", dart: "azure", r: "azure",
-  rs: "ember", rust: "ember", toml: "ember", sh: "ember", bash: "ember", zsh: "ember", fish: "ember",
-  shell: "ember", ps1: "ember", psm1: "ember", powershell: "ember", pwsh: "ember", bat: "ember", cmd: "ember",
-  java: "ember", swift: "ember", scala: "ember", erl: "ember",
-  py: "moss", python: "moss", pyi: "moss", ipynb: "moss", go: "moss", sql: "moss", rb: "moss", ruby: "moss",
-  clj: "moss", csv: "moss", tsv: "moss",
-  html: "iris", htm: "iris", md: "iris", markdown: "iris", mdx: "iris", yaml: "iris", yml: "iris", xml: "iris", svg: "iris",
-  php: "iris", cs: "iris", kt: "iris", kts: "iris", ex: "iris", exs: "iris", hs: "iris", graphql: "iris", gql: "iris",
-  diff: "stone", patch: "stone", txt: "stone", log: "stone", ini: "stone", cfg: "stone", conf: "stone", env: "stone",
-  dockerfile: "stone", proto: "stone", lock: "stone",
-};
-
-function spell(tag, text) {
-  const node = el(tag);
-  node.append(inline(text));
-  return node;
-}
-
-function outward(target) {
-  invoke("open_external", { target }).catch((reason) => tick([String(reason)], "warn"));
-}
-
-function linked(label, url) {
-  if (!WEB.test(url)) return inline(label);
-  const link = el("a");
-  link.href = url;
-  link.title = url;
-  link.append(inline(label || url));
-  link.addEventListener("click", (event) => {
-    event.preventDefault();
-    outward(url);
-  });
-  return link;
-}
-
-function inline(text) {
-  const out = document.createDocumentFragment();
-  let last = 0;
-  for (const found of text.matchAll(MD_INLINE)) {
-    const [all, , code, strong, underStrong, em, underEm, label, url] = found;
-    out.append(text.slice(last, found.index));
-    if (code !== undefined) out.append(el("code", null, code));
-    else if (strong !== undefined || underStrong !== undefined) out.append(spell("strong", strong ?? underStrong));
-    else if (em !== undefined || underEm !== undefined) out.append(spell("em", em ?? underEm));
-    else out.append(linked(label, url));
-    last = found.index + all.length;
-  }
-  out.append(text.slice(last));
-  return out;
-}
-
-function copyButton(text) {
-  const copy = el("button", "copy");
-  copy.type = "button";
-  copy.title = "Copiar";
-  copy.setAttribute("aria-label", copy.title);
-  copy.innerHTML = ICONS.copy;
-  copy.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      copy.innerHTML = ICONS.check;
-      setTimeout(() => (copy.innerHTML = ICONS.copy), 1500);
-    } catch (reason) {
-      copy.title = String(reason);
-    }
-  });
-  return copy;
-}
-
-function unfolder(box, label) {
-  const unfold = el("button", "unfold", label);
-  unfold.type = "button";
-  unfold.addEventListener("click", () => {
-    box.dataset.folded = "false";
-    unfold.remove();
-  });
-  return unfold;
-}
-
-function codeBlock(text, language = "") {
-  const code = el("code");
-  paintCode(code, text, languageNamed(language));
-  const pre = el("pre");
-  pre.append(code);
-
-  const head = el("div", "codeblock-head");
-  head.append(el("span", "tongue"), el("span", null, language || "código"), copyButton(text));
-
-  const box = el("div", "codeblock");
-  const tongue = TONGUES[language.toLowerCase()];
-  if (tongue) box.dataset.tongue = tongue;
-  box.append(head, pre);
-  const lines = text.split("\n").length;
-  if (lines > CODE_FOLD) {
-    box.dataset.folded = "true";
-    box.append(unfolder(box, `Mostrar las ${lines} líneas`));
-  }
-  return box;
-}
-
-const LONG_TEXT = 900;
-const LONG_LINES = 12;
-
-const lengthy = (text) => text.length > LONG_TEXT || text.split("\n").length > LONG_LINES;
-
-function foldedBox(node, long) {
-  const inside = el("div", "inside");
-  inside.append(node);
-  const box = el("div", "folded");
-  box.append(inside);
-  if (long) {
-    box.dataset.folded = "true";
-    box.append(unfolder(box, "Mostrar todo"));
-  }
-  return box;
-}
-
-const MD_ROW = /^\s*\|.*\|\s*$/;
-const MD_RULE = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
-const MD_BREAK = /^\s*([-*_])(\s*\1){2,}\s*$/;
-const MD_QUOTE = /^\s*>\s?(.*)$/;
-
-const cells = (line) => line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
-
-function tableOf(rows) {
-  const table = el("table");
-  const head = table.createTHead().insertRow();
-  for (const cell of cells(rows[0])) head.append(spell("th", cell));
-  const body = table.createTBody();
-  for (const row of rows.slice(2)) {
-    const line = body.insertRow();
-    for (const cell of cells(row)) line.append(spell("td", cell));
-  }
-  const box = el("div", "table");
-  box.append(table);
-  return box;
-}
-
-function listInto(lists, page, item) {
-  const [, indent, bullet, number, text] = item;
-  const depth = indent.replace(/\t/g, "    ").length;
-  const tag = bullet ? "UL" : "OL";
-  while (lists.length && depth < lists.at(-1).depth) lists.pop();
-
-  let top = lists.at(-1);
-  if (!top || depth > top.depth || top.list.tagName !== tag) {
-    const list = el(tag);
-    if (number) list.start = Number(number);
-    const deeper = top && depth > top.depth;
-    if (top && !deeper) lists.pop();
-    const parent = deeper ? top.list.lastElementChild : lists.at(-1)?.list.lastElementChild || page;
-    parent.append(list);
-    top = { depth, list };
-    lists.push(top);
-  }
-  top.list.append(spell("li", text));
-}
-
-function prose(text) {
-  const page = el("div", "prose");
-  const lines = text.replace(/\r\n?/g, "\n").split("\n");
-  let words = [];
-  let lists = [];
-
-  const paragraph = () => {
-    if (words.length) page.append(spell("p", words.join(" ")));
-    words = [];
-  };
-  const settle = () => {
-    paragraph();
-    lists = [];
-  };
-
-  for (let at = 0; at < lines.length; at++) {
-    const line = lines[at];
-    const fence = line.match(MD_FENCE);
-    if (fence) {
-      settle();
-      const code = [];
-      while (++at < lines.length && !lines[at].trim().startsWith(fence[1])) code.push(lines[at]);
-      page.append(codeBlock(code.join("\n"), fence[2]));
-      continue;
-    }
-    const head = line.match(MD_HEAD);
-    if (head) {
-      settle();
-      page.append(spell(`h${head[1].length}`, head[2]));
-      continue;
-    }
-    if (MD_ROW.test(line) && MD_RULE.test(lines[at + 1] || "")) {
-      settle();
-      const rows = [line, lines[++at]];
-      while (MD_ROW.test(lines[at + 1] || "")) rows.push(lines[++at]);
-      page.append(tableOf(rows));
-      continue;
-    }
-    if (MD_BREAK.test(line)) {
-      settle();
-      page.append(el("hr"));
-      continue;
-    }
-    const quote = line.match(MD_QUOTE);
-    if (quote) {
-      settle();
-      const said = [quote[1]];
-      while (MD_QUOTE.test(lines[at + 1] || "")) said.push(lines[++at].match(MD_QUOTE)[1]);
-      page.append(spell("blockquote", said.join(" ")));
-      continue;
-    }
-    const item = line.match(MD_ITEM);
-    if (item) {
-      paragraph();
-      listInto(lists, page, item);
-      continue;
-    }
-    if (!line.trim()) {
-      paragraph();
-      continue;
-    }
-    if (lists.length && /^\s+\S/.test(line)) {
-      lists.at(-1).list.lastElementChild.append(" ", inline(line.trim()));
-      continue;
-    }
-    lists = [];
-    words.push(line.trim());
-  }
-  settle();
-  return page;
 }
 
 const RECALL = "sens.choice";
@@ -2281,7 +745,7 @@ async function attachPaths(paths) {
   try {
     found = await invoke("attach", { root, paths });
   } catch (reason) {
-    tick([String(reason)], "warn");
+    warn(String(reason));
     return;
   }
   for (const item of found.items) {
@@ -2291,7 +755,7 @@ async function attachPaths(paths) {
       attached.push(item);
     }
   }
-  for (const reason of found.refused) tick([reason], "warn");
+  for (const reason of found.refused) warn(reason);
   paintClips();
   syncSend();
 }
@@ -2307,11 +771,11 @@ async function takePictures(files) {
   for (const file of files) {
     const name = file.name || "imagen pegada";
     if (!PASTEABLE.has(file.type)) {
-      tick([`${name} no se puede enviar · solo PNG, JPEG, GIF o WebP`], "warn");
+      warn(`${name} no se puede enviar · solo PNG, JPEG, GIF o WebP`);
       continue;
     }
     if (file.size > PICTURE_CAP) {
-      tick([`${name} pasa de 5 MB · redúcela antes de enviarla`], "warn");
+      warn(`${name} pasa de 5 MB · redúcela antes de enviarla`);
       continue;
     }
     pasted.push({ name, bytes: file.size, mediaType: file.type, url: await readAsUrl(file) });
@@ -2369,11 +833,11 @@ async function switchTo(name) {
   try {
     repo = await invoke("checkout", { root, branch: name });
   } catch (reason) {
-    tick([String(reason)], "warn");
+    warn(String(reason));
     return;
   }
   paintChip();
-  tick(["rama · ", bold(repo.branch)]);
+  notice(["rama · ", { bold: repo.branch }]);
   forgetEdits();
   forgetChanges();
   await loadFiles();
@@ -2384,6 +848,7 @@ async function switchTo(name) {
 const canSend = () => Boolean(root && choice.provider && (taskInput.value.trim() || pasted.length));
 
 function syncSend() {
+  const { busy, stopping } = chat.getState();
   sendBtn.disabled = busy ? stopping : !canSend();
   const label = busy ? (stopping ? "Parando…" : "Parar") : "Enviar";
   sendBtn.title = label;
@@ -2451,22 +916,6 @@ composerBox.addEventListener("animationiteration", (event) => {
   reseedLap();
 });
 
-async function halt() {
-  if (stopping || !current) return;
-  stopping = true;
-  composerBox.dataset.stopping = "true";
-  syncSend();
-  replyNow?.working("Parando…");
-  try {
-    await invoke("chat_stop", { sessionId: current });
-  } catch (reason) {
-    tick([String(reason)], "warn");
-    stopping = false;
-    composerBox.dataset.stopping = "false";
-    syncSend();
-  }
-}
-
 const GROW_CAP = 260;
 let grown = 0;
 
@@ -2484,7 +933,7 @@ function fit() {
 }
 
 async function send() {
-  if (busy || !canSend()) return;
+  if (chat.getState().busy || !canSend()) return;
   const text = taskInput.value.trim();
   const files = attached.map((file) => file.path);
   const shownFiles = attached.map(fileLabel);
@@ -2493,27 +942,12 @@ async function send() {
     mediaType: picture.mediaType,
     data: picture.url.slice(picture.url.indexOf(",") + 1),
   }));
-  const settings = currentSettings();
   taskInput.value = "";
   fit();
   attached = [];
   pasted = [];
   paintClips();
-  asked(text, shownFiles, pictures);
-  replyNow = opening(settings.model);
-  replyNow.working("Enviando…");
-  idle(false);
-
-  try {
-    if (!current) setCurrent(await invoke("open_session", { root, id: pendingId ? await pendingId : null }));
-    pendingId = null;
-    await invoke("chat_send", { root, sessionId: current, message: { text, files, images }, settings });
-    loadRail();
-  } catch (reason) {
-    replyNow?.failed(String(reason));
-    replyNow = null;
-    idle(true);
-  }
+  await sendChat({ message: { text, files, images }, shownFiles, pictures }, currentSettings());
 }
 
 folderBtn.addEventListener("click", chooseFolder);
@@ -2654,18 +1088,7 @@ function openSettingsView(section) {
   showView("settings");
 }
 
-const UPDATE_STAGES = {
-  downloading: "Descargando…",
-  verifying: "Verificando la firma…",
-  installing: "Instalando: Sens se cerrará y volverá a abrirse",
-};
 const updateBtn = document.getElementById("update");
-
-function say(line, text, failed = false) {
-  line.textContent = String(text);
-  line.classList.toggle("fault", failed);
-  line.hidden = !line.textContent;
-}
 
 function paintUpdates({ latest: next }) {
   updateBtn.hidden = !next;
@@ -2679,61 +1102,7 @@ function paintUpdates({ latest: next }) {
 
 updates.subscribe(paintUpdates);
 
-function openUpdate(back) {
-  const { current, latest: next, installable } = updates.getState();
-  if (!next) return;
-  const facts = el("p", "note", [current && `Tienes la ${current}`, weigh(next.size)].filter(Boolean).join(" · "));
-  const notes = next.notes.trim() ? prose(next.notes) : el("p", "note", "Esta versión no trae notas.");
-  notes.classList.add("update-notes");
-  const status = el("p", "note");
-  status.id = "update-status";
-  status.setAttribute("role", "status");
-  status.hidden = true;
-  const page = el("button", "quiet");
-  page.innerHTML = ICONS.external;
-  page.append(el("span", null, "Ver en GitHub"));
-  page.addEventListener("click", () => invoke("open_external", { target: next.page }).catch((reason) => say(status, reason, true)));
-  const later = el("button", "quiet", "Más tarde");
-  later.addEventListener("click", () => panel.close());
-  const go = el("button", "primary", "Actualizar y reiniciar");
-  go.disabled = !installable;
-  go.addEventListener("click", () => installUpdate(go, status));
-  if (!installable) say(status, "Build de desarrollo: comprueba pero no instala.");
-  const actions = el("div", "actions update-actions");
-  actions.append(page, later, go);
-  panelBack = back;
-  showPanel(`Sens ${next.version}`, facts, notes, status, actions);
-}
-
-async function installUpdate(button, status) {
-  if (button.dataset.sure !== "true") {
-    const working = await invoke("chat_working").catch(() => 0);
-    if (working > 0) {
-      button.dataset.sure = "true";
-      button.textContent = "Actualizar igualmente";
-      button.classList.add("danger");
-      say(status, working === 1 ? "Hay 1 sesión trabajando y se detendrá." : `Hay ${working} sesiones trabajando y se detendrán.`);
-      return;
-    }
-  }
-  button.disabled = true;
-  say(status, UPDATE_STAGES.downloading);
-  try {
-    await invoke("update_install");
-  } catch (reason) {
-    say(status, reason, true);
-    button.dataset.sure = "false";
-    button.classList.remove("danger");
-    button.textContent = "Reintentar";
-    button.disabled = false;
-  }
-}
-
 updateBtn.addEventListener("click", () => openUpdate(updateBtn));
-listen("update", ({ payload }) => {
-  const status = document.getElementById("update-status");
-  if (status) say(status, UPDATE_STAGES[payload.stage]);
-});
 
 document.getElementById("panel-close").addEventListener("click", () => panel.close());
 panel.addEventListener("click", (event) => {
@@ -2899,7 +1268,7 @@ function dictate() {
 }
 
 dictateBtn.addEventListener("click", () => Dictation && dictate());
-sendBtn.addEventListener("click", () => (busy ? halt() : send()));
+sendBtn.addEventListener("click", () => (chat.getState().busy ? halt() : send()));
 taskInput.addEventListener("input", () => {
   fit();
   syncSend();
@@ -2929,40 +1298,6 @@ frame.onDragDropEvent(({ payload }) => {
   if (payload.type !== "drop" || !welcome) return;
   attachPaths(payload.paths);
   taskInput.focus();
-});
-
-async function afterTurn() {
-  idle(true);
-  if (showing === "artifacts") loadShelf();
-  await readRepo();
-  if (panelShows("changes")) await loadChanges();
-  await loadFiles();
-  await loadRail();
-}
-
-function hear(event) {
-  replyNow ??= opening("");
-  route(replyNow, event, true);
-  if (!CLOSING.has(event.kind)) return;
-  replyNow = null;
-  afterTurn();
-}
-
-listen("chat", ({ payload }) => {
-  const { session, event } = payload;
-  if (event.kind === "limits") {
-    usage = event.windows;
-    paintAccount();
-    return;
-  }
-  if (CLOSING.has(event.kind)) nameSession(session);
-  if (session !== current) {
-    if (CLOSING.has(event.kind)) loadRail();
-    return;
-  }
-  noteTask(event);
-  if (TASK_EVENTS.has(event.kind)) return;
-  hear(event);
 });
 
 const winBar = document.getElementById("win");
@@ -2995,7 +1330,6 @@ async function boot() {
 }
 
 Object.assign(legacy, {
-  openUpdate,
   readAccount,
   refreshModels,
   showPanel(title, node, back) {
@@ -3006,24 +1340,22 @@ Object.assign(legacy, {
   panelReturnsTo(back) {
     panelBack = back;
   },
-  prose,
   showTool,
-  warn: (text) => tick([text], "warn"),
-  outward,
+  warn,
   preview,
   resume,
   draft,
   fresh,
   chooseFolder,
   showView,
-  session: () => current,
   panelShows,
-  diffView: (hunks, preview, path) => patchView(hunks, preview, languageOf(path)).node,
-  addedView(text, preview, path) {
-    const rows = addedRows(text);
-    return { node: linesCard(rows, preview, languageOf(path, text)), lines: rows.length };
+  modelName,
+  readRepo,
+  chooseMode,
+  noteLimits(windows) {
+    usage = windows;
+    paintAccount();
   },
-  folded: (text) => foldedBox(prose(text), lengthy(text)),
 });
 
 hello();

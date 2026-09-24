@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useState } from "react";
 import { useStore } from "zustand";
 import type { Detail, Listing } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
 import { FRONT_MATTER, MARKDOWN, compact, stem, weigh } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
-import { Prose } from "../../shared/Prose";
+import { Markdown } from "../../shared/markdown/Markdown";
+import { openOutside } from "../../shared/outside";
 import { project } from "../project/store";
 import { RunRow, confirmRemoval, installForm, needsAsking } from "./forms";
 import { CapSwitch } from "./Installed";
@@ -122,7 +122,7 @@ function Actions({ detail }: { detail: Detail }) {
         </>
       )}
       {listing.homepage && (
-        <button className="quiet" title={listing.homepage} onClick={() => legacy.outward(listing.homepage)}>
+        <button className="quiet" title={listing.homepage} onClick={() => openOutside(listing.homepage)}>
           <Icon svg={ICONS.external} />
           Ver fuente
         </button>
@@ -168,7 +168,7 @@ function Summary({ detail }: { detail: Detail }) {
   const tools = detail.listing.tools;
   return (
     <div>
-      <Prose text={detail.readme.replace(FRONT_MATTER, "")} />
+      <Markdown text={detail.readme.replace(FRONT_MATTER, "")} />
       {tools.length > 0 && (
         <>
           <p className="label">{`Herramientas · ${tools.length}`}</p>
@@ -233,7 +233,7 @@ function Contents({ detail }: { detail: Detail }) {
         ) : reading.text === null ? (
           <p className="none">Leyendo…</p>
         ) : MARKDOWN.test(reading.path) ? (
-          <Prose text={reading.text.replace(FRONT_MATTER, "")} />
+          <Markdown text={reading.text.replace(FRONT_MATTER, "")} />
         ) : (
           <pre>{reading.text}</pre>
         )}

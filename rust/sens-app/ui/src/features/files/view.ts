@@ -49,6 +49,12 @@ export async function openFile(path: string) {
   if (opened === path && mode === "source") set({ mode: "source" });
 }
 
+// A file opened from elsewhere (the chat, the changes): the panel turns to Ficheros.
+export function showFile(path: string) {
+  legacy.showTool("files");
+  return openFile(path);
+}
+
 export function setMode(mode: Mode) {
   const { title, home } = viewer.getState();
   if (mode === "view" && viewOf(title) === "site") return void showSite(title, home);

@@ -31,16 +31,11 @@ beforeEach(() => {
   document.body.append(header);
   changes.setState(changes.getInitialState(), true);
   forgetTasks();
-  project.setState({ root: "C:/demo" });
+  project.setState({ root: "C:/demo", session: "s1" });
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.changes.mockResolvedValue({ diff: DIFF, fresh: ["notes.md"] });
   ipc.commands.openFile.mockResolvedValue("a\nb\nc");
-  legacy.diffView = vi.fn(() => Object.assign(document.createElement("div"), { className: "diff", textContent: "diff" }));
-  legacy.addedView = vi.fn((text: string) => ({ node: document.createElement("div"), lines: text.split("\n").length }));
   legacy.showTool = vi.fn();
-  legacy.folded = vi.fn((text: string) => Object.assign(document.createElement("div"), { textContent: text }));
-  legacy.prose = vi.fn((text: string) => Object.assign(document.createElement("div"), { textContent: text }));
-  legacy.session = () => "s1";
   legacy.panelShows = () => true;
 });
 
@@ -74,13 +69,13 @@ describe("changes panel", () => {
     render(<ChangesPanel totals={header} />);
     await act(async () => loadChanges());
     await act(async () => fireEvent(row("app.js"), new Event("toggle")));
-    expect(legacy.diffView).not.toHaveBeenCalled();
+    expect(row("app.js").querySelector(".diff")).toBeNull();
 
     await act(async () => {
       row("app.js").open = true;
       fireEvent(row("app.js"), new Event("toggle"));
     });
-    expect(legacy.diffView).toHaveBeenCalledOnce();
+    expect([...row("app.js").querySelectorAll(".diff .row")].map((line) => line.className)).toEqual(["row del", "row add"]);
 
     await act(async () => {
       row("notes.md").open = true;

@@ -1,9 +1,9 @@
 import { StrictMode, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { useStore } from "zustand";
-import { legacy } from "../../legacy/bridge";
 import { profile, saveProfileName } from "../profile/store";
 import { checkUpdates, setAutomatic, updateState, updates } from "../updates/store";
+import { openUpdate } from "../updates/UpdatePanel";
 import { ProvidersSection } from "./ProvidersSection";
 import { enterSettings, settings, showSection, type Section } from "./store";
 
@@ -110,7 +110,7 @@ function UpdatesBlock() {
         {state}
       </p>
       <div className="settings-row">
-        <button className="primary" hidden={!latest} onClick={(event) => legacy.openUpdate(event.currentTarget)}>
+        <button className="primary" hidden={!latest} onClick={(event) => openUpdate(event.currentTarget)}>
           {latest ? `Ver Sens ${latest.version}` : ""}
         </button>
         <button className="quiet" disabled={checking} onClick={() => checkUpdates(true)}>

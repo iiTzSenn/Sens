@@ -4,10 +4,12 @@ import { createRoot } from "react-dom/client";
 import { useStore } from "zustand";
 import { commands } from "../../ipc/commands";
 import { legacy } from "../../legacy/bridge";
-import { Borrowed } from "../../shared/Borrowed";
+import { FoldedText } from "../../shared/Folded";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
-import { Prose } from "../../shared/Prose";
+import { Markdown } from "../../shared/markdown/Markdown";
+import { Terminal } from "../../shared/Terminal";
+import { project } from "../project/store";
 import { tasks, tickTasks } from "./store";
 import { TASK_STATE, inOrder, isAgent, isRunning, isShell, shellEnding, tally, taskTime, taskUsage, type Task } from "./tasks";
 
@@ -120,20 +122,14 @@ function ShellBody({ task, open, now }: { task: Task; open: boolean; now: number
     if (stick.current && out.current) out.current.scrollTop = out.current.scrollHeight;
   }, [output]);
 
-  const ending = shellEnding(task);
   return (
-    <div className="terminal" data-state={task.status === "failed" ? "failed" : "done"}>
-      <div className="terminal-command">
-        <span className="prompt">$</span>
-        <span>{String(task.input.command || task.description || "")}</span>
-      </div>
-      <pre className="terminal-output" ref={out} hidden={!output}>
-        {output}
-      </pre>
-      <div className="terminal-foot" hidden={!ending}>
-        {ending}
-      </div>
-    </div>
+    <Terminal
+      command={String(task.input.command || task.description || "")}
+      output={output}
+      state={task.status === "failed" ? "failed" : "done"}
+      foot={shellEnding(task)}
+      outRef={out}
+    />
   );
 }
 
@@ -141,11 +137,11 @@ function AgentBody({ task }: { task: Task }) {
   const usage = taskUsage(task);
   return (
     <>
-      {task.prompt && <Borrowed make={() => legacy.folded(task.prompt)} made={task.prompt} />}
+      {task.prompt && <FoldedText text={task.prompt} />}
       <p className="task-doing" hidden={!usage}>
         {usage}
       </p>
-      <div className="task-said">{task.summary && <Prose text={task.summary} />}</div>
+      <div className="task-said">{task.summary && <Markdown text={task.summary} />}</div>
     </>
   );
 }
@@ -159,7 +155,7 @@ function StopTask({ task }: { task: Task }) {
     setAsked(true);
     setTrouble("");
     try {
-      await commands.stopTask(legacy.session(), task.id);
+      await commands.stopTask(project.getState().session, task.id);
     } catch (reason) {
       setTrouble(String(reason));
       setAsked(false);

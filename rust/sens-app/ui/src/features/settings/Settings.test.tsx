@@ -70,7 +70,7 @@ beforeEach(() => {
   ipc.commands.providersState.mockResolvedValue([claude()]);
   legacy.readAccount = vi.fn(async () => undefined);
   legacy.refreshModels = vi.fn();
-  legacy.openUpdate = vi.fn();
+  legacy.showPanel = vi.fn();
 });
 
 afterEach(cleanup);
@@ -108,11 +108,11 @@ describe("general settings", () => {
     expect(screen.getByRole("alert").textContent).toBe("sin permiso");
   });
 
-  it("opens the update panel the title bar owns", async () => {
+  it("opens the update panel", async () => {
     updates.setState({ latest: { version: "9.9.9", notes: "", page: "", size: 0 } });
     await open("general");
     fireEvent.click(screen.getByText("Ver Sens 9.9.9"));
-    expect(legacy.openUpdate).toHaveBeenCalledOnce();
+    expect(legacy.showPanel).toHaveBeenCalledWith("Sens 9.9.9", expect.anything(), expect.anything());
   });
 });
 

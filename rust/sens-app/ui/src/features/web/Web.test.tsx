@@ -15,6 +15,7 @@ const ipc = vi.hoisted(() => ({
     browserPlace: vi.fn(),
     browserShow: vi.fn(),
     browserAct: vi.fn(),
+    openExternal: vi.fn(),
   },
   heard: null as ((what: Heard) => void) | null,
 }));
@@ -41,7 +42,7 @@ beforeEach(() => {
   project.setState({ root: "C:/demo" });
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.previewUrl.mockResolvedValue("http://127.0.0.1:4321/p7/docs/index.html");
-  Object.assign(legacy, { showTool: vi.fn(), warn: vi.fn(), outward: vi.fn(), panelShows: vi.fn(() => true) });
+  Object.assign(legacy, { showTool: vi.fn(), warn: vi.fn(), panelShows: vi.fn(() => true) });
 });
 
 afterEach(() => {
@@ -90,7 +91,7 @@ describe("web panel", () => {
     expect(onProject()).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "Abrir en el navegador" }));
-    expect(legacy.outward).toHaveBeenCalledWith("http://127.0.0.1:4321/p7/docs/index.html");
+    expect(ipc.commands.openExternal).toHaveBeenCalledWith("http://127.0.0.1:4321/p7/docs/index.html");
   });
 
   it("follows the page, and keeps its console with the errors flagged", async () => {

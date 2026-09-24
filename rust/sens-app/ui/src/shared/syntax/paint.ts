@@ -117,28 +117,6 @@ export function usePainted(text: string, language: string | null) {
   return done?.text === text && done.language === language ? done.painted : paintedNow(text, language);
 }
 
-// One line's runs as nodes, for the parts app.js still draws.
-export function runNodes(runs: Runs, looks: Look[]) {
-  return runs.map(([text, look]) => {
-    if (look < 0) return document.createTextNode(text);
-    const span = document.createElement("span");
-    Object.assign(span.style, looks[look]);
-    span.textContent = text;
-    return span;
-  });
-}
-
-// Fills a <code> with a text, colored once its grammar has run if the code is
-// still on screen by then.
-export function paintCode(code: HTMLElement, text: string, language: string | null) {
-  const draw = (painted: Painted) =>
-    code.replaceChildren(...painted.lines.flatMap((runs, at) => (at ? ["\n", ...runNodes(runs, painted.looks)] : runNodes(runs, painted.looks))));
-  const now = paintedNow(text, language);
-  if (now) return draw(now);
-  code.replaceChildren(text);
-  paint(text, language, () => code.isConnected).then((painted) => painted && code.isConnected && draw(painted));
-}
-
 export interface Row {
   kind: string;
   text: string;

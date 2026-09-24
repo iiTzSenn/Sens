@@ -1,7 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { createStore } from "zustand/vanilla";
-import { commands } from "../../ipc/commands";
-import type { Release } from "../../ipc/types";
+import { commands, events } from "../../ipc/commands";
+import type { Release, UpdateStage } from "../../ipc/types";
 import { profile } from "../profile/store";
 
 const UPDATE_EVERY = 12 * 60 * 60 * 1000;
@@ -15,6 +15,8 @@ export const updates = createStore(() => ({
   checked: false,
   checking: false,
   fault: "",
+  // Where an install is, while one runs.
+  stage: null as UpdateStage | null,
 }));
 
 type Updates = ReturnType<typeof updates.getState>;
@@ -51,6 +53,7 @@ function schedule() {
 }
 
 export async function startUpdates() {
+  events.update((stage) => updates.setState({ stage }));
   try {
     updates.setState({ current: await getVersion() });
   } catch {}

@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { legacy } from "../../legacy/bridge";
 import { paint } from "../../shared/syntax/paint";
 import { forgetEdits, noteEdit, project } from "../project/store";
 import { showSite } from "../web/store";
@@ -28,7 +27,6 @@ beforeEach(() => {
   project.setState({ root: "C:/demo", touched: new Map() });
   viewer.setState(viewer.getInitialState(), true);
   ipc.commands.openFile.mockReset().mockImplementation(async (_root: string, path: string) => FILES[path]);
-  legacy.prose = vi.fn((text: string) => Object.assign(document.createElement("div"), { textContent: text }));
   Element.prototype.scrollIntoView = vi.fn();
 });
 
@@ -107,7 +105,8 @@ describe("file viewer", () => {
     show();
     await act(async () => openFile("README.md"));
     expect(document.querySelector(".reading")?.hasAttribute("hidden")).toBe(false);
-    expect(document.querySelector(".reading .prose")?.textContent).toBe("# Demo\n\nHola.");
+    expect(document.querySelector(".reading h1")?.textContent).toBe("Demo");
+    expect(document.querySelector(".reading .prose")?.textContent).not.toContain("title");
     expect(button("Vista").getAttribute("aria-pressed")).toBe("true");
 
     fireEvent.click(button("Código"));

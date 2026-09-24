@@ -87,11 +87,6 @@ beforeEach(() => {
   });
   legacy.closePanel = vi.fn();
   legacy.panelReturnsTo = vi.fn();
-  legacy.prose = vi.fn(() => {
-    const page = document.createElement("div");
-    page.append("léeme");
-    return page;
-  });
   localStorage.clear();
 });
 

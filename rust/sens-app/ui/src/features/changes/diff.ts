@@ -1,10 +1,8 @@
 // What `git diff` says, file by file, as the changes panel lists it.
 
-export interface Hunk {
-  oldStart: number;
-  newStart: number;
-  lines: string[];
-}
+import type { Hunk } from "../../shared/rows";
+
+export type { Hunk };
 
 export interface DiffFile {
   path: string;

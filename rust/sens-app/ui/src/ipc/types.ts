@@ -15,6 +15,9 @@ export interface Release {
   size: number;
 }
 
+/** update::Stage, rust/sens-app/src/update.rs: where an install is */
+export type UpdateStage = "downloading" | "verifying" | "installing";
+
 /** update::Check, rust/sens-app/src/update.rs */
 export interface UpdateCheck {
   latest: Release | null;
@@ -261,3 +264,132 @@ export type Heard =
   | { kind: "loading" | "loaded"; url: string }
   | { kind: "titled"; title: string }
   | { kind: "said"; level: string; text: string };
+
+export interface Todo {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+  activeForm?: string;
+}
+
+export interface Question {
+  question: string;
+  header?: string;
+  multiSelect?: boolean;
+  options?: { label: string; description?: string }[];
+}
+
+// What a tool was called with, by the fields the chat reads.
+export interface ToolInput {
+  file_path?: string;
+  notebook_path?: string;
+  path?: string;
+  command?: string;
+  description?: string;
+  pattern?: string;
+  url?: string;
+  query?: string;
+  prompt?: string;
+  todos?: Todo[];
+  subagent_type?: string;
+  skill?: string;
+  old_string?: string;
+  new_string?: string;
+  content?: string;
+  plan?: string;
+  questions?: Question[];
+  [field: string]: unknown;
+}
+
+// What Claude Code adds to a tool's result, by the fields the chat reads.
+export interface ToolDetail {
+  stdout?: string;
+  stderr?: string;
+  structuredPatch?: { oldStart: number; newStart: number; lines: string[] }[];
+  filePath?: string;
+  type?: string;
+  content?: string;
+  file?: { numLines?: number };
+  numFiles?: number;
+  [field: string]: unknown;
+}
+
+/** chat::Link, rust/sens-agent/src/chat.rs */
+export interface Link {
+  url: string;
+  title: string;
+}
+
+export interface Suggestion {
+  type: string;
+  mode?: string;
+}
+
+export type Answers = Record<string, string | string[]>;
+
+export interface Asking {
+  kind: "asking";
+  request: string;
+  tool: string;
+  input: ToolInput;
+  suggestions: Suggestion[] | null;
+}
+
+export interface Finished {
+  kind: "finished";
+  ok: boolean;
+  stopped: boolean;
+  millis: number;
+  turns: number;
+  tokensIn: number;
+  tokensOut: number;
+  error: string;
+}
+
+/** chat::Event, rust/sens-agent/src/chat.rs; task events go to the tasks panel as AgentEvent */
+export type ChatEvent =
+  | { kind: "started"; model: string }
+  | { kind: "delta"; thinking: boolean; text: string }
+  | { kind: "said"; text: string }
+  | { kind: "thought"; text: string }
+  | { kind: "tool"; id: string; name: string; input: ToolInput }
+  | { kind: "toolDone"; id: string; output: string; error: boolean; detail: ToolDetail | null }
+  | Asking
+  | { kind: "answered"; request: string; allowed: boolean; answers: Answers | null }
+  | { kind: "limits"; windows: Record<string, { utilization?: number }> }
+  | { kind: "consulted"; tool: string; links: Link[] }
+  | { kind: "taskStarted" | "taskProgress" | "taskEnded" }
+  | Finished
+  | { kind: "failed"; reason: string };
+
+/** session::Entry, rust/sens-agent/src/session.rs: a session as it was saved */
+export type SessionEntry =
+  | { kind: "opened"; at: number; root: string }
+  | { kind: "task"; at: number; text: string; files: string[]; images: string[] }
+  | { kind: "agent"; at: number; event: ChatEvent }
+  | { kind: "titled"; at: number; title: string };
+
+// How a question is answered: allowed or not, with a mode or a message for
+// the model, and the answers to a form.
+export interface Decision {
+  allow: boolean;
+  remember?: boolean;
+  mode?: string;
+  message?: string;
+  answers?: Answers;
+}
+
+/** chat::Message, rust/sens-agent/src/chat.rs */
+export interface Message {
+  text: string;
+  files: string[];
+  images: { mediaType: string; data: string }[];
+}
+
+/** chat::Settings, rust/sens-agent/src/chat.rs */
+export interface Settings {
+  provider: string;
+  model: string;
+  effort: string;
+  thinking: boolean;
+  mode: string;
+}

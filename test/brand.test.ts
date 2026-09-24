@@ -143,8 +143,8 @@ describe("the desktop shell", () => {
       expect(shell, control).toContain(`id="${control}"`);
     }
     expect(shell).toContain('.composer .box[data-busy="true"] .send .halt');
-    expect(shell).toContain('invoke("chat_stop", { sessionId: current })');
-    expect(shell).toContain('composerBox.dataset.stopping = "true";');
+    expect(shell).toContain("await commands.chatStop(session());");
+    expect(shell).toContain("composerBox.dataset.stopping = String(stopping);");
   });
 
   it("spends signal on the send button, the one key action", () => {
@@ -195,10 +195,11 @@ describe("the desktop shell", () => {
   it("never lets colour alone carry a state", () => {
     const paired = [
       ['.step[data-state="stopped"] .step-state { border:', "a stopped step is a ring, not a colour"],
-      ["if (error) node.open = true;", "a failed step opens on its error"],
-      ['run.failed ? "Terminó con error"', "a failed command says so"],
-      ['answersText(answers) || "Permitido" : "Rechazado"', "a settled permission names its outcome"],
-      ['note.textContent = "Sin respuesta";', "an expired question says it went unanswered"],
+      ['if (state === "failed" && box.current) box.current.open = true;', "a failed step opens on its error"],
+      ['failed ? "Terminó con error"', "a failed command says so"],
+      ['allowed: (answers) => answersText(answers) || "Permitido"', "a settled permission names its outcome"],
+      ['refused: () => "Rechazado"', "a refused permission says so"],
+      ['expired: () => "Sin respuesta"', "an expired question says it went unanswered"],
       ['<span className="state" data-state={file.state}', "a changed file carries its status letter"],
     ];
     for (const [snippet, why] of paired) expect(shell, why).toContain(snippet);

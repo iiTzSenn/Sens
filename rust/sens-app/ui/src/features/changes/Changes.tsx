@@ -1,17 +1,18 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { useStore } from "zustand";
 import { commands } from "../../ipc/commands";
-import { legacy } from "../../legacy/bridge";
 import { PICTURE, parentOf, plural, stem } from "../../shared/format.js";
-import { Borrowed } from "../../shared/Borrowed";
 import { FileIcon } from "../../shared/FileIcon";
 import { Icon } from "../../shared/Icon";
+import { LinesCard } from "../../shared/LinesCard";
+import { addedRows, patchRows } from "../../shared/rows";
+import { languageOf } from "../../shared/syntax/languages";
 import { ICONS } from "../../shared/icons.js";
 import { project } from "../project/store";
 import type { DiffFile } from "./diff";
-import { openFile } from "../files/view";
+import { showFile } from "../files/view";
 import { changes, unfold } from "./store";
 
 const CHANGE_PREVIEW = 400;
@@ -111,8 +112,7 @@ function ChangeRow({ file }: { file: DiffFile }) {
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              legacy.showTool("files");
-              openFile(file.path);
+              showFile(file.path);
             }}
           >
             <Icon svg={ICONS.fileCode} />
@@ -166,18 +166,16 @@ function ChangeBody({ file, counted }: { file: DiffFile; counted: (lines: number
   if (!file.hunks.length) {
     return <p className="none">{file.state === "R" ? "Renombrado, sin cambios de contenido." : "Sin cambios de contenido."}</p>;
   }
-  return <Borrowed make={() => legacy.diffView(file.hunks, CHANGE_PREVIEW, file.path)} made={file} />;
+  return <Patch file={file} />;
+}
+
+function Patch({ file }: { file: DiffFile }) {
+  const { rows } = useMemo(() => patchRows(file.hunks), [file]);
+  return <LinesCard rows={rows} preview={CHANGE_PREVIEW} language={languageOf(file.path)} />;
 }
 
 function Added({ path, text, counted }: { path: string; text: string; counted: (lines: number) => void }) {
-  return (
-    <Borrowed
-      make={() => {
-        const { node, lines } = legacy.addedView(text, CHANGE_PREVIEW, path);
-        counted(lines);
-        return node;
-      }}
-      made={text}
-    />
-  );
+  const rows = useMemo(() => addedRows(text), [text]);
+  useEffect(() => counted(rows.length), [rows]);
+  return <LinesCard rows={rows} preview={CHANGE_PREVIEW} language={languageOf(path, text)} />;
 }

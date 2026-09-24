@@ -2,9 +2,9 @@ import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { useStore } from "zustand";
-import { legacy } from "../../legacy/bridge";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
+import { openOutside } from "../../shared/outside";
 import { addressOf, aim, goBack, goForward, hearBrowser, holdFrame, pickWidth, reloadSite, syncBrowser, toggleLog, web } from "./store";
 
 const WIDTHS = [0, 390, 768, 1280];
@@ -78,7 +78,7 @@ function Outside() {
   const url = useStore(web, (s) => s.url);
   if (!url) return null;
   return (
-    <button className="icon-btn" id="site-out" title="Abrir en el navegador" aria-label="Abrir en el navegador" onClick={() => legacy.outward(url)}>
+    <button className="icon-btn" id="site-out" title="Abrir en el navegador" aria-label="Abrir en el navegador" onClick={() => openOutside(url)}>
       <Icon svg={ICONS.external} />
     </button>
   );
