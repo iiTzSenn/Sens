@@ -52,6 +52,7 @@ export const ICONS = {
   activity: icon('<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>'),
   back: icon('<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>', 14),
   forward: icon('<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>', 14),
+  advance: icon('<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>', 18, 1.75),
   external: icon('<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>', 14),
   close: icon('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', 14, 1.8),
   dismiss: icon('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),

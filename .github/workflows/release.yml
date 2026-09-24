@@ -110,8 +110,8 @@ jobs:
         with:
           name: sens-installer
           path: |
-            rust/sens-app/target/release/bundle/nsis/*.exe
-            rust/sens-app/target/release/bundle/nsis/*.exe.sig
+            rust/sens-setup/target/installer/*.exe
+            rust/sens-setup/target/installer/*.exe.sig
       - name: Attach it to the release, if there is one
         shell: bash
         env:
@@ -119,7 +119,7 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
           if gh release view "$tag" > /dev/null 2>&1; then
-            gh release upload "$tag" rust/sens-app/target/release/bundle/nsis/*.exe rust/sens-app/target/release/bundle/nsis/*.exe.sig --clobber
+            gh release upload "$tag" rust/sens-setup/target/installer/*.exe rust/sens-setup/target/installer/*.exe.sig --clobber
           else
             echo "no hay release para $tag; el instalador queda como artefacto del workflow"
           fi

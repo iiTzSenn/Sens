@@ -5,6 +5,7 @@
 export interface Profile {
   name: string;
   checkUpdates: boolean;
+  welcomed: boolean;
 }
 
 /** update::Release, rust/sens-app/src/update.rs */
@@ -436,4 +437,47 @@ export interface Repo {
   detached: boolean;
   dirty: number;
   branches: string[];
+}
+
+export interface FoundProject {
+  root: string;
+  name: string;
+  exists: boolean;
+  sessions: number;
+  already: number;
+  last: number;
+  suggested: boolean;
+}
+
+export interface ForeignServer {
+  id: string;
+  source: "claude-desktop" | "cursor" | "windsurf" | "vscode" | "codex";
+  app: string;
+  name: string;
+  kind: "stdio" | "http" | "sse";
+  command: string;
+  args: string[];
+  url: string;
+  envKeys: string[];
+  blocked: string;
+}
+
+export interface Found {
+  claude: string;
+  projects: FoundProject[];
+  skills: string[];
+  servers: string[];
+  plugins: string[];
+  foreign: ForeignServer[];
+}
+
+export interface Adopted {
+  sessions: number;
+  projects: number;
+  skipped: { root: string; reason: string }[];
+}
+
+export interface Imported {
+  added: string[];
+  skipped: { name: string; reason: string }[];
 }

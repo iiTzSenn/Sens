@@ -17,7 +17,7 @@ const SHORTCUTS = [
   ["Esc", "Cerrar"],
 ];
 
-const initials = (name: string) =>
+export const initials = (name: string) =>
   name
     .split(/\s+/)
     .slice(0, 2)

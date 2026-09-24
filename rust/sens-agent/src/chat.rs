@@ -789,19 +789,23 @@ pub fn translate(line: &str) -> Vec<Event> {
     let Ok(message) = serde_json::from_str::<Value>(line) else {
         return Vec::new();
     };
+    interpret(&message)
+}
+
+pub fn interpret(message: &Value) -> Vec<Event> {
     if let Some(parent) = message["parent_tool_use_id"].as_str() {
-        return consulted_by(parent, &message).into_iter().collect();
+        return consulted_by(parent, message).into_iter().collect();
     }
     match message["type"].as_str().unwrap_or_default() {
         "stream_event" => delta(&message["event"]).into_iter().collect(),
         "assistant" => blocks(&message["message"]["content"])
             .filter_map(said)
             .collect(),
-        "user" => results(&message),
-        "control_request" => asking(&message).into_iter().collect(),
-        "system" => system(&message).into_iter().collect(),
-        "rate_limit_event" => limits(&message).into_iter().collect(),
-        "result" => vec![finished(&message)],
+        "user" => results(message),
+        "control_request" => asking(message).into_iter().collect(),
+        "system" => system(message).into_iter().collect(),
+        "rate_limit_event" => limits(message).into_iter().collect(),
+        "result" => vec![finished(message)],
         _ => Vec::new(),
     }
 }

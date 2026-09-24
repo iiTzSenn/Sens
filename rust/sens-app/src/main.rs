@@ -17,6 +17,7 @@ mod snapshot;
 mod store;
 mod update;
 mod web;
+mod welcome;
 
 use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom};
@@ -423,6 +424,35 @@ fn set_update_check(app: AppHandle, on: bool) -> Result<(), String> {
     profile::set_update_check(&data_dir(&app)?, on)
 }
 
+#[tauri::command]
+fn set_welcomed(app: AppHandle, on: bool) -> Result<(), String> {
+    profile::set_welcomed(&data_dir(&app)?, on)
+}
+
+#[tauri::command(async)]
+fn welcome_scan(app: AppHandle) -> Result<welcome::Found, String> {
+    Ok(welcome::scan(&data_dir(&app)?, &welcome::Places::current()?))
+}
+
+#[derive(Serialize, Clone)]
+struct Welcoming {
+    done: usize,
+    total: usize,
+}
+
+#[tauri::command(async)]
+fn welcome_adopt(app: AppHandle, roots: Vec<String>) -> Result<welcome::Adopted, String> {
+    let base = data_dir(&app)?;
+    Ok(welcome::adopt(&base, &welcome::Places::current()?, &roots, |done, total| {
+        let _ = app.emit("welcome", Welcoming { done, total });
+    }))
+}
+
+#[tauri::command]
+fn welcome_servers(app: AppHandle, ids: Vec<String>, roots: Vec<String>) -> Result<welcome::Imported, String> {
+    Ok(welcome::import_servers(&data_dir(&app)?, &welcome::Places::current()?, &ids, &roots))
+}
+
 #[tauri::command(async)]
 fn update_check(manual: bool) -> Result<update::Check, String> {
     update::check(manual)
@@ -593,6 +623,10 @@ fn main() {
             profile,
             save_profile,
             set_update_check,
+            set_welcomed,
+            welcome_scan,
+            welcome_adopt,
+            welcome_servers,
             update_check,
             update_install,
             artifacts,

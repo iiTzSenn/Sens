@@ -4,6 +4,7 @@ import { useStore } from "zustand";
 import { profile, saveProfileName } from "../profile/store";
 import { checkUpdates, setAutomatic, updateState, updates } from "../updates/store";
 import { openUpdate } from "../updates/UpdatePanel";
+import { openWelcome } from "../welcome/store";
 import { ProvidersSection } from "./ProvidersSection";
 import { enterSettings, settings, showSection, type Section } from "./store";
 
@@ -83,7 +84,25 @@ function GeneralSection() {
         </p>
       </div>
       <UpdatesBlock />
+      <WelcomeBlock />
     </>
+  );
+}
+
+function WelcomeBlock() {
+  return (
+    <div className="pair">
+      <span className="label">Bienvenida</span>
+      <p className="note">Tu nombre, Claude Code y lo que traes de Claude Code y de otras apps.</p>
+      <div className="settings-row">
+        <button className="quiet" onClick={() => openWelcome()}>
+          Volver a verla
+        </button>
+        <button className="quiet" onClick={() => openWelcome("import")}>
+          Importar de Claude Code
+        </button>
+      </div>
+    </div>
   );
 }
 

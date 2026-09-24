@@ -158,10 +158,38 @@ pub fn open_as(root: &Path, id: &str) -> Result<String, String> {
 }
 
 pub fn append(root: &Path, id: &str, entry: &Entry) -> Result<(), String> {
+    prepare(root)?;
+    append_to(&file(root, id), id, entry)
+}
+
+pub fn create(root: &Path, id: &str, entries: &[Entry]) -> Result<(), String> {
+    named(id)?;
+    let mut text = String::new();
+    for entry in entries {
+        text.push_str(&serde_json::to_string(entry).map_err(|error| error.to_string())?);
+        text.push('\n');
+    }
+    prepare(root)?;
+    let path = file(root, id);
+    let mut handle = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|error| format!("no pude crear la sesión {id}: {error}"))?;
+    handle.write_all(text.as_bytes()).map_err(|error| {
+        let _ = std::fs::remove_file(&path);
+        format!("no pude escribir la sesión: {error}")
+    })
+}
+
+pub fn exists(root: &Path, id: &str) -> bool {
+    located(root, id).is_some()
+}
+
+fn prepare(root: &Path) -> Result<(), String> {
     let folder = dir(root);
     std::fs::create_dir_all(&folder)
-        .map_err(|error| format!("no pude crear {}: {error}", folder.display()))?;
-    append_to(&file(root, id), id, entry)
+        .map_err(|error| format!("no pude crear {}: {error}", folder.display()))
 }
 
 fn append_to(path: &Path, id: &str, entry: &Entry) -> Result<(), String> {
@@ -307,7 +335,7 @@ pub fn summarize(id: &str, entries: &[Entry]) -> Summary {
     summary
 }
 
-fn shorten(text: &str) -> String {
+pub fn shorten(text: &str) -> String {
     let clean = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if clean.chars().count() <= TITLE_LIMIT {
         return clean;
@@ -504,6 +532,22 @@ mod tests {
         assert_eq!(&id[14..15], "4");
         assert!("89ab".contains(&id[19..20]));
         assert_ne!(fresh_id(), id);
+    }
+
+    #[test]
+    fn a_whole_session_is_written_at_once_and_never_over_another() {
+        let root = temp_root("create");
+        let id = fresh_id();
+        let entries = vec![Entry::Opened { at: 1, root: "p".into() }, task(2, "hola")];
+
+        create(&root, &id, &entries).unwrap();
+
+        assert!(exists(&root, &id));
+        assert_eq!(read(&root, &id).len(), 2);
+        assert!(create(&root, &id, &[task(3, "otra")]).is_err());
+        assert_eq!(read(&root, &id).len(), 2);
+        assert!(create(&root, "../fuera", &entries).is_err());
+        assert!(!exists(&root, &fresh_id()));
     }
 
     #[test]

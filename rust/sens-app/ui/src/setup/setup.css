@@ -1,0 +1,90 @@
+@import "../shared/tokens.css";
+@import "../shared/stage.css";
+
+* { box-sizing: border-box; }
+html, body, #setup { height: 100%; margin: 0; }
+
+body {
+  background: var(--ground); color: var(--text);
+  font-family: var(--ui); font-size: 15px; line-height: 1.53;
+  overflow: hidden; user-select: none; cursor: default;
+  -webkit-font-smoothing: antialiased;
+}
+
+.setup { position: relative; height: 100%; overflow: hidden; }
+
+.stone {
+  position: absolute; z-index: 1; margin: 0;
+  top: 0; left: 380px; width: 500px; height: 100%;
+  transform-origin: 50% 50%;
+  transition: transform 560ms var(--curve), opacity 400ms var(--curve);
+}
+.still .stone { transition: none; }
+
+.setup[data-screen="busy"] .stone,
+.setup[data-screen="running"] .stone,
+.setup[data-screen="error"] .stone { transform: translate(-432px, 4px) scale(.6); }
+
+.words {
+  position: absolute; z-index: 2;
+  top: 72px; bottom: 76px; left: 48px; width: 408px;
+  display: grid; align-content: center;
+}
+.setup[data-screen="busy"] .words,
+.setup[data-screen="running"] .words,
+.setup[data-screen="error"] .words { left: 348px; width: 484px; }
+
+.screen { animation: stage-enter 240ms var(--curve) both; }
+.screen > .link { display: block; }
+.setup[data-screen="busy"] .screen,
+.setup[data-screen="running"] .screen,
+.setup[data-screen="error"] .screen { animation-delay: 240ms; }
+
+.versions { margin: 6px 0 0; font-family: var(--mono); font-size: 13px; color: var(--faint); }
+.setup[data-screen="welcome"] .check { margin-top: 28px; }
+
+.field-row { margin: 26px 0 14px; }
+.folder {
+  display: flex; align-items: center; gap: 12px; margin-top: 8px;
+  padding: 5px 5px 5px 14px; border-radius: var(--r-control);
+  background: var(--panel); border: 1px solid var(--hair-strong);
+}
+.path {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: 13px; color: var(--dim); user-select: text;
+}
+.hint.mono { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.meter { display: flex; align-items: center; gap: 20px; margin-top: 28px; }
+.track { position: relative; flex: 1; height: 8px; overflow: hidden; border-radius: 999px; background: var(--raise); }
+.track i {
+  position: absolute; inset: 0 auto 0 0; width: 0; overflow: hidden;
+  border-radius: inherit; background: var(--sens-signal-500);
+  transition: width 520ms var(--curve);
+}
+.track i::after {
+  content: ""; position: absolute; inset: 0; width: 64px;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / .55), transparent);
+  animation: sweep 1100ms linear infinite;
+}
+@keyframes sweep { from { transform: translateX(-64px); } to { transform: translateX(520px); } }
+.percent { min-width: 52px; text-align: right; font-size: 17px; font-variant-numeric: tabular-nums; }
+.status { margin: 20px 0 0; font-size: 16px; color: var(--dim); }
+
+.log {
+  margin: 18px 0 0; padding: 0; list-style: none; max-height: 84px; overflow: hidden;
+  font-family: var(--mono); font-size: 12.5px; line-height: 21px; color: var(--ghost);
+}
+.log li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log li::before { content: "›"; margin-right: 12px; color: var(--ghost); }
+.log li:last-child { color: var(--faint); }
+.log[data-open="true"] { max-height: 168px; overflow-y: auto; user-select: text; }
+
+.foot {
+  position: absolute; z-index: 2; left: 48px; right: 40px; bottom: 0; height: 76px;
+  display: flex; align-items: center; gap: 16px; border-top: 1px solid transparent;
+  transition: border-color var(--slow) var(--curve);
+}
+.made { font-size: 12px; color: var(--faint); }
+.foot .cancel { margin-left: auto; }
+.setup[data-screen="busy"] .foot, .setup[data-screen="running"] .foot { border-top-color: var(--hair-strong); }

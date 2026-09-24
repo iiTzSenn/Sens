@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:setup": "vite --config vite.setup.config.ts",
     "build": "vite build",
+    "build:setup": "vite build --config vite.setup.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "icons": "node scripts/file-icons.mjs",
     "languages": "node scripts/languages.mjs"

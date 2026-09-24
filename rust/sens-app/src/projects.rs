@@ -65,6 +65,12 @@ pub fn remember(base: &Path, root: &str) -> Result<(), String> {
     crate::store::store(base, FILE, &registry)
 }
 
+pub fn register(base: &Path, root: &str) -> Result<(), String> {
+    let mut registry = load(base);
+    registry.known(root);
+    crate::store::store(base, FILE, &registry)
+}
+
 pub fn trust(base: &Path, root: &str, trusted: bool) -> Result<(), String> {
     let mut registry = load(base);
     match registry.projects.iter().position(|known| known.root == root) {
@@ -121,7 +127,7 @@ fn workspace(known: &Known) -> Workspace {
     }
 }
 
-fn name_of(root: &Path) -> String {
+pub fn name_of(root: &Path) -> String {
     root.file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| root.to_string_lossy().into_owned())
@@ -183,6 +189,24 @@ mod tests {
         assert_eq!(registry.projects.len(), 2);
         assert!(registry.projects[0].opened > before);
         assert_eq!(registry.last.as_deref(), Some("C:/a"));
+    }
+
+    #[test]
+    fn registering_a_project_adds_it_without_making_it_the_last_one() {
+        let base = temp_root("register");
+        remember(&base, "C:/a").unwrap();
+        let opened = load(&base).projects[0].opened;
+
+        register(&base, "C:/b").unwrap();
+        register(&base, "C:/a").unwrap();
+        register(&base, "C:/b").unwrap();
+
+        let registry = load(&base);
+        assert_eq!(registry.last.as_deref(), Some("C:/a"));
+        assert_eq!(registry.projects.len(), 2);
+        assert_eq!(registry.projects[0].opened, opened);
+        assert_eq!(registry.projects[1].root, "C:/b");
+        assert_eq!(registry.projects[1].opened, 0);
     }
 
     #[test]

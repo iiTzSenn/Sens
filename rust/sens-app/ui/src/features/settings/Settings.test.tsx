@@ -81,7 +81,7 @@ afterEach(cleanup);
 
 describe("general settings", () => {
   it("saves the name and reloads the profile the rail footer paints from", async () => {
-    profile.setState({ person: { name: "Demo", checkUpdates: true } });
+    profile.setState({ person: { name: "Demo", checkUpdates: true, welcomed: true } });
     ipc.commands.profile.mockResolvedValue({ name: "Nuevo", checkUpdates: true });
     await open("general");
 

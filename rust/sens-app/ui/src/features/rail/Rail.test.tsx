@@ -43,7 +43,7 @@ beforeEach(() => {
   localStorage.clear();
   rail.setState({ ...rail.getInitialState(), folded: new Set() }, true);
   project.setState({ root: "C:/demo", session: "one", view: "", touched: new Map() });
-  profile.setState({ person: { name: "Ada Lovelace", checkUpdates: true }, fault: "" });
+  profile.setState({ person: { name: "Ada Lovelace", checkUpdates: true, welcomed: true }, fault: "" });
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.workspaces.mockResolvedValue(structuredClone(SPACES));
   vi.clearAllMocks();
@@ -240,7 +240,7 @@ describe("the rail", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Atajos de teclado" }));
     expect(dialog.getState()).toMatchObject({ open: true, title: "Atajos de teclado" });
 
-    act(() => profile.setState({ person: { name: "", checkUpdates: true } }));
+    act(() => profile.setState({ person: { name: "", checkUpdates: true, welcomed: true } }));
     expect(screen.getByText("Sin nombre").dataset.empty).toBe("true");
   });
 });

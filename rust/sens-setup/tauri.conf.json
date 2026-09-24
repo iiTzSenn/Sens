@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Sens",
+  "version": "../sens-app/tauri.conf.json",
+  "identifier": "dev.sens.setup",
+  "build": {
+    "beforeDevCommand": "npm run dev:setup -w sens-app-ui",
+    "devUrl": "http://localhost:5174",
+    "beforeBuildCommand": "npm run build:setup -w sens-app-ui",
+    "frontendDist": "../sens-app/ui/dist-setup"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["../sens-app/icons/icon.ico"]
+  }
+}

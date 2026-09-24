@@ -6,6 +6,7 @@ import { Panes } from "../features/panes/Panes";
 import { project } from "../features/project/store";
 import { Rail } from "../features/rail/Rail";
 import { Settings } from "../features/settings/Settings";
+import { Welcome } from "../features/welcome/Welcome";
 import { sheets } from "../shared/sheets.js";
 import { Dialog } from "./Dialog";
 import { dialog } from "./modal";
@@ -110,6 +111,7 @@ export function App() {
         </div>
       </div>
       <Dialog />
+      <Welcome />
     </>
   );
 }

@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-setup/
 npm/
 .sens/
 
@@ -16,3 +17,4 @@ Thumbs.db
 
 rust/*/target/
 rust/sens-app/gen/
+rust/sens-setup/gen/

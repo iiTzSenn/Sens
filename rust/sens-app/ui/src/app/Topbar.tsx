@@ -90,7 +90,7 @@ function UpdatePill() {
   );
 }
 
-function Window() {
+export function Window({ tools = true }: { tools?: boolean }) {
   const frame = getCurrentWindow();
   const [wide, setWide] = useState(false);
 
@@ -106,7 +106,7 @@ function Window() {
   const grow = wide ? "Restaurar" : "Maximizar";
   return (
     <div className="win" id="win" data-max={String(wide)}>
-      <ToolsButton />
+      {tools && <ToolsButton />}
       <button id="win-min" title="Minimizar" aria-label="Minimizar" onClick={() => frame.minimize()}>
         <Icon svg={ICONS.minimize} />
       </button>

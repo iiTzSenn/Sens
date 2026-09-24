@@ -13,6 +13,7 @@ const API_VERSION: &str = "2023-06-01";
 const OAUTH_BETA: &str = "oauth-2025-04-20";
 const CONFIG_VARIABLE: &str = "CLAUDE_CONFIG_DIR";
 const CONFIG_FOLDER: &str = ".claude";
+const GLOBAL_CONFIG: &str = ".claude.json";
 const CREDENTIALS: &str = ".credentials.json";
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -44,11 +45,18 @@ fn credential() -> Option<Credential> {
     Some(Credential::Subscription(token.to_string()))
 }
 
-fn config_folder() -> Option<PathBuf> {
+pub fn config_folder() -> Option<PathBuf> {
+    configured().or_else(|| std::env::home_dir().map(|home| home.join(CONFIG_FOLDER)))
+}
+
+pub fn global_config() -> Option<PathBuf> {
+    configured().or_else(std::env::home_dir).map(|folder| folder.join(GLOBAL_CONFIG))
+}
+
+fn configured() -> Option<PathBuf> {
     std::env::var_os(CONFIG_VARIABLE)
         .filter(|folder| !folder.is_empty())
         .map(PathBuf::from)
-        .or_else(|| std::env::home_dir().map(|home| home.join(CONFIG_FOLDER)))
 }
 
 #[cfg(test)]

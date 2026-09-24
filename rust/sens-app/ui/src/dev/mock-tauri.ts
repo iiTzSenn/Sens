@@ -3,12 +3,46 @@
 // inside Tauri the real IPC is already there, so it steps aside.
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import type { Capabilities } from "../ipc/types";
+import type { Capabilities, Found } from "../ipc/types";
 
 const now = Date.now();
 const HOUR = 3_600_000;
 const ROOT = "C:/Proyectos/demo";
-const person = { name: "Demo", checkUpdates: false };
+const person = { name: "Demo", checkUpdates: false, welcomed: !new URLSearchParams(location.search).has("welcome") };
+const DAY = 24 * HOUR;
+
+const found: Found = {
+  claude: "C:/Users/demo/.claude",
+  projects: [
+    { root: "C:/Proyectos/tienda-web", name: "tienda-web", exists: true, sessions: 48, already: 2, last: now - 3 * HOUR, suggested: true },
+    { root: "C:/Proyectos/api-pagos", name: "api-pagos", exists: true, sessions: 31, already: 0, last: now - DAY, suggested: true },
+    { root: "C:/Proyectos/demo", name: "demo", exists: true, sessions: 0, already: 12, last: now - 2 * DAY, suggested: true },
+    { root: "C:/Proyectos/juego-2d", name: "juego-2d", exists: true, sessions: 17, already: 0, last: now - 9 * DAY, suggested: true },
+    { root: "C:/Users/demo/Downloads", name: "Downloads", exists: true, sessions: 3, already: 0, last: now - 20 * DAY, suggested: false },
+    { root: "D:/viejo/prototipo", name: "prototipo", exists: false, sessions: 6, already: 0, last: now - 80 * DAY, suggested: false },
+  ],
+  skills: ["frontend-design", "gsap-core", "shadcn-ui", "web-design-guidelines"],
+  servers: ["github"],
+  plugins: ["superpowers@claude-plugins"],
+  foreign: [
+    { id: "claude-desktop:filesystem", source: "claude-desktop", app: "Claude Desktop", name: "filesystem", kind: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Proyectos"], url: "", envKeys: [], blocked: "" },
+    { id: "cursor:linear", source: "cursor", app: "Cursor", name: "linear", kind: "http", command: "", args: [], url: "https://mcp.linear.app/mcp", envKeys: ["Authorization"], blocked: "" },
+    { id: "vscode:postgres", source: "vscode", app: "VS Code", name: "postgres", kind: "stdio", command: "npx", args: ["-y", "mcp-postgres"], url: "", envKeys: ["PG_URL"], blocked: "usa variables ${input:…} de VS Code" },
+    { id: "cursor:github", source: "cursor", app: "Cursor", name: "github", kind: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"], url: "", envKeys: ["GITHUB_TOKEN"], blocked: "ya existe en Claude Code" },
+  ],
+};
+
+const pause = (millis: number) => new Promise((done) => setTimeout(done, millis));
+
+async function adopt(roots: string[]) {
+  const chosen = found.projects.filter((one) => roots.includes(one.root));
+  const total = chosen.reduce((sum, one) => sum + one.sessions, 0);
+  for (let done = 0; done <= total; done += 6) {
+    await emit("welcome", { done: Math.min(done, total), total });
+    await pause(60);
+  }
+  return { sessions: total, projects: chosen.length, skipped: [] };
+}
 const trusted = new Set<string>();
 
 const caps: Capabilities = {
@@ -411,6 +445,10 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
     },
   ],
   profile: () => ({ ...person }),
+  set_welcomed: ({ on }) => void (person.welcomed = Boolean(on)),
+  welcome_scan: () => pause(1400).then(() => found),
+  welcome_adopt: ({ roots }) => adopt(roots as string[]),
+  welcome_servers: ({ ids }) => pause(500).then(() => ({ added: (ids as string[]).map((id) => id.split(":")[1]), skipped: [] })),
   save_profile: ({ name }) => void (person.name = String(name).trim()),
   set_update_check: ({ on }) => void (person.checkUpdates = Boolean(on)),
   update_check: () => ({ latest: null, installable: false }),

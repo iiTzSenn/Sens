@@ -11,9 +11,15 @@ npm ci
 npm run app:installer -- --unsigned --no-updater
 ```
 
-That produces `rust/sens-app/target/release/bundle/nsis/Sens_<version>_x64-setup.exe`
-— about 3 MB, roughly 90 seconds from a cold `target/`. The Tauri CLI downloads
-NSIS on the first run and checks its hash.
+That produces `rust/sens-setup/target/installer/Sens_<version>_x64-setup.exe`
+— about 7 MB. It is Sens's own installer, not NSIS: the script builds
+`sens-app.exe` with `tauri build --no-bundle`, signs it, compresses it with
+Brotli and builds `rust/sens-setup` around it — a small Tauri window whose UI
+is `ui/setup.html` and `ui/src/setup/`, designed in a browser with
+`npm run dev:setup -w sens-app-ui`. It lays down exactly what the NSIS setup
+did (folder, registry keys, Start menu shortcut, `uninstall.exe`), so an older
+install is updated in place. See
+[the spec](../../docs/specs/2026-09-24-sens-installer-and-welcome-design.md).
 
 The UI is its own npm workspace, `ui/`, built by Vite into `ui/dist`, which is
 what the installer embeds. `tauri build` and `tauri dev` run it themselves.
@@ -57,7 +63,7 @@ DigiCert's. Timestamping is not optional here: without it the signature dies
 the day the certificate expires, and everyone who already downloaded the
 installer starts seeing a warning.
 
-Tauri signs the app binary, the NSIS plugin DLLs and the installer. The script
+The script signs the app binary before packing it and the installer after. It
 then reads the signature back off the finished installer with
 `Get-AuthenticodeSignature` and fails unless Windows itself calls it `Valid`
 and timestamped — the build log saying "Successfully signed" is not the same
@@ -67,8 +73,9 @@ thing as Windows accepting it.
 
 Sens checks GitHub for a newer release when it opens and every 12 hours, shows
 it in the top bar, and installs it with one click: it downloads the installer,
-checks its signature, runs it with `/P /UPDATE /R` and closes. NSIS installs per
-user, so there is no UAC prompt, and `/R` opens Sens again when it is done.
+checks its signature, runs it with `/P /UPDATE /R` and closes. The installer
+understands the same arguments the NSIS one did, installs per user, so there is
+no UAC prompt, and `/R` opens Sens again when it is done.
 
 A release only counts if it carries both `Sens_<version>_x64-setup.exe` and
 `Sens_<version>_x64-setup.exe.sig`. The `.sig` is a minisign signature made

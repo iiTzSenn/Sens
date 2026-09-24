@@ -48,7 +48,7 @@ export function ProvidersSection() {
   );
 }
 
-function ProviderCard({ state }: { state: ProviderState }) {
+export function ProviderCard({ state }: { state: ProviderState }) {
   const progress = useStore(settings, (s) => s.progress);
   const method = useStore(settings, (s) => s.choosing[state.id]) ?? state.method;
   const failed = useStore(settings, (s) => s.faults[state.id]);
@@ -87,7 +87,7 @@ function ClaudeCodeMissing({ state, busy }: Card) {
   return (
     <>
       <p className="note">
-        {`Sens trabaja a través de Claude Code, el agente oficial de Anthropic. Al conectar, Sens lo descarga de Anthropic (${CLAUDE_CODE_WEIGHT}) y lo instala solo para tu usuario, sin permisos de administrador.`}
+        {`Sens usa Claude Code, el agente de Anthropic. Al conectar, Sens lo descarga de Anthropic (${CLAUDE_CODE_WEIGHT}) y lo instala solo para tu usuario, sin permisos de administrador.`}
       </p>
       <div className="settings-row">
         <button className="quiet" disabled={busy} onClick={() => install(state)}>

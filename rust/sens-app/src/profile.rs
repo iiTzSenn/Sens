@@ -9,6 +9,7 @@ const FILE: &str = "profile.json";
 pub struct Profile {
     pub name: String,
     pub check_updates: bool,
+    pub welcomed: bool,
 }
 
 impl Default for Profile {
@@ -16,6 +17,7 @@ impl Default for Profile {
         Self {
             name: String::new(),
             check_updates: true,
+            welcomed: false,
         }
     }
 }
@@ -35,6 +37,14 @@ pub fn rename(base: &Path, name: &str) -> Result<(), String> {
 pub fn set_update_check(base: &Path, on: bool) -> Result<(), String> {
     let profile = Profile {
         check_updates: on,
+        ..load(base)
+    };
+    crate::store::store(base, FILE, &profile)
+}
+
+pub fn set_welcomed(base: &Path, on: bool) -> Result<(), String> {
+    let profile = Profile {
+        welcomed: on,
         ..load(base)
     };
     crate::store::store(base, FILE, &profile)
@@ -93,5 +103,35 @@ mod tests {
         set_update_check(&base, true).unwrap();
 
         assert_eq!(load(&base).name, "Sofía");
+    }
+
+    #[test]
+    fn a_profile_saved_before_the_welcome_existed_has_not_been_welcomed() {
+        let base = temp_root("before-welcome");
+        std::fs::write(base.join(FILE), r#"{ "name": "Sofía", "checkUpdates": false }"#).unwrap();
+
+        let profile = load(&base);
+        assert!(!profile.welcomed);
+        assert!(!profile.check_updates);
+        assert!(!load(&temp_root("welcome-missing")).welcomed);
+    }
+
+    #[test]
+    fn the_welcome_is_remembered_and_renaming_or_switching_keeps_it() {
+        let base = temp_root("welcomed");
+        set_welcomed(&base, true).unwrap();
+        rename(&base, "Sofía").unwrap();
+        set_update_check(&base, false).unwrap();
+
+        let profile = load(&base);
+        assert!(profile.welcomed);
+        assert_eq!(profile.name, "Sofía");
+
+        set_welcomed(&base, false).unwrap();
+
+        let profile = load(&base);
+        assert!(!profile.welcomed);
+        assert_eq!(profile.name, "Sofía");
+        assert!(!profile.check_updates);
     }
 }

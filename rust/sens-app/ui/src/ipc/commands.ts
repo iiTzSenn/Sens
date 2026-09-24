@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   Account,
+  Adopted,
   Artifact,
   Attachments,
   Card,
@@ -12,8 +13,10 @@ import type {
   Decision,
   Detail,
   Entry,
+  Found,
   Frame,
   Heard,
+  Imported,
   IndexedFile,
   Listing,
   Market,
@@ -39,6 +42,10 @@ export const commands = {
   profile: () => invoke<Profile>("profile"),
   saveProfile: (name: string) => invoke<void>("save_profile", { name }),
   setUpdateCheck: (on: boolean) => invoke<void>("set_update_check", { on }),
+  setWelcomed: (on: boolean) => invoke<void>("set_welcomed", { on }),
+  welcomeScan: () => invoke<Found>("welcome_scan"),
+  welcomeAdopt: (roots: string[]) => invoke<Adopted>("welcome_adopt", { roots }),
+  welcomeServers: (ids: string[], roots: string[]) => invoke<Imported>("welcome_servers", { ids, roots }),
   updateCheck: (manual: boolean) => invoke<UpdateCheck>("update_check", { manual }),
   // Downloads, verifies and installs the update, then Sens restarts.
   updateInstall: () => invoke<void>("update_install"),
@@ -132,6 +139,8 @@ export const events = {
   claudeCode: (heard: (progress: ClaudeCodeProgress) => void): Promise<UnlistenFn> =>
     listen<ClaudeCodeProgress>("claude-code", ({ payload }) => heard(payload)),
   browser: (heard: (what: Heard) => void): Promise<UnlistenFn> => listen<Heard>("browser", ({ payload }) => heard(payload)),
+  welcome: (heard: (done: number, total: number) => void): Promise<UnlistenFn> =>
+    listen<{ done: number; total: number }>("welcome", ({ payload }) => heard(payload.done, payload.total)),
   update: (heard: (stage: UpdateStage) => void): Promise<UnlistenFn> =>
     listen<{ version: string; stage: UpdateStage }>("update", ({ payload }) => heard(payload.stage)),
   chat: (heard: (session: string, event: ChatEvent) => void): Promise<UnlistenFn> =>

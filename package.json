@@ -27,6 +27,7 @@
     "start": "node dist/cli.js",
     "build:native": "cargo build --release --manifest-path rust/sens-hook/Cargo.toml",
     "app:dev": "cd rust/sens-app && tauri dev",
+    "setup:dev": "cd rust/sens-setup && tauri dev",
     "app:installer": "node scripts/app-installer.mjs",
     "test:native": "cargo test --manifest-path rust/sens-hook/Cargo.toml",
     "package:native": "node scripts/package-native.mjs",

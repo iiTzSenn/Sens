@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "-w", "sens-app-ui"],
       "port": 5173
+    },
+    {
+      "name": "sens-setup-ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:setup", "-w", "sens-app-ui"],
+      "port": 5174
     }
   ]
 }

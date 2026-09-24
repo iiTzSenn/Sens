@@ -11,6 +11,7 @@ import { loadCatalog } from "./features/models/store";
 import { loadProfile } from "./features/profile/store";
 import { tickTasks } from "./features/tasks/store";
 import { startUpdates } from "./features/updates/store";
+import { greetIfNew } from "./features/welcome/store";
 import { enterSite, hearBrowser } from "./features/web/store";
 
 // Once: what Rust tells (the chat, the browser, dropped files), what each tool
@@ -26,5 +27,8 @@ whenShown("tasks", tickTasks);
 createRoot(document.getElementById("app")!).render(createElement(StrictMode, null, createElement(App)));
 
 loadCatalog();
-loadProfile().then(startUpdates);
+loadProfile().then(() => {
+  startUpdates();
+  greetIfNew();
+});
 boot();
