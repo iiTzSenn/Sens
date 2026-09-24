@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://icons.duckduckgo.com; frame-src 'self'"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://icons.duckduckgo.com; frame-src 'self'"
     }
   },
   "bundle": {
