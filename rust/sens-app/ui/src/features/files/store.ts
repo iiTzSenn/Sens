@@ -3,9 +3,8 @@ import { commands } from "../../ipc/commands";
 import type { Entry } from "../../ipc/types";
 import { project } from "../project/store";
 
-// The file tree: which folders are open, what each folder read holds, and how
-// many symbols Sens indexed per file. `loads` counts reloads, so a search runs
-// again.
+// The file tree: which folders are open and what each folder read holds.
+// `loads` counts reloads, so a search runs again.
 export const files = createStore(() => ({
   unfolded: new Set<string>(),
   folders: new Map<string, Entry[]>(),
