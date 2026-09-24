@@ -59,3 +59,6 @@ export function useSheet<Anchor extends HTMLElement = HTMLButtonElement>() {
     sheet: { ref: sheet, hidden: !open, onKeyDown, onBlur },
   };
 }
+
+// A sheet opened from a button, as components pass it along.
+export type Sheet = ReturnType<typeof useSheet<HTMLButtonElement>>;

@@ -6,6 +6,7 @@ import { loadShelf } from "../artifacts/store";
 import { loadChanges, soonChanges } from "../changes/store";
 import { loadFiles } from "../files/store";
 import { openFile, viewer } from "../files/view";
+import { modelName, noteLimits } from "../models/store";
 import { noteEdit, project } from "../project/store";
 import { loadRail, nameSession } from "../rail/store";
 import { forgetTasks, noteTask, settleTasks } from "../tasks/store";
@@ -15,14 +16,16 @@ import { SILENT, consulting, editOf, statusOf } from "./looks";
 import { CLOSING, answered, heard, nextKey, opening, type Picture, type Piece, type Reply, type Turn } from "./turns";
 
 // The chat of the session on screen: its turns; whether Claude is working
-// (`busy`) and being stopped; the hint the empty chat shows; and whether a
-// session is being drawn back, which skips the entry animations.
+// (`busy`) and being stopped; the hint the empty chat shows; whether a
+// session is being drawn back, which skips the entry animations; and how many
+// turns ended, for what reads the project again after one.
 export const chat = createStore(() => ({
   turns: [] as Turn[],
   busy: false,
   stopping: false,
   hint: "",
   replaying: false,
+  ended: 0,
 }));
 
 const set = chat.setState;
@@ -82,7 +85,7 @@ function open(model: string) {
 
 function nameOf(model: string) {
   if (!model) return "";
-  const said = legacy.modelName(model);
+  const said = modelName(model);
   if (said === named) return "";
   const first = !named;
   named = said;
@@ -254,8 +257,8 @@ export async function answer(reply: number, request: string, decision: Decision)
 
 async function afterTurn() {
   idle(true);
+  set(({ ended }) => ({ ended: ended + 1 }));
   if (project.getState().view === "artifacts") loadShelf();
-  await legacy.readRepo();
   if (legacy.panelShows("changes")) await loadChanges();
   await loadFiles();
   await loadRail();
@@ -273,7 +276,7 @@ function hear(event: ChatEvent) {
 // rail; its title may come then.
 export const hearChat = () =>
   events.chat((from, event) => {
-    if (event.kind === "limits") return legacy.noteLimits(event.windows);
+    if (event.kind === "limits") return noteLimits(event.windows);
     if (CLOSING.has(event.kind)) nameSession(from);
     if (from !== session()) {
       if (CLOSING.has(event.kind)) loadRail();

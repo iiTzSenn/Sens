@@ -1,7 +1,7 @@
 import { createStore } from "zustand/vanilla";
 import { commands, events } from "../../ipc/commands";
 import type { ClaudeCodeProgress, Method, ProviderState } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { readAccount, refreshModels } from "../models/store";
 import { store, stored } from "../../shared/storage.js";
 
 export type Section = "general" | "providers";
@@ -51,8 +51,8 @@ export async function loadProviders() {
 
 async function afterProviderChange() {
   await loadProviders();
-  await legacy.readAccount();
-  legacy.refreshModels();
+  await readAccount();
+  refreshModels();
 }
 
 async function act(state: ProviderState, work: () => Promise<unknown>) {

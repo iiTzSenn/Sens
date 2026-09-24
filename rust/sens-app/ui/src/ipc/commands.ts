@@ -1,7 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  Account,
   Artifact,
+  Attachments,
+  Card,
   Capabilities,
   Changes,
   ChatEvent,
@@ -18,7 +21,9 @@ import type {
   Method,
   NewServer,
   Profile,
+  Provider,
   ProviderState,
+  Repo,
   SessionEntry,
   Settings,
   UpdateCheck,
@@ -40,6 +45,10 @@ export const commands = {
   // How many sessions are working right now, in any project.
   chatWorking: () => invoke<number>("chat_working"),
   providersState: () => invoke<ProviderState[]>("providers_state"),
+  // The providers Sens can chat through, and the models each offers now.
+  providers: () => invoke<Provider[]>("providers"),
+  models: (provider: string) => invoke<Card[]>("models", { provider }),
+  claudeAccount: () => invoke<Account>("claude_account"),
   setProviderMethod: (id: string, method: Method) => invoke<void>("set_provider_method", { id, method }),
   saveApiKey: (id: string, key: string) => invoke<void>("save_api_key", { id, key }),
   forgetApiKey: (id: string) => invoke<void>("forget_api_key", { id }),
@@ -103,6 +112,12 @@ export const commands = {
   findFiles: (root: string, needle: string) => invoke<Entry[]>("find_files", { root, needle }),
   changes: (root: string) => invoke<Changes | null>("changes", { root }),
   openFile: (root: string, path: string) => invoke<string>("open_file", { root, path }),
+  // Files or pictures to send with a message: pictures come back as data.
+  attach: (root: string, paths: string[]) => invoke<Attachments>("attach", { root, paths }),
+  repo: (root: string) => invoke<Repo | null>("repo", { root }),
+  checkout: (root: string, branch: string) => invoke<Repo>("checkout", { root, branch }),
+  remember: (root: string) => invoke<void>("remember", { root }),
+  lastProject: () => invoke<string | null>("last_project"),
   taskOutput: (path: string) => invoke<string>("task_output", { path }),
   stopTask: (sessionId: string, taskId: string) => invoke<void>("chat_stop_task", { sessionId, taskId }),
 };

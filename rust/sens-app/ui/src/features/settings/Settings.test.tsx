@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClaudeCodeProgress, ProviderState } from "../../ipc/types";
 import { legacy } from "../../legacy/bridge";
+import { readAccount, refreshModels } from "../models/store";
 import { profile } from "../profile/store";
 import { updates } from "../updates/store";
 import { Settings } from "./Settings";
@@ -24,6 +25,8 @@ const ipc = vi.hoisted(() => ({
   },
   heard: { claudeCode: (_: ClaudeCodeProgress) => {} },
 }));
+
+vi.mock(import("../models/store"), async (original) => ({ ...(await original()), readAccount: vi.fn(async () => null), refreshModels: vi.fn(async () => {}) }));
 
 vi.mock("../../ipc/commands", () => ({
   commands: ipc.commands,
@@ -68,8 +71,6 @@ beforeEach(() => {
   updates.setState(updates.getInitialState(), true);
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.providersState.mockResolvedValue([claude()]);
-  legacy.readAccount = vi.fn(async () => undefined);
-  legacy.refreshModels = vi.fn();
   legacy.showPanel = vi.fn();
 });
 
@@ -146,8 +147,8 @@ describe("providers settings", () => {
 
     await act(async () => signing.settle());
     expect(settings.getState().connecting).toBe(false);
-    expect(legacy.readAccount).toHaveBeenCalled();
-    expect(legacy.refreshModels).toHaveBeenCalled();
+    expect(readAccount).toHaveBeenCalled();
+    expect(refreshModels).toHaveBeenCalled();
   });
 
   it("follows the Claude Code download and locks the card meanwhile", async () => {

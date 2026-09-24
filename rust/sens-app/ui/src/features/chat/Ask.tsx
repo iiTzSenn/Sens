@@ -1,12 +1,12 @@
 import { useState, type ReactNode } from "react";
 import type { Answers, Decision, Question as QuestionShape } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { LinesCard } from "../../shared/LinesCard";
 import { CodeBlock, Markdown } from "../../shared/markdown/Markdown";
 import { addedRows, replacedRows } from "../../shared/rows";
 import { languageOf } from "../../shared/syntax/languages";
+import { chooseMode } from "../composer/store";
 import { SHELLS, describe } from "./looks";
 import { Ran, WebLink, DIFF_PREVIEW } from "./Step";
 import { answer } from "./store";
@@ -117,7 +117,7 @@ function Permission({ part, reply }: { part: AskPart; reply: number }) {
   ];
   const adopt = (decision: Decision) => {
     const switched = decision.remember && suggestions?.find((one) => one.type === "setMode");
-    if (switched && switched.mode) legacy.chooseMode(switched.mode);
+    if (switched && switched.mode) chooseMode(switched.mode);
   };
   return (
     <Frame part={part} reply={reply} icon={ICONS.shieldAlert} title={`Claude quiere ${look.ask || look.verb.toLowerCase()}`} target={look.target} mono={look.mono} choices={choices} after={adopt}>
@@ -165,7 +165,7 @@ function Plan({ part, reply }: { part: AskPart; reply: number }) {
       icon={ICONS.map}
       title="Plan listo para revisar"
       choices={choices}
-      after={(decision) => decision.allow && decision.mode && legacy.chooseMode(decision.mode)}
+      after={(decision) => decision.allow && decision.mode && chooseMode(decision.mode)}
     >
       <Markdown text={part.event.input.plan || ""} />
     </Frame>

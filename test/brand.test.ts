@@ -135,7 +135,7 @@ describe("the desktop shell", () => {
     expect(shell).toContain("@keyframes orbit");
     expect(shell).toContain('.composer .box[data-busy="true"]::after');
     expect(shell).toContain("@media (prefers-reduced-motion: reduce)");
-    expect(shell).toContain("composerBox.dataset.busy");
+    expect(shell).toContain("data-busy={String(busy)}");
   });
 
   it("gives the composer an attach, a dictate and one send control", () => {
@@ -144,7 +144,7 @@ describe("the desktop shell", () => {
     }
     expect(shell).toContain('.composer .box[data-busy="true"] .send .halt');
     expect(shell).toContain("await commands.chatStop(session());");
-    expect(shell).toContain("composerBox.dataset.stopping = String(stopping);");
+    expect(shell).toContain("data-stopping={String(stopping)}");
   });
 
   it("spends signal on the send button, the one key action", () => {
@@ -152,20 +152,20 @@ describe("the desktop shell", () => {
   });
 
   it("builds the model picker from the backend catalogue", () => {
-    expect(shell).toContain('invoke("providers")');
-    expect(shell).toContain('invoke("models", { provider: provider.id })');
+    expect(shell).toContain('invoke<Provider[]>("providers")');
+    expect(shell).toContain('invoke<Card[]>("models", { provider })');
     expect(shell).not.toContain("claude-sonnet-5");
     expect(shell).not.toContain("claude-haiku");
   });
 
   it("tells the user when dictation is not available here", () => {
-    expect(shell).toContain("window.SpeechRecognition || window.webkitSpeechRecognition");
-    expect(shell).toContain("dictateBtn.disabled = true;");
+    expect(shell).toContain("speech.SpeechRecognition || speech.webkitSpeechRecognition");
+    expect(shell).toContain("disabled={!dictation.able}");
   });
 
   it("gives the loader a new rhythm each lap instead of one loop", () => {
-    expect(shell).toContain("function lapKeyframes(name)");
-    expect(shell).toContain("animationiteration");
+    expect(shell).toContain("function lapKeyframes(name: string)");
+    expect(shell).toContain("onAnimationIteration");
     expect(shell).toContain("var(--lap-name, orbit)");
   });
 

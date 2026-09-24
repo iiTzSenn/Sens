@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatEvent, SessionEntry } from "../../ipc/types";
 import { legacy } from "../../legacy/bridge";
+import { composer } from "../composer/store";
 import { project } from "../project/store";
 import { blank, chat, hearChat, hello, load, notice, send } from "./store";
 import { Thread } from "./Thread";
@@ -20,6 +21,7 @@ const ipc = vi.hoisted(() => ({
     artifactData: vi.fn(),
     workspaces: vi.fn(),
     titleSession: vi.fn(),
+    repo: vi.fn(),
     tree: vi.fn(),
     folder: vi.fn(),
     openFile: vi.fn(),
@@ -51,9 +53,6 @@ beforeEach(() => {
   ipc.commands.tree.mockResolvedValue([]);
   ipc.commands.folder.mockResolvedValue([]);
   Object.assign(legacy, {
-    modelName: (id: string) => id.replace("claude-", ""),
-    readRepo: vi.fn(async () => {}),
-    chooseMode: vi.fn(),
     showTool: vi.fn(),
     panelShows: () => false,
   });
@@ -136,7 +135,7 @@ describe("the chat", () => {
     expect(document.querySelector(".reply-foot")?.textContent).toBe("1 s · 20 tokens");
     expect(document.querySelector(".live")).toBeNull();
     expect(chat.getState().busy).toBe(false);
-    expect(legacy.readRepo).toHaveBeenCalled();
+    expect(chat.getState().ended).toBe(1);
   });
 
   it("says why a message could not go", async () => {
@@ -188,7 +187,7 @@ describe("the chat", () => {
     expect(ask.querySelector(".terminal-command")?.textContent).toBe("$rm -rf dist");
     await act(async () => fireEvent.click(within(ask).getByRole("button", { name: "Permitir y aceptar ediciones" })));
     expect(ipc.commands.chatAnswer).toHaveBeenCalledWith("s1", "r1", { allow: true, remember: true });
-    expect(legacy.chooseMode).toHaveBeenCalledWith("acceptEdits");
+    expect(composer.getState().mode).toBe("acceptEdits");
     expect(ask.dataset.state).toBe("allowed");
     expect(ask.querySelector(":scope > .ask-note")?.textContent).toBe("Permitido");
   });

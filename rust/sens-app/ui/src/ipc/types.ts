@@ -393,3 +393,40 @@ export interface Settings {
   thinking: boolean;
   mode: string;
 }
+
+/** catalog::Provider, rust/sens-agent/src/catalog.rs */
+export interface Provider {
+  id: string;
+  vendor: string;
+  label: string;
+}
+
+/** catalog::Card, rust/sens-agent/src/catalog.rs: a model as the picker lists it */
+export interface Card {
+  id: string;
+  label: string;
+  description: string;
+  latest: boolean;
+  efforts: string[];
+  effort: string;
+  thinking: "always" | "toggle";
+}
+
+/** artifacts::Attached, rust/sens-app/src/artifacts.rs */
+export type Attached =
+  | { kind: "file"; path: string; name: string; bytes: number; outside: boolean }
+  | { kind: "picture"; name: string; mediaType: string; data: string; bytes: number };
+
+/** artifacts::Attachments, rust/sens-app/src/artifacts.rs */
+export interface Attachments {
+  items: Attached[];
+  refused: string[];
+}
+
+/** git::Repo, rust/sens-app/src/git.rs */
+export interface Repo {
+  branch: string;
+  detached: boolean;
+  dirty: number;
+  branches: string[];
+}
