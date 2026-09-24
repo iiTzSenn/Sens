@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { openPicture } from "../../app/Dialog";
 import { seconds, whole } from "../../shared/format.js";
 import { Ask } from "./Ask";
 import { grain } from "./grain";
+import { FOOT_JOIN, TOKENS } from "./looks";
 import { Said, Thought } from "./Said";
 import { Step } from "./Step";
 import { chat } from "./store";
@@ -158,15 +159,34 @@ function Reply({ turn }: { turn: ReplyTurn }) {
                 </p>
               );
             case "foot":
-              return (
-                <div key={part.key} className="reply-foot">
-                  {part.text}
-                </div>
-              );
+              return <Foot key={part.key} text={part.text} />;
           }
         })}
       </div>
       {turn.working && <Live said={turn.working} began={turn.began} />}
+    </div>
+  );
+}
+
+function Foot({ text }: { text: string }) {
+  return (
+    <div className="reply-foot">
+      {text.split(FOOT_JOIN).map((piece, at) => {
+        const count = piece.endsWith(TOKENS) ? piece.slice(0, -TOKENS.length) : "";
+        return (
+          <Fragment key={at}>
+            {at > 0 && FOOT_JOIN}
+            {count ? (
+              <span>
+                <b className="foot-count">{count}</b>
+                {TOKENS}
+              </span>
+            ) : (
+              <span>{piece}</span>
+            )}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -209,7 +229,7 @@ function Hello({ hint }: { hint: string }) {
   return (
     <div className="hello">
       <div className="hello-mark" ref={mark} data-grain={lit ? "on" : undefined}>
-        <span className="hello-word">sens</span>
+        <span className="hello-word">sens AI</span>
       </div>
       <p className="hello-hint">{hint}</p>
     </div>

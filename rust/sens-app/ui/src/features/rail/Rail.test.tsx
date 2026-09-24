@@ -8,7 +8,7 @@ import { chooseFolder, draft, fresh, resume, showView } from "../../app/session"
 import { profile } from "../profile/store";
 import { project } from "../project/store";
 import { Rail } from "./Rail";
-import { loadRail, nameSession, oweRail, rail } from "./store";
+import { loadRail, nameSession, noteActivity, oweRail, rail } from "./store";
 
 const ipc = vi.hoisted(() => ({
   commands: {
@@ -71,6 +71,44 @@ describe("the rail", () => {
     expect(resume).toHaveBeenCalledWith("C:/demo", "old");
     fireEvent.click(screen.getByRole("button", { name: "Sesión nueva en web" }));
     expect(draft).toHaveBeenCalledWith("C:/web");
+  });
+
+  it("marks a session while its agent works, waits for you, and once it is done", async () => {
+    await open();
+    const mark = () => row("Probar el instalador").querySelector<HTMLElement>(".activity");
+    expect(mark()).toBeNull();
+
+    act(() => noteActivity("old", "working"));
+    expect(mark()?.dataset.activity).toBe("working");
+    expect(mark()?.getAttribute("aria-label")).toBe("Trabajando");
+    expect(within(row("Probar el instalador")).getByRole("button", { name: /Probar/ }).title).toBe("Probar el instalador · Trabajando · 2 mensajes · archivada");
+
+    act(() => noteActivity("old", "waiting"));
+    expect(mark()?.getAttribute("aria-label")).toBe("Esperando tu respuesta");
+    act(() => noteActivity("old", "done"));
+    expect(mark()?.dataset.activity).toBe("done");
+    act(() => noteActivity("old", null));
+    expect(mark()).toBeNull();
+  });
+
+  it("carries the most urgent mark of a folded project's sessions up to its head", async () => {
+    await open();
+    const head = () => document.querySelector<HTMLElement>(".fold .activity");
+    act(() => {
+      noteActivity("old", "done");
+      noteActivity("one", "working");
+    });
+    expect(head()).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "demo" }));
+    expect(head()?.dataset.activity).toBe("working");
+    act(() => noteActivity("old", "waiting"));
+    expect(head()?.getAttribute("aria-label")).toBe("Esperando tu respuesta");
+    act(() => {
+      noteActivity("old", null);
+      noteActivity("one", null);
+    });
+    expect(head()).toBeNull();
   });
 
   it("goes to a new session or a view, marking where it is", async () => {

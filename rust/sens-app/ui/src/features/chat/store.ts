@@ -7,7 +7,7 @@ import { loadFiles } from "../files/store";
 import { openFile, viewer } from "../files/view";
 import { modelName, noteLimits } from "../models/store";
 import { noteEdit, project } from "../project/store";
-import { loadRail, nameSession } from "../rail/store";
+import { loadRail, nameSession, noteActivity, type Activity } from "../rail/store";
 import { forgetTasks, noteTask, settleTasks } from "../tasks/store";
 import { TASK_EVENTS } from "../tasks/tasks";
 import { onProject, reloadSite } from "../web/store";
@@ -147,6 +147,7 @@ export async function load(id: string) {
   requestAnimationFrame(() => requestAnimationFrame(() => set({ replaying: false })));
 
   let reply: number | null = null;
+  let asking = false;
   for (const entry of entries as SessionEntry[]) {
     if (entry.kind === "task") {
       asked(entry.text, entry.files, (entry.images || []).map((path) => commands.artifactData(inRoot(path))));
@@ -159,6 +160,7 @@ export async function load(id: string) {
     if (TASK_EVENTS.has(event.kind)) continue;
     reply ??= open(event.kind === "started" ? event.model : "");
     const waiting = running && event.kind === "asking" && !answeredOnes.has(event.request);
+    asking ||= waiting;
     route(reply, event, waiting);
     if (CLOSING.has(event.kind)) reply = null;
   }
@@ -168,6 +170,7 @@ export async function load(id: string) {
     onReply(replying, (open) => ({ ...open, working: "Trabajando…" }));
   }
   settleTasks(alive);
+  noteActivity(id, running ? (asking ? "waiting" : "working") : null);
   idle(!running);
   if (!chat.getState().turns.length) hello();
   await loadRail();
@@ -257,9 +260,13 @@ function hear(event: ChatEvent) {
 
 // Once: what every session says. Another session's end only refreshes the
 // rail; its title may come then.
+const activityAfter = (kind: string, seen: boolean): Activity | null =>
+  CLOSING.has(kind) ? (seen ? null : "done") : kind === "asking" ? "waiting" : "working";
+
 export const hearChat = () =>
   events.chat((from, event) => {
     if (event.kind === "limits") return noteLimits(event.windows);
+    if (!TASK_EVENTS.has(event.kind)) noteActivity(from, activityAfter(event.kind, from === session()));
     if (CLOSING.has(event.kind)) nameSession(from);
     if (from !== session()) {
       if (CLOSING.has(event.kind)) loadRail();

@@ -102,6 +102,15 @@ describe("the shell", () => {
     expect(chat.getState().turns).toMatchObject([{ kind: "you", text: "Hola" }]);
   });
 
+  it("names the project of the session in focus in the title bar", async () => {
+    render(<App />);
+    expect(document.getElementById("project-title")).toBeNull();
+    await act(async () => resume("C:/trabajo/demo", "s7"));
+    expect(document.getElementById("project-title")?.textContent).toBe("demo");
+    await act(async () => resume("C:\\trabajo\\web\\", "s8"));
+    expect(document.getElementById("project-title")?.textContent).toBe("web");
+  });
+
   it("shows a dialog, closes it on Escape's close, and gives the focus back", () => {
     render(<App />);
     const me = screen.getByRole("button", { name: /Sin nombre/ });

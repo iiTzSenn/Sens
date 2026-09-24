@@ -9,7 +9,17 @@ import { ICONS } from "../../shared/icons.js";
 import { useSheet } from "../../shared/useSheet";
 import { project, type View } from "../project/store";
 import { Me } from "./Me";
-import { archiveSession, deleteSession, fold, rail, renameSession } from "./store";
+import { activityOf, archiveSession, deleteSession, fold, rail, renameSession, type Activity } from "./store";
+
+const ACTIVITY_SAID: Record<Activity, string> = {
+  working: "Trabajando",
+  waiting: "Esperando tu respuesta",
+  done: "Terminó",
+};
+
+function ActivityMark({ activity }: { activity: Activity }) {
+  return <span className="activity" data-activity={activity} role="img" aria-label={ACTIVITY_SAID[activity]} />;
+}
 
 const TITLE_LIMIT = 56;
 
@@ -149,6 +159,7 @@ interface ProjectProps {
 // Archived sessions go last; a folded project keeps its rows, out of reach.
 function Project({ space, shut, renaming, managing, manage, renamed }: ProjectProps) {
   const here = useStore(project, (s) => s.root === space.root);
+  const busiest = useStore(rail, (s) => activityOf(space.sessions.map((one) => one.id), s.activity));
   const ordered = [...space.sessions].sort((one, two) => Number(one.archived) - Number(two.archived));
   return (
     <div className="project">
@@ -158,6 +169,7 @@ function Project({ space, shut, renaming, managing, manage, renamed }: ProjectPr
             <Icon svg={ICONS.open} />
           </span>
           <span className="name">{space.name}</span>
+          {shut && busiest && <ActivityMark activity={busiest} />}
         </button>
         <button className="add" title={`Sesión nueva en ${space.name}`} aria-label={`Sesión nueva en ${space.name}`} onClick={() => draft(space.root)}>
           <Icon svg={ICONS.plus} />
@@ -194,11 +206,14 @@ interface RowProps {
 
 function SessionRow({ home, summary, renaming, managed, manage, renamed }: RowProps) {
   const current = useStore(project, (s) => !s.view && s.root === home && s.session === summary.id);
-  const said = [summary.title, `${summary.tasks} ${summary.tasks === 1 ? "mensaje" : "mensajes"}`, summary.archived ? "archivada" : ""];
+  const activity = useStore(rail, (s) => s.activity.get(summary.id));
+  const doing = activity ? ACTIVITY_SAID[activity] : "";
+  const said = [summary.title, doing, `${summary.tasks} ${summary.tasks === 1 ? "mensaje" : "mensajes"}`, summary.archived ? "archivada" : ""];
   return (
     <div className="session-row" data-session={summary.id} data-current={String(current)} data-renaming={renaming ? "true" : undefined}>
       {renaming && <Rename home={home} summary={summary} done={renamed} />}
       <button className="session" aria-current={current} title={said.filter(Boolean).join(" · ")} onClick={() => resume(home, summary.id)}>
+        {activity && <ActivityMark activity={activity} />}
         <span className="name">{summary.title}</span>
         {summary.archived && (
           <span className="kept">

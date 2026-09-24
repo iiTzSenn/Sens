@@ -3,10 +3,12 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "zustand";
 import { composer } from "../features/composer/store";
+import { project } from "../features/project/store";
 import { runningTasks, tasks } from "../features/tasks/store";
 import { openUpdate } from "../features/updates/UpdatePanel";
 import { updates } from "../features/updates/store";
 import { anchorMenu } from "../shared/anchorMenu";
+import { stem } from "../shared/format.js";
 import { Icon } from "../shared/Icon";
 import { ICONS } from "../shared/icons.js";
 import { useSheet, type Sheet } from "../shared/useSheet";
@@ -52,9 +54,20 @@ export function Topbar() {
         </svg>
         <b>sens</b>
       </div>
+      <ProjectTitle />
       <UpdatePill />
       <Window />
     </header>
+  );
+}
+
+function ProjectTitle() {
+  const root = useStore(project, (s) => s.root);
+  if (!root) return null;
+  return (
+    <div className="topbar-title" id="project-title">
+      {stem(root)}
+    </div>
   );
 }
 
@@ -69,8 +82,10 @@ function UpdatePill() {
       title={`Sens ${latest.version} disponible`}
       onClick={(event) => openUpdate(event.currentTarget)}
     >
+      <span className="update-ping" aria-hidden="true" />
       <Icon svg={ICONS.update} />
-      <span>{latest.version}</span>
+      <span>Actualizar</span>
+      <span className="update-version">{latest.version}</span>
     </button>
   );
 }

@@ -9,13 +9,31 @@ const FOLDED = "sens.rail.folded";
 // The projects Sens worked in, most recently active first, each with its
 // sessions (null until they are first read); the projects the user folded,
 // kept across launches; and why the list could not be read or changed.
+export type Activity = "working" | "waiting" | "done";
+
 export const rail = createStore(() => ({
   spaces: null as Workspace[] | null,
   folded: new Set<string>([].concat(stored(FOLDED, []))),
   fault: "",
+  activity: new Map<string, Activity>(),
 }));
 
 const set = rail.setState;
+
+const URGENCY: Activity[] = ["waiting", "working", "done"];
+
+export const activityOf = (ids: string[], activity: Map<string, Activity>) =>
+  URGENCY.find((one) => ids.some((id) => activity.get(id) === one));
+
+export function noteActivity(id: string, now: Activity | null) {
+  set(({ activity }) => {
+    if ((activity.get(id) ?? null) === now) return {};
+    const next = new Map(activity);
+    if (now) next.set(id, now);
+    else next.delete(id);
+    return { activity: next };
+  });
+}
 
 // A fault met just before the list is read again, shown once it is.
 let owed = "";

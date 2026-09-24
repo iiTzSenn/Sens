@@ -76,7 +76,7 @@ export function Said({ part }: { part: SaidPart }) {
 
 export function Thought({ part }: { part: ThoughtPart }) {
   return (
-    <details className="thought">
+    <details className="thought" data-live={String(!part.done)}>
       <summary>
         <Icon svg={ICONS.shut} />
         <span>{part.done ? "Razonamiento" : "Razonando…"}</span>

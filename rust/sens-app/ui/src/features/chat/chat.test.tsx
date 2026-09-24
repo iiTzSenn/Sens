@@ -5,6 +5,7 @@ import type { ChatEvent, SessionEntry } from "../../ipc/types";
 import { shell } from "../../app/shell";
 import { composer } from "../composer/store";
 import { project } from "../project/store";
+import { rail } from "../rail/store";
 import { blank, chat, hearChat, hello, load, notice, send } from "./store";
 import { Thread } from "./Thread";
 import { heard, opening, type Reply } from "./turns";
@@ -123,6 +124,9 @@ describe("the chat", () => {
     expect(document.querySelector(".live-said")?.textContent).toBe("Enviando…");
 
     tell({ kind: "started", model: "claude-demo" });
+    tell({ kind: "delta", thinking: true, text: "pienso" });
+    await settle();
+    expect(document.querySelector(".thought")?.getAttribute("data-live")).toBe("true");
     tell({ kind: "delta", thinking: false, text: "Aquí **va**" });
     expect(document.querySelector(".live-said")?.textContent).toBe("Escribiendo…");
     tell({ kind: "said", text: "Aquí **va** todo." });
@@ -131,6 +135,8 @@ describe("the chat", () => {
     expect(document.querySelector(".said strong")?.textContent).toBe("va");
     expect(document.querySelector(".said")?.textContent).toBe("Aquí va todo.");
     expect(document.querySelector(".reply-foot")?.textContent).toBe("1 s · 20 tokens");
+    expect(document.querySelector(".reply-foot .foot-count")?.textContent).toBe("20");
+    expect(document.querySelector(".thought")?.getAttribute("data-live")).toBe("false");
     expect(document.querySelector(".live")).toBeNull();
     expect(chat.getState().busy).toBe(false);
     expect(chat.getState().ended).toBe(1);
@@ -228,6 +234,28 @@ describe("the chat", () => {
     expect((document.querySelector(".ask") as HTMLElement).dataset.state).toBe("waiting");
     expect(document.querySelector(".live-said")?.textContent).toBe("Trabajando…");
     expect(chat.getState().busy).toBe(true);
+  });
+
+  it("tells the rail which sessions work, wait, or finished out of sight", () => {
+    project.setState({ session: "s1" });
+    const other = (event: ChatEvent) => act(() => ipc.heard!("s2", event));
+    const of = (id: string) => rail.getState().activity.get(id);
+
+    other({ kind: "started", model: "claude-demo" });
+    expect(of("s2")).toBe("working");
+    other({ kind: "asking", request: "r1", tool: "Bash", input: { command: "ls" }, suggestions: null });
+    expect(of("s2")).toBe("waiting");
+    other({ kind: "answered", request: "r1", allowed: true, answers: null });
+    expect(of("s2")).toBe("working");
+    other({ kind: "taskEnded" });
+    expect(of("s2")).toBe("working");
+    other({ kind: "finished", ok: true, stopped: false, millis: 1, turns: 1, tokensIn: 1, tokensOut: 1, error: "" });
+    expect(of("s2")).toBe("done");
+
+    tell({ kind: "started", model: "claude-demo" });
+    expect(of("s1")).toBe("working");
+    tell({ kind: "finished", ok: true, stopped: false, millis: 1, turns: 1, tokensIn: 1, tokensOut: 1, error: "" });
+    expect(of("s1")).toBeUndefined();
   });
 
   it("adds notices, with a word in bold", () => {

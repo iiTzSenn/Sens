@@ -122,7 +122,10 @@ export const searchSummary = (output: string) =>
     .trim();
 
 // How long a turn took and what it wrote, under the reply.
+export const FOOT_JOIN = " · ";
+export const TOKENS = " tokens";
+
 export const footOf = (event: Finished) =>
-  [event.millis ? seconds(event.millis) : "", event.tokensOut ? `${compact(event.tokensOut)} tokens` : "", event.stopped ? "detenido" : ""]
+  [event.millis ? seconds(event.millis) : "", event.tokensOut ? `${compact(event.tokensOut)}${TOKENS}` : "", event.stopped ? "detenido" : ""]
     .filter(Boolean)
-    .join(" · ");
+    .join(FOOT_JOIN);
