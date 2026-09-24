@@ -9,8 +9,8 @@ Fecha: 2026-09-23 · Ámbito: `rust/sens-agent` (`process.rs`, `account.rs`),
   (el nombre) y **Proveedores**. Se abre desde el menú del perfil; «Conectar Claude
   Code…» del selector de modelos abre Ajustes › Proveedores.
 - «Conectar manualmente» Claude Code significa gestionar su sesión y, si se quiere,
-  entrar con una clave de API. No se elige la ruta del ejecutable: sigue siendo
-  `claude` del PATH.
+  entrar con una clave de API. No se elige la ruta del ejecutable: Sens lo busca
+  solo (ver «Claude Code en el ordenador»).
 - Sens sigue sin tocar credenciales de la suscripción: el inicio y el cierre de
   sesión los hace el propio `claude` (`auth login --claudeai|--console`,
   `auth logout`).
@@ -46,6 +46,10 @@ Fecha: 2026-09-23 · Ámbito: `rust/sens-agent` (`process.rs`, `account.rs`),
 | `forget_api_key` | `invoke("forget_api_key", { id })` | `null`; si estaba en `apiKey`, vuelve a `subscription` |
 | `provider_sign_in` | `invoke("provider_sign_in", { method })` | `null`; abre la ventana de login |
 | `provider_sign_out` | `invoke("provider_sign_out")` | `null` |
+| `claude_code_install` | `invoke("claude_code_install")` | la versión instalada; emite `claude-code` con `{ stage, done, total }` |
+
+`providers_state` lleva además `installed`: sin Claude Code es `false`, con `version`
+y `error` vacíos y `account` a `null`.
 
 `claude_sign_in` desaparece. `providers_state` recorre `catalog::PROVIDERS`, así
 que un proveedor nuevo es una entrada más ahí y su tarjeta sale sola.
@@ -64,3 +68,55 @@ que un proveedor nuevo es una entrada más ahí y su tarjeta sale sola.
 - El código de autorización nunca pasa por Sens: lo genera claude.ai y lo recibe el
   propio `claude`. Las condiciones de Anthropic prohíben a una app de terceros
   recogerlo o reenviarlo.
+
+## Claude Code en el ordenador
+
+Actualizado el 2026-09-24. Sens trabaja siempre a través de Claude Code: el chat, los
+modelos, el título y la cuenta son `claude`. Tampoco hay otra puerta legal a la
+suscripción, porque el inicio de sesión de Pro o Max solo lo puede hacer Claude Code.
+Lo que sí cambia es que el usuario ya no tiene que instalarlo a mano.
+
+### Dónde lo busca
+
+`sens_agent::process::located()` se consulta en cada lanzamiento, así que un
+Claude Code instalado con Sens abierto aparece al pulsar «Comprobar otra vez»:
+
+1. cada carpeta del PATH de Sens: `claude.exe`, o el binario del paquete de npm
+   (`node_modules/@anthropic-ai/claude-code/bin/claude.exe`) junto al `claude.cmd`;
+2. `.local\bin` bajo `HOME` si existe y si no bajo el perfil de usuario, la misma
+   regla que usa el instalador oficial (`HOME ?? os.homedir()`);
+3. `%APPDATA%\npm` y `%LOCALAPPDATA%\Microsoft\WinGet\Links`.
+
+Antes solo valía `claude.exe` en el PATH con el que arrancó Sens, y fallaba en tres
+casos reales: el instalador oficial de Windows no añade `.local\bin` al PATH (lo
+pide a mano: «Native installation exists but … is not in your PATH»); npm deja un
+`claude.cmd`, que `Command::new("claude")` no encuentra; y el PATH de un proceso no
+se refresca, así que instalar con Sens abierto no servía de nada.
+
+### Cómo lo instala
+
+`claude_code_install` repite lo que hace `https://claude.ai/install.ps1`, sin
+PowerShell:
+
+| Paso | Qué hace |
+| --- | --- |
+| versión | `downloads.claude.ai/claude-code-releases/latest`, solo si es `N.N.N` |
+| manifiesto | `…/<versión>/manifest.json` → `platforms.win32-x64.checksum` y `size` |
+| descarga | `…/<versión>/win32-x64/claude.exe` a `claude-code/` en la carpeta de datos |
+| verificación | SHA-256 del fichero contra el manifiesto; si no coincide, no se ejecuta |
+| instalación | `claude.exe install latest`, oculto: deja el lanzador en `.local\bin` |
+
+Es por usuario y sin UAC. La descarga temporal se borra al terminar y, si Windows la
+retiene, al abrir Sens. Solo corre una instalación a la vez. Una prueba ignorada
+(`the_real_install_lands_in_a_throwaway_profile`) la hace de verdad contra un perfil
+desechable; hay que cambiar `HOME` además de `USERPROFILE`, o `claude install`
+actualiza el Claude Code real del usuario.
+
+### En la tarjeta
+
+- La tarjeta enseña siempre los tres métodos, también sin Claude Code.
+- Sin Claude Code dice «Falta Claude Code en este ordenador», con «Instalar ahora»
+  y «Comprobar otra vez». Conectar lo instala antes: «Iniciar sesión» instala y
+  abre el login; «Guardar clave» guarda la clave e instala.
+- La barra de progreso sale del evento `claude-code`: descarga con porcentaje,
+  verificación e instalación.

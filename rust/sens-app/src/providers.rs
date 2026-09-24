@@ -4,7 +4,7 @@ use std::path::Path;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use sens_agent::account::{self, Account};
-use sens_agent::catalog;
+use sens_agent::{catalog, process};
 use serde::{Deserialize, Serialize};
 
 use crate::store;
@@ -44,6 +44,7 @@ pub struct State {
     pub version: String,
     pub account: Option<Account>,
     pub error: String,
+    pub installed: bool,
 }
 
 fn stored(base: &Path) -> BTreeMap<String, Stored> {
@@ -73,12 +74,14 @@ fn opened_key(one: &Stored) -> Option<String> {
 pub fn state(base: &Path) -> Vec<State> {
     let kept = stored(base);
     let version = account::version();
+    let installed = version.is_ok() || process::located().is_some();
     let signed = version.as_ref().ok().map(|_| account::read());
     catalog::PROVIDERS
         .iter()
         .map(|provider| {
             let mine = kept.get(provider.id).cloned().unwrap_or_default();
             let error = match (&version, &signed) {
+                _ if !installed => String::new(),
                 (Err(reason), _) => reason.clone(),
                 (_, Some(Err(reason))) => reason.clone(),
                 _ => String::new(),
@@ -92,6 +95,7 @@ pub fn state(base: &Path) -> Vec<State> {
                 version: version.clone().unwrap_or_default(),
                 account: signed.as_ref().and_then(|found| found.as_ref().ok().cloned()),
                 error,
+                installed,
             }
         })
         .collect()

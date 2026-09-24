@@ -3248,6 +3248,7 @@ dependencies = [
  "sens-hook",
  "serde",
  "serde_json",
+ "sha2",
  "tar",
  "tauri",
  "tauri-build",

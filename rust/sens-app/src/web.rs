@@ -1,13 +1,20 @@
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::Path;
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use serde_json::Value;
-use ureq::Agent;
+use ureq::http::Response;
 use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
+use ureq::typestate::WithoutBody;
+use ureq::{Agent, Body, RequestBuilder};
 
 pub const MEGABYTE: u64 = 1024 * 1024;
 pub const PAGE_CAP: u64 = 16 * MEGABYTE;
 const SHA_LENGTH: usize = 40;
+const SAVING_TIME: Duration = Duration::from_secs(30 * 60);
+const SAVING_CHUNK: usize = 256 * 1024;
 
 fn agent() -> &'static Agent {
     static AGENT: OnceLock<Agent> = OnceLock::new();
@@ -32,28 +39,58 @@ pub fn host(url: &str) -> &str {
     rest.split(['/', '?', '#']).next().unwrap_or(rest)
 }
 
-pub fn bytes(url: &str, query: &[(&str, &str)], cap: u64) -> Result<Vec<u8>, String> {
+fn answered(asked: RequestBuilder<WithoutBody>, url: &str) -> Result<Response<Body>, String> {
     let site = host(url);
-    let mut asked = agent().get(url);
-    for (key, value) in query {
-        asked = asked.query(*key, *value);
-    }
-    let mut answer = asked.call().map_err(|error| match error {
+    let answer = asked.call().map_err(|error| match error {
         ureq::Error::Timeout(_) => format!("{site} tardó demasiado en responder"),
         _ => format!("sin conexión con {site}: {error}"),
     })?;
     match answer.status().as_u16() {
-        200..=299 => {}
-        404 => return Err(format!("{site} no tiene {url}")),
-        429 => return Err(throttled(site)),
-        403 if answer.headers().get("x-ratelimit-remaining").is_some_and(|left| left == "0") => return Err(throttled(site)),
-        403 => return Err(format!("{site} no da acceso a {url}")),
-        code => return Err(format!("{site} respondió {code}")),
+        200..=299 => Ok(answer),
+        404 => Err(format!("{site} no tiene {url}")),
+        429 => Err(throttled(site)),
+        403 if answer.headers().get("x-ratelimit-remaining").is_some_and(|left| left == "0") => Err(throttled(site)),
+        403 => Err(format!("{site} no da acceso a {url}")),
+        code => Err(format!("{site} respondió {code}")),
     }
-    answer.body_mut().with_config().limit(cap).read_to_vec().map_err(|error| match error {
+}
+
+fn unread(site: &str, cap: u64, error: ureq::Error) -> String {
+    match error {
         ureq::Error::BodyExceedsLimit(_) => format!("la descarga de {site} pasa de {} MB", cap / MEGABYTE),
         _ => format!("no pude leer la respuesta de {site}: {error}"),
-    })
+    }
+}
+
+pub fn bytes(url: &str, query: &[(&str, &str)], cap: u64) -> Result<Vec<u8>, String> {
+    let mut asked = agent().get(url);
+    for (key, value) in query {
+        asked = asked.query(*key, *value);
+    }
+    let mut answer = answered(asked, url)?;
+    answer.body_mut().with_config().limit(cap).read_to_vec().map_err(|error| unread(host(url), cap, error))
+}
+
+pub fn save(url: &str, path: &Path, cap: u64, progress: impl Fn(u64)) -> Result<u64, String> {
+    let site = host(url);
+    let asked = agent().get(url).config().timeout_global(Some(SAVING_TIME)).build();
+    let mut answer = answered(asked, url)?;
+    let mut reader = answer.body_mut().with_config().limit(cap).reader();
+    let mut file = File::create(path).map_err(|error| format!("no pude crear {}: {error}", path.display()))?;
+    let mut chunk = vec![0u8; SAVING_CHUNK];
+    let mut done = 0u64;
+    loop {
+        let read = reader.read(&mut chunk).map_err(|error| format!("la descarga de {site} se cortó: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        file.write_all(&chunk[..read])
+            .map_err(|error| format!("no pude guardar la descarga de {site}: {error}"))?;
+        done += read as u64;
+        progress(done);
+    }
+    file.sync_all().map_err(|error| format!("no pude guardar la descarga de {site}: {error}"))?;
+    Ok(done)
 }
 
 fn throttled(site: &str) -> String {

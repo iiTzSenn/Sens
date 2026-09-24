@@ -3,6 +3,7 @@
 mod artifacts;
 mod browser;
 mod capabilities;
+mod claude_code;
 mod files;
 mod icon;
 mod git;
@@ -157,6 +158,13 @@ fn provider_sign_in(method: providers::Method) -> Result<(), String> {
 #[tauri::command(async)]
 fn provider_sign_out() -> Result<(), String> {
     account::sign_out()
+}
+
+#[tauri::command(async)]
+fn claude_code_install(app: AppHandle) -> Result<String, String> {
+    claude_code::install(&data_dir(&app)?, |progress| {
+        let _ = app.emit("claude-code", progress);
+    })
 }
 
 #[derive(Serialize, Clone)]
@@ -511,6 +519,7 @@ fn main() {
             if let Ok(base) = data_dir(app.handle()) {
                 share_environment(&base);
                 update::sweep(&base);
+                claude_code::sweep(&base);
             }
             Ok(())
         })
@@ -534,6 +543,7 @@ fn main() {
             forget_api_key,
             provider_sign_in,
             provider_sign_out,
+            claude_code_install,
             attach,
             open_session,
             archive_session,

@@ -5808,6 +5808,7 @@ void main(){
   let account = null;
   let accountFault = "";
   let connecting = false;
+  const claudeCodeAbsent = (reason) => String(reason).startsWith("no encuentro Claude Code");
   let usage = null;
   const choice = { provider: "", model: "" };
   const knobs = {
@@ -6179,7 +6180,7 @@ void main(){
       try {
         knownModels[provider.id] = await invoke("models", { provider: provider.id });
       } catch (reason) {
-        failures.push(`${provider.label}: ${reason}`);
+        if (!claudeCodeAbsent(reason)) failures.push(`${provider.label}: ${reason}`);
       }
     }
     store(KNOWN, knownModels);
@@ -6217,7 +6218,8 @@ void main(){
     signedOut: () => ["Claude Code no tiene sesión"],
   };
 
-  const signInOffered = () => connecting || ["signedOut", "noPlan"].includes(account?.billing);
+  const signInOffered = () => connecting || Boolean(accountFault) || ["signedOut", "noPlan"].includes(account?.billing);
+  const accountTrouble = (reason) => (claudeCodeAbsent(reason) ? "Falta Claude Code" : String(reason));
 
   function usageText() {
     const window = usage?.five_hour;
@@ -6243,7 +6245,7 @@ void main(){
       accountFault = "";
     } catch (reason) {
       account = null;
-      accountFault = String(reason);
+      accountFault = accountTrouble(reason);
     }
     paintAccount();
     return account;
@@ -6929,7 +6931,12 @@ void main(){
 
   const SETTINGS_SECTION = "sens.settings.section";
   const API_KEY_SOURCE = "ANTHROPIC_API_KEY";
-  const SETUP_URL = "https://code.claude.com/docs/en/setup";
+  const CLAUDE_CODE_WEIGHT = "unos 230 MB";
+  const CLAUDE_CODE_STAGES = {
+    downloading: "Descargando Claude Code…",
+    verifying: "Comprobando la descarga…",
+    installing: "Instalando Claude Code…",
+  };
   const SIGN_IN_DOORS = {
     subscription: { button: "Iniciar sesión con Claude", site: "claude.ai" },
     console: { button: "Iniciar sesión con la Consola", site: "console.anthropic.com" },
@@ -6943,6 +6950,7 @@ void main(){
   let settingsSection = ["general", "providers"].includes(stored(SETTINGS_SECTION, "")) ? stored(SETTINGS_SECTION, "") : "general";
   let providerStates = null;
   let providersFault = "";
+  let claudeCodeProgress = null;
   const choosing = new Map();
   const providerFaults = new Map();
 
@@ -7202,6 +7210,7 @@ void main(){
   }
 
   function providerLine(state) {
+    if (!state.installed) return ["Falta Claude Code en este ordenador", "off"];
     if (state.error) return [state.error, "fault"];
     const found = state.account;
     if (!found || found.billing === "signedOut") return ["Sin sesión", "off"];
@@ -7221,23 +7230,43 @@ void main(){
 
     const card = el("div", "card provider");
     card.append(head, line);
-    if (!state.version) {
-      const install = el("button", "quiet");
-      install.innerHTML = ICONS.external;
-      install.append("Cómo instalar Claude Code");
-      install.addEventListener("click", () => outward(SETUP_URL));
-      const again = el("button", "quiet", "Comprobar otra vez");
-      again.addEventListener("click", loadProviders);
-      const row = el("div", "settings-row");
-      row.append(install, again);
-      card.append(row);
-      return card;
-    }
+    if (!state.installed) card.append(...claudeCodeMissing(state));
+    if (claudeCodeProgress) card.append(claudeCodeStatusLine());
     const method = choosing.get(state.id) || state.method;
     card.append(methodChoices(state, method), ...methodActions(state, method));
     const failed = providerFaults.get(state.id);
     if (failed) card.append(el("p", "none fault", failed));
+    if (claudeCodeProgress) for (const control of card.querySelectorAll("button, input")) control.disabled = true;
     return card;
+  }
+
+  function claudeCodeMissing(state) {
+    const install = el("button", "quiet", "Instalar ahora");
+    install.addEventListener("click", () => providerAct(state, installClaudeCode));
+    const again = el("button", "quiet", "Comprobar otra vez");
+    again.addEventListener("click", loadProviders);
+    const row = el("div", "settings-row");
+    row.append(install, again);
+    const why = el(
+      "p",
+      "note",
+      `Sens trabaja a través de Claude Code, el agente oficial de Anthropic. Al conectar, Sens lo descarga de Anthropic (${CLAUDE_CODE_WEIGHT}) y lo instala solo para tu usuario, sin permisos de administrador.`,
+    );
+    return [why, row];
+  }
+
+  function claudeCodeStatus({ stage, done, total }) {
+    const said = CLAUDE_CODE_STAGES[stage];
+    if (stage !== "downloading" || !total) return said;
+    return `${said} ${Math.floor((done / total) * 100)} % de ${Math.round(total / 1024 / 1024)} MB`;
+  }
+
+  function claudeCodeStatusLine() {
+    const status = el("p", "note");
+    status.id = "claude-code-status";
+    status.setAttribute("role", "status");
+    say(status, claudeCodeStatus(claudeCodeProgress));
+    return status;
   }
 
   function methodChoices(state, method) {
@@ -7262,7 +7291,7 @@ void main(){
   function methodActions(state, method) {
     if (method === "apiKey") return keyActions(state);
     const door = SIGN_IN_DOORS[method];
-    const signed = state.account && state.account.billing !== "signedOut" && !keyed(state.account);
+    const signed = state.installed && state.account && state.account.billing !== "signedOut" && !keyed(state.account);
     const enter = el("button", "primary");
     enter.innerHTML = ICONS.external;
     enter.append(connecting ? "Esperando a que termines…" : door.button);
@@ -7271,6 +7300,7 @@ void main(){
     const row = el("div", "settings-row");
     row.append(enter);
     const steps = el("ol", "sign-steps");
+    if (!state.installed) steps.append(el("li", null, `Sens instala Claude Code desde Anthropic (${CLAUDE_CODE_WEIGHT}).`));
     steps.append(
       el("li", null, `Se abre tu navegador en ${door.site}.`),
       el("li", null, "Autorizas a Claude Code y te da un código."),
@@ -7300,9 +7330,10 @@ void main(){
     const save = el("button", "primary", "Guardar clave");
     const form = el("form", "settings-row");
     form.append(input, save);
-    form.addEventListener("submit", (event) => {
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      providerAct(state, () => invoke("save_api_key", { id: state.id, key: input.value }));
+      const saved = await providerAct(state, () => invoke("save_api_key", { id: state.id, key: input.value }));
+      if (saved && !state.installed) await providerAct(state, installClaudeCode);
     });
     const nodes = [form];
     if (state.keyHint) {
@@ -7313,6 +7344,7 @@ void main(){
       nodes.unshift(kept);
     }
     nodes.push(el("p", "note", "Se guarda cifrada con tu usuario de Windows y nunca se vuelve a mostrar."));
+    if (!state.installed) nodes.push(el("p", "note", `Al guardarla, Sens instala también Claude Code desde Anthropic (${CLAUDE_CODE_WEIGHT}).`));
     return nodes;
   }
 
@@ -7332,6 +7364,7 @@ void main(){
       providerFaults.set(state.id, String(reason));
     }
     await afterProviderChange();
+    return !providerFaults.has(state.id);
   }
 
   async function afterProviderChange() {
@@ -7340,8 +7373,26 @@ void main(){
     refreshModels();
   }
 
+  async function installClaudeCode() {
+    claudeCodeProgress = { stage: "downloading", done: 0, total: 0 };
+    paintSettings();
+    try {
+      await invoke("claude_code_install");
+    } finally {
+      claudeCodeProgress = null;
+    }
+  }
+
+  listen("claude-code", ({ payload }) => {
+    if (!claudeCodeProgress) return;
+    claudeCodeProgress = payload;
+    const status = document.getElementById("claude-code-status");
+    if (status) say(status, claudeCodeStatus(payload));
+  });
+
   async function signIn(state, method) {
     if (connecting) return;
+    if (!state.installed && !(await providerAct(state, installClaudeCode))) return;
     connecting = true;
     providerFaults.delete(state.id);
     paintAccount();
