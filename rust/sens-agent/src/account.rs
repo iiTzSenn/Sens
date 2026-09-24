@@ -2,7 +2,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
-use crate::process::{CLAUDE, claude};
+use crate::process::{CLAUDE, claude, unlaunched};
 
 const FIRST_PARTY: &str = "firstParty";
 const BEARER: &str = "ANTHROPIC_AUTH_TOKEN";
@@ -54,10 +54,7 @@ impl Door {
 }
 
 pub fn read() -> Result<Account, String> {
-    let answer = claude()
-        .args(["auth", "status", "--json"])
-        .output()
-        .map_err(|error| format!("no pude lanzar {CLAUDE}: {error}"))?;
+    let answer = claude().args(["auth", "status", "--json"]).output().map_err(unlaunched)?;
 
     let reported: Reported = serde_json::from_slice(&answer.stdout).map_err(|_| {
         let complaint = String::from_utf8_lossy(&answer.stderr);
@@ -112,17 +109,8 @@ pub fn version() -> Result<String, String> {
     }
 }
 
-fn unlaunched(error: std::io::Error) -> String {
-    match error.kind() {
-        std::io::ErrorKind::NotFound => format!("no encuentro {CLAUDE}: instala Claude Code y vuelve a comprobarlo"),
-        _ => format!("no pude lanzar {CLAUDE}: {error}"),
-    }
-}
-
 pub fn sign_in(door: Door) -> Result<(), String> {
-    let finished = login_window(door)?
-        .status()
-        .map_err(|error| format!("no pude abrir el inicio de sesión de {CLAUDE}: {error}"))?;
+    let finished = login_window(door)?.status().map_err(unlaunched)?;
     match finished.success() {
         true => Ok(()),
         false => Err("no terminaste el inicio de sesión".into()),
@@ -130,10 +118,7 @@ pub fn sign_in(door: Door) -> Result<(), String> {
 }
 
 pub fn sign_out() -> Result<(), String> {
-    let answer = claude()
-        .args(["auth", "logout"])
-        .output()
-        .map_err(|error| format!("no pude lanzar {CLAUDE}: {error}"))?;
+    let answer = claude().args(["auth", "logout"]).output().map_err(unlaunched)?;
     match answer.status.success() {
         true => Ok(()),
         false => Err(format!("{CLAUDE} no cerró la sesión: {}", String::from_utf8_lossy(&answer.stderr).trim())),
@@ -145,7 +130,7 @@ fn login_window(door: Door) -> Result<Command, String> {
     use std::os::windows::process::CommandExt;
 
     const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
-    let mut command = Command::new(CLAUDE);
+    let mut command = Command::new(crate::process::program());
     command.args(["auth", "login", door.flag()]).creation_flags(CREATE_NEW_CONSOLE);
     Ok(command)
 }
@@ -161,16 +146,6 @@ mod tests {
 
     fn seen(raw: &str) -> Reported {
         serde_json::from_str(raw).unwrap()
-    }
-
-    #[test]
-    fn only_a_missing_program_reads_as_not_installed() {
-        let missing = unlaunched(std::io::Error::from(std::io::ErrorKind::NotFound));
-        let refused = unlaunched(std::io::Error::from_raw_os_error(5));
-
-        assert!(missing.starts_with("no encuentro claude"), "{missing}");
-        assert!(refused.starts_with("no pude lanzar claude: "), "{refused}");
-        assert!(!refused.contains("instala"), "{refused}");
     }
 
     #[test]

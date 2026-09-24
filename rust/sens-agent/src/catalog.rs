@@ -6,7 +6,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::process::{CLAUDE, claude};
+use crate::process::{claude, unlaunched};
 
 #[derive(Serialize, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -108,7 +108,7 @@ fn offered() -> Result<Value, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|error| format!("no pude lanzar {CLAUDE}: {error}"))?;
+        .map_err(unlaunched)?;
 
     let mut input = child.stdin.take().ok_or("Claude Code no acepta entrada")?;
     let output = child.stdout.take().ok_or("Claude Code no da salida")?;

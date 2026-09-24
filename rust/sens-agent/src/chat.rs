@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::catalog::{self, Thinking};
-use crate::process::{CLAUDE, hidden};
+use crate::process::{self, hidden, unlaunched};
 use crate::session::{self, Entry};
 
 pub const MODES: &[&str] = &["default", "acceptEdits", "auto", "plan", "bypassPermissions"];
@@ -392,7 +392,7 @@ pub struct Engine {
 
 impl Default for Engine {
     fn default() -> Self {
-        Self::launching(vec![CLAUDE.to_string()])
+        Self::launching(Vec::new())
     }
 }
 
@@ -545,12 +545,21 @@ impl Engine {
         Ok(live)
     }
 
+    fn command(&self) -> Command {
+        match self.launcher.split_first() {
+            Some((program, leading)) => {
+                let mut command = Command::new(program);
+                command.args(leading);
+                command
+            }
+            None => Command::new(process::program()),
+        }
+    }
+
     fn spawn(&self, root: &Path, session: &str, settings: Settings, sink: Sink) -> Result<Arc<Live>, String> {
-        let (program, leading) = self.launcher.split_first().ok_or("no sé qué programa lanzar")?;
         let args = arguments(&settings, &claude_id(session), session::has_begun(root, session));
 
-        let mut child = hidden(&mut Command::new(program))
-            .args(leading)
+        let mut child = hidden(&mut self.command())
             .args(&args)
             .envs(&settings.env)
             .current_dir(root)
@@ -558,7 +567,7 @@ impl Engine {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|error| format!("no pude lanzar {program}: {error}"))?;
+            .map_err(unlaunched)?;
 
         let input = child.stdin.take().ok_or("Claude Code no acepta entrada")?;
         let output = child.stdout.take().ok_or("Claude Code no da salida")?;
