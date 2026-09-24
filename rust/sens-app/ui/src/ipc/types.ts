@@ -247,3 +247,17 @@ export interface Workspace {
   activeAt: number;
   sessions: SessionSummary[];
 }
+
+/** browser::Frame, rust/sens-app/src/browser.rs: where the page goes, in window pixels */
+export interface Frame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** browser::Heard, rust/sens-app/src/browser.rs, the payload of the "browser" event */
+export type Heard =
+  | { kind: "loading" | "loaded"; url: string }
+  | { kind: "titled"; title: string }
+  | { kind: "said"; level: string; text: string };

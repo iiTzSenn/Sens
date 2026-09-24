@@ -5,6 +5,7 @@ import { legacy } from "../../legacy/bridge";
 import { PAGE } from "../../shared/format.js";
 import { store, stored } from "../../shared/storage.js";
 import { present } from "../files/view";
+import { showSite } from "../web/store";
 import { SHELF_TABS, howToOpen, pictureKey, type ShelfTab } from "./items";
 
 const TAB_KEY = "sens.artifacts.tab";
@@ -65,7 +66,7 @@ async function showPicture(item: Artifact, back: HTMLElement) {
 
 async function showText(item: Artifact) {
   present(item.target, await commands.artifactText(item.target), item.root);
-  if (PAGE.test(item.name)) return legacy.showSite(item.target, item.root);
+  if (PAGE.test(item.name)) return showSite(item.target, item.root);
   legacy.showTool("files");
 }
 

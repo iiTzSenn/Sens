@@ -3,6 +3,7 @@ import { commands } from "../../ipc/commands";
 import { legacy } from "../../legacy/bridge";
 import { MARKDOWN, PAGE } from "../../shared/format.js";
 import { project } from "../project/store";
+import { showSite } from "../web/store";
 import { revealFile } from "./store";
 
 export type Mode = "source" | "view";
@@ -50,7 +51,7 @@ export async function openFile(path: string) {
 
 export function setMode(mode: Mode) {
   const { title, home } = viewer.getState();
-  if (mode === "view" && viewOf(title) === "site") return void legacy.showSite(title, home);
+  if (mode === "view" && viewOf(title) === "site") return void showSite(title, home);
   set({ mode });
 }
 

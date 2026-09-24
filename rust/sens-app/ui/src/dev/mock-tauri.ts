@@ -1,6 +1,7 @@
 // Lets the shell run in a plain browser: `npm run dev -w sens-app-ui` and open
 // the printed URL. vite.config.ts injects it only into the dev server, and
 // inside Tauri the real IPC is already there, so it steps aside.
+import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type { Capabilities } from "../ipc/types";
 
@@ -285,6 +286,17 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
     artifact("file", "datos.xlsx", 80, null),
   ],
   artifact_data: () => SQUARE,
+  // No page is drawn here, but the panel hears it load, as from the real one.
+  browser_open: ({ url }) => {
+    const at = String(url);
+    setTimeout(() => emit("browser", { kind: "loading", url: at }), 50);
+    setTimeout(() => {
+      emit("browser", { kind: "loaded", url: at });
+      emit("browser", { kind: "titled", title: `Página simulada · ${new URL(at).host}` });
+      emit("browser", { kind: "said", level: "log", text: "El navegador de verdad solo existe dentro de la app." });
+      emit("browser", { kind: "said", level: "error", text: "Uncaught ReferenceError: demo is not defined" });
+    }, 400);
+  },
   preview_url: ({ path }) => `http://127.0.0.1:4321/demo/${String(path).split("/").pop()}`,
   artifact_text: ({ path }) => `# ${String(path).split("/").pop()}\n\nTexto de prueba.`,
   tree: () => [],

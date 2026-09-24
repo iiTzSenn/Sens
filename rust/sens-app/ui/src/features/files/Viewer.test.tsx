@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { legacy } from "../../legacy/bridge";
 import { paint } from "../../shared/syntax/paint";
 import { forgetEdits, noteEdit, project } from "../project/store";
+import { showSite } from "../web/store";
 import { forgetViewer, openFile, present, viewer } from "./view";
 import { Viewer } from "./Viewer";
 
 const ipc = vi.hoisted(() => ({ commands: { openFile: vi.fn(), folder: vi.fn(), tree: vi.fn(), findFiles: vi.fn() } }));
 
 vi.mock("../../ipc/commands", () => ({ commands: ipc.commands }));
+vi.mock(import("../web/store"), async (original) => ({ ...(await original()), showSite: vi.fn(async () => {}) }));
 
 const FILES: Record<string, string> = {
   "src/app.ts": "import { a } from './a';\r\nexport const app = a + 1;\r\n",
@@ -27,7 +29,6 @@ beforeEach(() => {
   viewer.setState(viewer.getInitialState(), true);
   ipc.commands.openFile.mockReset().mockImplementation(async (_root: string, path: string) => FILES[path]);
   legacy.prose = vi.fn((text: string) => Object.assign(document.createElement("div"), { textContent: text }));
-  legacy.showSite = vi.fn(async () => {});
   Element.prototype.scrollIntoView = vi.fn();
 });
 
@@ -122,7 +123,7 @@ describe("file viewer", () => {
     show();
     act(() => present("C:/out/site/index.html", "<h1>Hola</h1>", "C:/out"));
     fireEvent.click(button("Vista"));
-    expect(legacy.showSite).toHaveBeenCalledWith("C:/out/site/index.html", "C:/out");
+    expect(showSite).toHaveBeenCalledWith("C:/out/site/index.html", "C:/out");
     expect(button("Código").getAttribute("aria-pressed")).toBe("true");
     expect(viewer.getState().opened).toBe("");
   });

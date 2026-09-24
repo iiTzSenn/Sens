@@ -7,6 +7,8 @@ import type {
   ClaudeCodeProgress,
   Detail,
   Entry,
+  Frame,
+  Heard,
   IndexedFile,
   Listing,
   Market,
@@ -66,6 +68,13 @@ export const commands = {
   artifactText: (path: string) => invoke<string>("artifact_text", { path }),
   openExternal: (target: string) => invoke<void>("open_external", { target }),
 
+  // The address a page of the project is served at, for the browser.
+  previewUrl: (root: string, path: string) => invoke<string>("preview_url", { root, path }),
+  browserOpen: (url: string, frame: Frame, zoom: number) => invoke<void>("browser_open", { url, frame, zoom }),
+  browserPlace: (frame: Frame, zoom: number) => invoke<void>("browser_place", { frame, zoom }),
+  browserShow: (shown: boolean) => invoke<void>("browser_show", { shown }),
+  browserAct: (act: "back" | "forward" | "reload" | "close") => invoke<void>("browser_act", { act }),
+
   tree: (root: string) => invoke<IndexedFile[]>("tree", { root }),
   folder: (root: string, path: string) => invoke<Entry[]>("folder", { root, path }),
   findFiles: (root: string, needle: string) => invoke<Entry[]>("find_files", { root, needle }),
@@ -80,4 +89,5 @@ export const commands = {
 export const events = {
   claudeCode: (heard: (progress: ClaudeCodeProgress) => void): Promise<UnlistenFn> =>
     listen<ClaudeCodeProgress>("claude-code", ({ payload }) => heard(payload)),
+  browser: (heard: (what: Heard) => void): Promise<UnlistenFn> => listen<Heard>("browser", ({ payload }) => heard(payload)),
 };

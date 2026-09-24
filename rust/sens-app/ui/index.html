@@ -187,32 +187,13 @@
 
       <section class="tool" data-tool="web" aria-label="Web" hidden>
         <div class="code-head">
-          <form class="seek address" id="site-address" role="search">
-            <input class="field" id="site-url" placeholder="Busca o escribe una dirección" aria-label="Dirección o página del proyecto" autocomplete="off" spellcheck="false">
-          </form>
+          <div class="hosted" id="web-address"></div>
           <div class="code-tools">
-            <button class="icon-btn" id="site-out" title="Abrir en el navegador" aria-label="Abrir en el navegador" hidden></button>
+            <div class="hosted" id="web-out"></div>
             <button class="icon-btn shut-tool" title="Cerrar" aria-label="Cerrar"></button>
           </div>
         </div>
-        <div class="site" id="site">
-          <div class="site-bar">
-            <button class="icon-btn" id="site-back" title="Atrás" aria-label="Atrás"></button>
-            <button class="icon-btn" id="site-forward" title="Adelante" aria-label="Adelante"></button>
-            <button class="icon-btn" id="site-reload" title="Recargar" aria-label="Recargar"></button>
-            <div class="segment" id="site-widths" role="group" aria-label="Ancho">
-              <button data-width="0" aria-pressed="true">Auto</button>
-              <button data-width="390" aria-pressed="false">390</button>
-              <button data-width="768" aria-pressed="false">768</button>
-              <button data-width="1280" aria-pressed="false">1280</button>
-            </div>
-            <button class="icon-btn" id="site-console" title="Consola" aria-label="Consola" aria-pressed="false"></button>
-          </div>
-          <div class="site-frame" id="site-frame">
-            <p class="site-empty" id="site-empty">Busca en la web o escribe una dirección: una web, tu servidor local (localhost:5173) o una página del proyecto (index.html).</p>
-          </div>
-          <div class="site-log" id="site-log" hidden></div>
-        </div>
+        <div class="site" id="site"></div>
       </section>
 
       <section class="tool" data-tool="tasks" aria-label="Segundo plano" hidden>

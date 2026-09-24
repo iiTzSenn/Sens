@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
-import { legacy } from "../legacy/bridge";
+import { syncBrowser } from "../features/web/store";
 import { sheets } from "./sheets.js";
 
 // A menu over the shell that behaves like the legacy ones, because it joins
@@ -28,7 +28,7 @@ export function useSheet<Anchor extends HTMLElement = HTMLButtonElement>() {
 
   useEffect(() => {
     if (open) sheet.current?.querySelector<HTMLElement>('input, [role^="menuitem"]')?.focus();
-    legacy.syncBrowser();
+    syncBrowser();
   }, [open]);
 
   function toggle() {

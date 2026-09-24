@@ -8,6 +8,7 @@ import { mountViewer } from "./features/files/Viewer";
 import { mountRail } from "./features/rail/Rail";
 import { mountSettings } from "./features/settings/Settings";
 import { mountTasks } from "./features/tasks/TasksPanel";
+import { mountWeb } from "./features/web/Web";
 
 const byId = (id: string) => document.getElementById(id)!;
 
@@ -20,3 +21,4 @@ mountChanges(byId("changes"), byId("change-marks"));
 mountTree(byId("tree"));
 mountViewer(byId("viewer"), byId("viewer-head"), byId("viewer-modes"));
 mountTasks(byId("tasks"), byId("task-tally"));
+mountWeb(byId("site"), byId("web-address"), byId("web-out"));

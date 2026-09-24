@@ -11,12 +11,13 @@ import { forgetTree, loadFiles } from "../features/files/store";
 import { forgetViewer, openFile, viewer } from "../features/files/view";
 import { forgetEdits, noteEdit, project } from "../features/project/store";
 import { failRail, fold, loadRail, nameSession, oweRail } from "../features/rail/store";
+import { aimSite, enterSite, forgetSite, onProject, reloadSite, syncBrowser } from "../features/web/store";
 import { enterSettings, settings, showSection } from "../features/settings/store";
 import { forgetTasks, noteTask, runningTasks, settleTasks, tasks, tickTasks } from "../features/tasks/store";
 import { TASK_EVENTS } from "../features/tasks/tasks";
 import { startUpdates, updates } from "../features/updates/store";
 import { API_KEY_SOURCE, PLANS, keyed } from "../shared/account";
-import { PAGE, compact, seconds, stem, weigh, whole } from "../shared/format.js";
+import { compact, seconds, stem, weigh, whole } from "../shared/format.js";
 import { anchorMenu } from "../shared/anchorMenu";
 import { ICONS } from "../shared/icons.js";
 import { sheets } from "../shared/sheets.js";
@@ -40,17 +41,6 @@ const codePanel = document.getElementById("code");
 const toolBtn = document.getElementById("tools");
 const toolMenu = document.getElementById("tool-menu");
 const changesReload = document.getElementById("changes-reload");
-const siteAddress = document.getElementById("site-address");
-const siteUrlInput = document.getElementById("site-url");
-const siteOut = document.getElementById("site-out");
-const siteEmpty = document.getElementById("site-empty");
-const siteFrame = document.getElementById("site-frame");
-const siteBack = document.getElementById("site-back");
-const siteForward = document.getElementById("site-forward");
-const siteLog = document.getElementById("site-log");
-const siteConsole = document.getElementById("site-console");
-const siteReload = document.getElementById("site-reload");
-const siteWidths = document.getElementById("site-widths");
 const codeBody = document.getElementById("code-body");
 const crewLabel = document.getElementById("crew");
 const effortBox = document.getElementById("effort");
@@ -1155,172 +1145,6 @@ function showTool(name) {
 function closeTools() {
   body.dataset.code = "closed";
   syncBrowser();
-}
-
-let siteUrl = "";
-let siteBase = "";
-let siteWidth = 0;
-let browsing = false;
-let browserShown = false;
-let browserSpot = "";
-let browserFrame = 0;
-
-const PLAIN_HTTP = /^(localhost|\d{1,3}(\.\d{1,3}){3}|\[::1\])(:\d+)?([/?#]|$)/i;
-const WEBBED = /^https?:\/\//i;
-const SCHEMED = /^[a-z][\w+.-]*:\/\//i;
-const HOST = /^[\w-]+(\.[\w-]+)+(:\d+)?$/;
-const PATHED = /[/\\]/;
-const SEARCH = "https://www.google.com/search?q=";
-
-async function showSite(path, home = root) {
-  let url;
-  try {
-    url = await invoke("preview_url", { root: home, path });
-  } catch (reason) {
-    tick([String(reason)], "warn");
-    return;
-  }
-  const served = new URL(url);
-  siteBase = `${served.origin}/${served.pathname.split("/")[1]}/`;
-  aimSite(url);
-}
-
-function aim(typed) {
-  const text = typed.trim();
-  if (!text) return;
-  if (PLAIN_HTTP.test(text)) return aimSite(`http://${text}`);
-  if (WEBBED.test(text)) return aimSite(text);
-  if (SCHEMED.test(text)) return tick(["El navegador solo abre direcciones http y https."], "warn");
-  const first = text.split(/[/\\?#]/)[0];
-  if (HOST.test(first) && !PAGE.test(first)) return aimSite(`https://${text}`);
-  if (root && (PAGE.test(text) || PATHED.test(text))) return showSite(text.replace(/^\.?[/\\]/, ""));
-  aimSite(`${SEARCH}${encodeURIComponent(text)}`);
-}
-
-function addressOf(url) {
-  if (!siteBase || !url.startsWith(siteBase)) return url;
-  try {
-    return decodeURIComponent(url.slice(siteBase.length));
-  } catch (ignored) {
-    return url;
-  }
-}
-
-const onProject = () => Boolean(siteBase) && siteUrl.startsWith(siteBase);
-
-async function aimSite(url) {
-  siteUrl = url;
-  siteUrlInput.value = addressOf(url);
-  siteLog.replaceChildren();
-  siteConsole.dataset.fault = "false";
-  showTool("web");
-  const spot = spotOf();
-  try {
-    await invoke("browser_open", { url, ...spot });
-  } catch (reason) {
-    warnBrowser(reason);
-    return;
-  }
-  if (!browsing) browserShown = true;
-  browsing = true;
-  browserSpot = JSON.stringify(spot);
-  syncBrowser();
-}
-
-function paintSite() {
-  siteEmpty.hidden = Boolean(siteUrl);
-  siteOut.hidden = !siteUrl;
-  siteConsole.hidden = !siteUrl;
-  for (const button of [siteBack, siteForward, siteReload]) button.disabled = !siteUrl;
-}
-
-function enterSite() {
-  paintSite();
-  if (!siteUrl) siteUrlInput.focus();
-}
-
-function reloadSite() {
-  if (browsing) invoke("browser_act", { act: "reload" }).catch(warnBrowser);
-}
-
-function warnBrowser(reason) {
-  tick([String(reason)], "warn");
-}
-
-function spotOf() {
-  const box = siteFrame.getBoundingClientRect();
-  const narrow = siteWidth > 0 && siteWidth < box.width;
-  const width = narrow ? siteWidth : box.width;
-  return {
-    frame: { x: box.left + (box.width - width) / 2, y: box.top, width, height: box.height },
-    zoom: siteWidth > box.width ? box.width / siteWidth : 1,
-  };
-}
-
-const overlaps = (one, two) => one.left < two.right && one.right > two.left && one.top < two.bottom && one.bottom > two.top;
-
-function covered() {
-  if (panel.open) return true;
-  const box = siteFrame.getBoundingClientRect();
-  return sheets.some(({ sheet }) => !sheet.hidden && overlaps(sheet.getBoundingClientRect(), box));
-}
-
-function syncBrowser() {
-  if (!browserFrame) browserFrame = requestAnimationFrame(placeBrowser);
-}
-
-function placeBrowser() {
-  browserFrame = 0;
-  if (!browsing) return;
-  const shown = panelShows("web") && Boolean(siteUrl) && !covered();
-  const spot = spotOf();
-  const kept = JSON.stringify(spot);
-  if (shown && kept !== browserSpot) {
-    browserSpot = kept;
-    invoke("browser_place", spot).catch(warnBrowser);
-  }
-  if (shown === browserShown) return;
-  browserShown = shown;
-  invoke("browser_show", { shown }).catch(warnBrowser);
-}
-
-function hearBrowser(heard) {
-  if (heard.kind === "said") return hearConsole(heard.level, heard.text);
-  if (heard.kind === "titled") {
-    siteUrlInput.title = heard.title;
-    return;
-  }
-  siteUrl = heard.url;
-  siteReload.dataset.loading = String(heard.kind === "loading");
-  if (document.activeElement !== siteUrlInput) siteUrlInput.value = addressOf(heard.url);
-  if (heard.kind !== "loading") return;
-  siteLog.replaceChildren();
-  siteConsole.dataset.fault = "false";
-}
-
-const CONSOLE_CAP = 500;
-
-function hearConsole(level, text) {
-  const row = el("p", null, text);
-  row.dataset.level = level;
-  siteLog.append(row);
-  if (siteLog.childElementCount > CONSOLE_CAP) siteLog.firstElementChild.remove();
-  siteLog.scrollTop = siteLog.scrollHeight;
-  if (level === "error" && siteLog.hidden) siteConsole.dataset.fault = "true";
-}
-
-function forgetSite() {
-  if (browsing) invoke("browser_act", { act: "close" }).catch(warnBrowser);
-  browsing = false;
-  browserShown = false;
-  browserSpot = "";
-  siteUrl = "";
-  siteBase = "";
-  siteUrlInput.value = "";
-  siteUrlInput.title = "";
-  siteLog.replaceChildren();
-  siteLog.hidden = true;
-  paintSite();
 }
 
 function markTouched(edit) {
@@ -2694,29 +2518,6 @@ async function send() {
 
 folderBtn.addEventListener("click", chooseFolder);
 
-siteReload.insertAdjacentHTML("afterbegin", ICONS.refresh);
-siteConsole.insertAdjacentHTML("afterbegin", ICONS.terminal);
-siteReload.addEventListener("click", reloadSite);
-siteConsole.addEventListener("click", () => {
-  siteLog.hidden = !siteLog.hidden;
-  siteConsole.setAttribute("aria-pressed", String(!siteLog.hidden));
-  if (!siteLog.hidden) siteConsole.dataset.fault = "false";
-});
-siteWidths.addEventListener("click", (event) => {
-  const button = event.target.closest("button");
-  if (!button) return;
-  const wide = Number(button.dataset.width);
-  for (const other of siteWidths.children) other.setAttribute("aria-pressed", String(other === button));
-  siteWidth = wide;
-  syncBrowser();
-});
-siteBack.insertAdjacentHTML("afterbegin", ICONS.back);
-siteForward.insertAdjacentHTML("afterbegin", ICONS.forward);
-siteBack.addEventListener("click", () => invoke("browser_act", { act: "back" }).catch(warnBrowser));
-siteForward.addEventListener("click", () => invoke("browser_act", { act: "forward" }).catch(warnBrowser));
-listen("browser", ({ payload }) => hearBrowser(payload));
-new ResizeObserver(syncBrowser).observe(siteFrame);
-addEventListener("resize", syncBrowser);
 panel.addEventListener("close", syncBrowser);
 
 for (const shut of codePanel.querySelectorAll(".shut-tool")) {
@@ -2725,14 +2526,6 @@ for (const shut of codePanel.querySelectorAll(".shut-tool")) {
 }
 changesReload.innerHTML = ICONS.refresh;
 changesReload.addEventListener("click", loadChanges);
-siteAddress.insertAdjacentHTML("afterbegin", ICONS.globe);
-siteAddress.addEventListener("submit", (event) => {
-  event.preventDefault();
-  siteUrlInput.blur();
-  aim(siteUrlInput.value);
-});
-siteOut.innerHTML = ICONS.external;
-siteOut.addEventListener("click", () => outward(siteUrl));
 document.getElementById("toggle-tree").addEventListener("click", (event) => {
   const shown = codeBody.dataset.tree !== "hidden";
   codeBody.dataset.tree = shown ? "hidden" : "shown";
@@ -3213,10 +3006,9 @@ Object.assign(legacy, {
   panelReturnsTo(back) {
     panelBack = back;
   },
-  syncBrowser,
   prose,
   showTool,
-  showSite,
+  warn: (text) => tick([text], "warn"),
   outward,
   preview,
   resume,

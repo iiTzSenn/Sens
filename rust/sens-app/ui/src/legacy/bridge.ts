@@ -10,13 +10,12 @@ export const legacy = {
   showPanel: (_title: string, _node: Node, _back?: HTMLElement): void => {},
   closePanel: (): void => {},
   panelReturnsTo: (_back: HTMLElement): void => {},
-  // Hides or places the native browser when something covers it.
-  syncBrowser: (): void => {},
   // The markdown renderer the chat uses, until it moves too.
   prose: (_text: string): HTMLElement => document.createElement("div"),
-  // The tool panel on the right, and a page of `home` in its web tool.
+  // The tool panel on the right.
   showTool: (_tool: string): void => {},
-  showSite: async (_path: string, _home: string): Promise<void> => {},
+  // A warning in the chat, as a notice line.
+  warn: (_text: string): void => {},
   outward: (_target: string): void => {},
   // The shared dialog, wide, for a picture.
   preview: (_title: string, _back: HTMLElement, _node: Node): void => {},

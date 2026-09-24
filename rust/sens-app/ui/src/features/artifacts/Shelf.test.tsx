@@ -5,6 +5,7 @@ import type { Artifact } from "../../ipc/types";
 import { legacy } from "../../legacy/bridge";
 import { viewer } from "../files/view";
 import { project } from "../project/store";
+import { showSite } from "../web/store";
 import { Shelf } from "./Shelf";
 import { artifacts, loadShelf } from "./store";
 
@@ -18,6 +19,7 @@ const ipc = vi.hoisted(() => ({
 }));
 
 vi.mock("../../ipc/commands", () => ({ commands: ipc.commands }));
+vi.mock(import("../web/store"), async (original) => ({ ...(await original()), showSite: vi.fn(async () => {}) }));
 
 const artifact = (name: string, over: Partial<Artifact> = {}): Artifact => ({
   kind: "file",
@@ -55,7 +57,6 @@ beforeEach(() => {
   ipc.commands.artifactData.mockResolvedValue("data:image/png;base64,AAAA");
   ipc.commands.artifactText.mockResolvedValue("# Plan");
   legacy.preview = vi.fn();
-  legacy.showSite = vi.fn(async () => {});
   legacy.showTool = vi.fn();
   legacy.resume = vi.fn();
 });
@@ -87,7 +88,7 @@ describe("the shelf", () => {
     expect(legacy.showTool).toHaveBeenCalledWith("files");
 
     await act(async () => fireEvent.click(within(card("informe.html")).getByRole("button", { name: /informe.html/ })));
-    expect(legacy.showSite).toHaveBeenCalledWith("C:/demo/.sens/artifacts/informe.html", "C:/demo");
+    expect(showSite).toHaveBeenCalledWith("C:/demo/.sens/artifacts/informe.html", "C:/demo");
 
     await act(async () => fireEvent.click(within(card("docs")).getByRole("button", { name: /docs/ })));
     expect(ipc.commands.openExternal).toHaveBeenCalledWith("https://example.com/docs");
