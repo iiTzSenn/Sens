@@ -33,45 +33,7 @@
   </header>
 
   <div class="body" id="body" data-code="closed">
-    <nav class="rail" id="rail">
-      <div class="rail-nav">
-        <button class="nav-row" id="new-session" aria-keyshortcuts="Control+N">
-          <span class="nav-icon"></span>
-          <span class="nav-label">Sesión nueva</span>
-          <span class="hint-keys" aria-hidden="true"><kbd>Ctrl</kbd><kbd>N</kbd></span>
-        </button>
-        <button class="nav-row" id="capabilities" aria-current="false">
-          <span class="nav-icon"></span>
-          <span class="nav-label">Capacidades</span>
-        </button>
-        <button class="nav-row" id="artifacts" aria-current="false">
-          <span class="nav-icon"></span>
-          <span class="nav-label">Artefactos</span>
-        </button>
-      </div>
-      <div class="sessions" id="sessions"></div>
-      <div class="rail-foot" id="rail-foot">
-        <div class="sheet menu" id="menu" role="menu" aria-label="Perfil" hidden>
-          <button class="menu-item" role="menuitem" tabindex="-1" data-panel="settings">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-            <span>Ajustes</span>
-          </button>
-          <button class="menu-item" role="menuitem" tabindex="-1" data-panel="keys">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></svg>
-            <span>Atajos de teclado</span>
-          </button>
-          <button class="menu-item" role="menuitem" tabindex="-1" data-panel="about">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-            <span>Acerca de Sens</span>
-          </button>
-        </div>
-        <button class="me" id="profile" aria-haspopup="menu" aria-expanded="false">
-          <span class="avatar" id="avatar" aria-hidden="true"></span>
-          <span class="me-name" id="profile-name" data-empty="true">Sin nombre</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
-        </button>
-      </div>
-    </nav>
+    <nav class="rail" id="rail"></nav>
     <div class="split" id="rail-split" role="separator" aria-orientation="vertical" aria-label="Ancho de la barra lateral" tabindex="0"></div>
 
     <section class="chat">
@@ -268,12 +230,6 @@
 </div>
 
 <div class="sheet menu float-menu tool-menu" id="tool-menu" role="menu" aria-label="Herramientas" hidden></div>
-
-<div class="sheet menu float-menu" id="session-menu" role="menu" aria-label="Gestionar sesión" hidden>
-  <button class="menu-item" role="menuitem" tabindex="-1" data-act="rename"><span class="act-icon"></span><span class="act-text">Renombrar</span></button>
-  <button class="menu-item" role="menuitem" tabindex="-1" data-act="archive"><span class="act-icon"></span><span class="act-text"></span></button>
-  <button class="menu-item risky" role="menuitem" tabindex="-1" data-act="erase"><span class="act-icon"></span><span class="act-text"></span></button>
-</div>
 
 <dialog class="panel" id="panel" aria-labelledby="panel-title">
   <div class="panel-head">

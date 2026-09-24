@@ -8,11 +8,17 @@ export interface Edits {
   minus: number;
 }
 
-// The project open in Sens, and the files the agent edited in this session.
-// app.js still decides both until the rail and the chat move; the React zones
-// only read them.
+// What the main area shows over the chat, if anything.
+export type View = "" | "capabilities" | "artifacts" | "settings";
+
+// The project open in Sens, the session its chat shows ("" before the first
+// message of a new one), the view over the chat, and the files the agent
+// edited in this session. app.js still decides them until the chat moves; the
+// React zones only read them.
 export const project = createStore(() => ({
   root: "",
+  session: "",
+  view: "" as View,
   touched: new Map<string, Edits>(),
 }));
 

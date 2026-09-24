@@ -230,3 +230,20 @@ export interface ClaudeCodeProgress {
   done: number;
   total: number;
 }
+
+/** session::Summary, rust/sens-agent/src/session.rs */
+export interface SessionSummary {
+  id: string;
+  title: string;
+  startedAt: number;
+  tasks: number;
+  archived: boolean;
+}
+
+/** projects::Workspace, rust/sens-app/src/projects.rs: a project Sens worked in */
+export interface Workspace {
+  root: string;
+  name: string;
+  activeAt: number;
+  sessions: SessionSummary[];
+}

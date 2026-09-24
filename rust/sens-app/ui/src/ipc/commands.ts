@@ -15,6 +15,7 @@ import type {
   Profile,
   ProviderState,
   UpdateCheck,
+  Workspace,
 } from "./types";
 
 export type CapabilityKind = "skill" | "server" | "plugin";
@@ -51,6 +52,13 @@ export const commands = {
   marketInstall: (root: string, id: string, values: Record<string, string>) =>
     invoke<string>("market_install", { root, id, values }),
   marketUpdate: (id: string, name: string) => invoke<void>("market_update", { id, name }),
+
+  workspaces: () => invoke<Workspace[]>("workspaces"),
+  // A title the model suggests once a session has something to name, if it has none yet.
+  titleSession: (root: string, id: string) => invoke<string | null>("title_session", { root, id }),
+  renameSession: (root: string, id: string, title: string) => invoke<string>("rename_session", { root, id, title }),
+  archiveSession: (root: string, id: string, archived: boolean) => invoke<void>("archive_session", { root, id, archived }),
+  deleteSession: (root: string, id: string) => invoke<void>("delete_session", { root, id }),
 
   artifacts: () => invoke<Artifact[]>("artifacts"),
   // A data: URL, ready for an <img>.

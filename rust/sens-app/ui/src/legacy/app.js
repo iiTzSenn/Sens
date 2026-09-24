@@ -1,4 +1,3 @@
-import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -7,16 +6,18 @@ import { loadShelf } from "../features/artifacts/store";
 import { enterCapabilities } from "../features/capabilities/store";
 import { forgetChanges, loadChanges, soonChanges } from "../features/changes/store";
 import { plain } from "../features/market/search.js";
-import { loadProfile, profile } from "../features/profile/store";
+import { loadProfile } from "../features/profile/store";
 import { forgetTree, loadFiles } from "../features/files/store";
 import { forgetViewer, openFile, viewer } from "../features/files/view";
 import { forgetEdits, noteEdit, project } from "../features/project/store";
+import { failRail, fold, loadRail, nameSession, oweRail } from "../features/rail/store";
 import { enterSettings, settings, showSection } from "../features/settings/store";
 import { forgetTasks, noteTask, runningTasks, settleTasks, tasks, tickTasks } from "../features/tasks/store";
 import { TASK_EVENTS } from "../features/tasks/tasks";
 import { startUpdates, updates } from "../features/updates/store";
 import { API_KEY_SOURCE, PLANS, keyed } from "../shared/account";
 import { PAGE, compact, seconds, stem, weigh, whole } from "../shared/format.js";
+import { anchorMenu } from "../shared/anchorMenu";
 import { ICONS } from "../shared/icons.js";
 import { sheets } from "../shared/sheets.js";
 import { languageNamed, languageOf } from "../shared/syntax/languages";
@@ -35,7 +36,6 @@ const stream = document.getElementById("stream");
 const taskInput = document.getElementById("task");
 const rootLabel = document.getElementById("root");
 const folderBtn = document.getElementById("folder");
-const sessionList = document.getElementById("sessions");
 const codePanel = document.getElementById("code");
 const toolBtn = document.getElementById("tools");
 const toolMenu = document.getElementById("tool-menu");
@@ -80,18 +80,10 @@ const branchPanel = document.getElementById("branches");
 const branchHere = document.getElementById("branch-here");
 const branchRows = document.getElementById("branch-rows");
 const branchFilter = document.getElementById("branch-filter");
-const newBtn = document.getElementById("new-session");
-const shelfBtn = document.getElementById("artifacts");
 const chat = document.querySelector("section.chat");
 const shelf = document.getElementById("shelf");
-const capsBtn = document.getElementById("capabilities");
 const capsView = document.getElementById("capabilities-view");
 const settingsView = document.getElementById("settings-view");
-const foot = document.getElementById("rail-foot");
-const profileBtn = document.getElementById("profile");
-const avatar = document.getElementById("avatar");
-const profileName = document.getElementById("profile-name");
-const menu = document.getElementById("menu");
 const panel = document.getElementById("panel");
 const panelTitle = document.getElementById("panel-title");
 const panelBody = document.getElementById("panel-body");
@@ -99,6 +91,11 @@ const panelBody = document.getElementById("panel-body");
 let root = "";
 let repo = null;
 let current = "";
+
+function setCurrent(id) {
+  current = id;
+  project.setState({ session: id });
+}
 let replyNow = null;
 let busy = false;
 let stopping = false;
@@ -1143,164 +1140,7 @@ function asked(text, files = [], pictures = []) {
   return place(node);
 }
 
-const FOLDED = "sens.rail.folded";
-const folded = () => new Set([].concat(stored(FOLDED, [])));
-
-function keepFold(path, shut) {
-  const paths = folded();
-  if (shut) paths.add(path);
-  else paths.delete(path);
-  store(FOLDED, [...paths]);
-}
-
-function fault(host, reason) {
-  host.querySelector(".fault")?.remove();
-  const line = el("p", "none fault", String(reason));
-  line.setAttribute("role", "alert");
-  host.prepend(line);
-}
-
-async function attempt(host, work) {
-  host.querySelector(".fault")?.remove();
-  try {
-    await work();
-  } catch (reason) {
-    fault(host, reason);
-  }
-}
-
-let spaces = [];
-let owed = "";
 let showing = "";
-let managing = null;
-let renaming = "";
-const naming = new Set();
-const TITLE_LIMIT = 56;
-
-async function paintRail() {
-  if (renaming) return;
-  try {
-    spaces = await invoke("workspaces");
-    drawRail();
-  } catch (reason) {
-    fault(sessionList, reason);
-  }
-  if (owed) fault(sessionList, owed);
-  owed = "";
-}
-
-const homeOf = (session) =>
-  session === current ? root : spaces.find((space) => space.sessions.some((one) => one.id === session))?.root;
-
-async function nameSession(session) {
-  const home = homeOf(session);
-  if (!home || naming.has(session)) return;
-  naming.add(session);
-  const title = await invoke("title_session", { root: home, id: session }).catch(() => null);
-  naming.delete(session);
-  if (title) await paintRail();
-}
-
-function drawRail() {
-  if (renaming) return;
-  rowMenu.shut();
-  const shut = folded();
-  sessionList.replaceChildren(
-    ...spaces.map((space) => group(space, shut.has(space.root))),
-  );
-  if (!spaces.length) sessionList.append(emptyRail());
-  newBtn.setAttribute("aria-current", String(Boolean(root) && !current && !showing));
-  for (const [name, one] of Object.entries(VIEWS)) one.button?.setAttribute("aria-current", String(showing === name));
-}
-
-function emptyRail() {
-  const pick = el("button");
-  pick.innerHTML = ICONS.plus;
-  pick.append("Abrir proyecto");
-  pick.addEventListener("click", chooseFolder);
-
-  const box = el("div", "rail-empty");
-  box.innerHTML = ICONS.folder;
-  box.append(el("p", null, "Todavía no hay sesiones."), pick);
-  return box;
-}
-
-function paintFold(button, list, open) {
-  button.setAttribute("aria-expanded", String(open));
-  list.dataset.shut = String(!open);
-  list.firstElementChild.inert = !open;
-}
-
-function group(space, shut) {
-  const here = space.root === root;
-  const fold = el("button", "fold");
-  fold.title = space.root;
-  const chev = el("span", "chev");
-  chev.innerHTML = ICONS.open;
-  fold.append(chev, el("span", "name", space.name));
-  if (here) fold.dataset.here = "true";
-
-  const add = el("button", "add");
-  add.title = `Sesión nueva en ${space.name}`;
-  add.setAttribute("aria-label", add.title);
-  add.innerHTML = ICONS.plus;
-  add.addEventListener("click", () => draft(space.root));
-
-  const list = el("div", "runs");
-  const runs = el("div", "runs-inner");
-  const ordered = [...space.sessions].sort((a, b) => Number(a.archived) - Number(b.archived));
-  runs.append(...ordered.map((summary) => sessionRow(space.root, summary)));
-  if (!space.sessions.length) runs.append(el("p", "none", "Sin sesiones."));
-  list.append(runs);
-
-  paintFold(fold, list, !shut);
-  fold.addEventListener("click", () => {
-    const open = list.dataset.shut === "true";
-    keepFold(space.root, !open);
-    paintFold(fold, list, open);
-  });
-
-  const head = el("div", "project-head");
-  head.append(fold, add);
-  const node = el("div", "project");
-  node.append(head, list);
-  return node;
-}
-
-function sessionRow(home, summary) {
-  const row = el("div", "session-row");
-  row.dataset.session = summary.id;
-  row.dataset.current = String(!showing && home === root && summary.id === current);
-
-  const open = el("button", "session");
-  open.setAttribute("aria-current", row.dataset.current);
-  open.title = [
-    summary.title,
-    `${summary.tasks} ${summary.tasks === 1 ? "mensaje" : "mensajes"}`,
-    summary.archived ? "archivada" : "",
-  ].filter(Boolean).join(" · ");
-  open.append(el("span", "name", summary.title));
-  if (summary.archived) {
-    const kept = el("span", "kept");
-    kept.innerHTML = ICONS.box;
-    open.append(kept);
-  }
-  open.addEventListener("click", () => resume(home, summary.id));
-
-  const dots = el("button", "dots");
-  dots.title = "Gestionar sesión";
-  dots.setAttribute("aria-label", dots.title);
-  dots.setAttribute("aria-haspopup", "menu");
-  dots.setAttribute("aria-expanded", "false");
-  dots.innerHTML = ICONS.ellipsis;
-  dots.addEventListener("click", () => {
-    managing = { home, summary };
-    rowMenu.toggle(dots);
-  });
-
-  row.append(open, dots);
-  return row;
-}
 
 const panelShows = (name) => body.dataset.code === "open" && codePanel.dataset.tool === name;
 
@@ -1700,7 +1540,7 @@ let pendingId = null;
 let warmed = "";
 
 function blank(id) {
-  current = id;
+  setCurrent(id);
   shownModel = "";
   replyNow = null;
   pendingId = null;
@@ -1767,7 +1607,7 @@ async function load(id) {
   settleTasks(alive);
   idle(!running);
   if (!inner.childElementCount) hello();
-  await paintRail();
+  await loadRail();
 }
 
 function idle(on) {
@@ -1783,7 +1623,7 @@ function idle(on) {
 async function enter(picked) {
   root = picked;
   project.setState({ root: picked });
-  current = "";
+  setCurrent("");
   rootLabel.textContent = stem(picked);
   folderBtn.title = picked;
   forgetEdits();
@@ -1794,7 +1634,7 @@ async function enter(picked) {
   forgetTree();
   idle(true);
   if (showing) VIEWS[showing].load();
-  await invoke("remember", { root: picked }).catch((reason) => (owed = String(reason)));
+  await invoke("remember", { root: picked }).catch(oweRail);
   await readRepo();
   forgetChanges();
   await loadFiles();
@@ -1806,17 +1646,17 @@ async function visit(home, then) {
     if (home !== root) await enter(home);
     await then();
   } catch (reason) {
-    fault(sessionList, reason);
+    failRail(reason);
   }
 }
 
 const draft = (home) => visit(home, async () => {
-  keepFold(home, false);
+  fold(home, false);
   blank("");
   idle(true);
   hello();
   taskInput.focus();
-  await paintRail();
+  await loadRail();
 });
 
 const resume = (home, id) => visit(home, () => load(id));
@@ -1836,16 +1676,16 @@ function fresh() {
 }
 
 const VIEWS = {
-  capabilities: { button: capsBtn, node: capsView, icon: ICONS.shapes, load: enterCapabilities },
-  artifacts: { button: shelfBtn, node: shelf, icon: ICONS.files, load: loadShelf },
-  settings: { button: null, node: settingsView, icon: "", load: enterSettings },
+  capabilities: { node: capsView, load: enterCapabilities },
+  artifacts: { node: shelf, load: loadShelf },
+  settings: { node: settingsView, load: enterSettings },
 };
 
 function showView(name) {
   showing = name;
+  project.setState({ view: name });
   chat.hidden = Boolean(name);
   for (const [id, one] of Object.entries(VIEWS)) one.node.hidden = id !== name;
-  drawRail();
   if (name) VIEWS[name].load();
 }
 
@@ -2841,10 +2681,10 @@ async function send() {
   idle(false);
 
   try {
-    if (!current) current = await invoke("open_session", { root, id: pendingId ? await pendingId : null });
+    if (!current) setCurrent(await invoke("open_session", { root, id: pendingId ? await pendingId : null }));
     pendingId = null;
     await invoke("chat_send", { root, sessionId: current, message: { text, files, images }, settings });
-    paintRail();
+    loadRail();
   } catch (reason) {
     replyNow?.failed(String(reason));
     replyNow = null;
@@ -2853,13 +2693,6 @@ async function send() {
 }
 
 folderBtn.addEventListener("click", chooseFolder);
-newBtn.querySelector(".nav-icon").innerHTML = ICONS.pen;
-newBtn.addEventListener("click", fresh);
-for (const [name, one] of Object.entries(VIEWS)) {
-  if (!one.button) continue;
-  one.button.querySelector(".nav-icon").innerHTML = one.icon;
-  one.button.addEventListener("click", () => showView(name));
-}
 
 siteReload.insertAdjacentHTML("afterbegin", ICONS.refresh);
 siteConsole.insertAdjacentHTML("afterbegin", ICONS.terminal);
@@ -2989,113 +2822,7 @@ const branchSheet = popover(branchPanel, branchBtn, () => {
 
 branchFilter.addEventListener("input", paintBranches);
 
-function anchorMenu(menu, anchor) {
-  menu.hidden = false;
-  menu.style.visibility = "hidden";
-  const at = anchor.getBoundingClientRect();
-  const size = menu.getBoundingClientRect();
-  const edge = 12;
-  const below = at.bottom + 6;
-  const fits = below + size.height <= window.innerHeight - edge;
-  menu.style.top = `${fits ? below : Math.max(edge, at.top - 6 - size.height)}px`;
-  menu.style.left = `${Math.min(Math.max(edge, at.right - size.width), window.innerWidth - size.width - edge)}px`;
-  menu.style.visibility = "";
-}
-
-function paintRowMenu() {
-  const [rename, keep, drop] = rowMenu.sheet.querySelectorAll(".menu-item");
-  rename.querySelector(".act-icon").innerHTML = ICONS.pencil;
-  const kept = managing?.summary.archived;
-  keep.querySelector(".act-icon").innerHTML = kept ? ICONS.unarchive : ICONS.archive;
-  keep.querySelector(".act-text").textContent = kept ? "Desarchivar" : "Archivar";
-  drop.dataset.armed = "false";
-  drop.querySelector(".act-icon").innerHTML = ICONS.trash;
-  drop.querySelector(".act-text").textContent = "Eliminar";
-  anchorMenu(rowMenu.sheet, rowMenu.anchor);
-}
-
-const rowMenu = steer(popover(document.getElementById("session-menu"), null, paintRowMenu));
 const toolSheet = steer(popover(toolMenu, toolBtn, paintToolMenu));
-
-const backToRow = (id) =>
-  (sessionList.querySelector(`.session-row[data-session="${id}"] .dots`) || newBtn).focus();
-
-rowMenu.sheet.querySelector('[data-act="rename"]').addEventListener("click", () => {
-  const { home, summary } = managing;
-  rowMenu.shut();
-  renameRow(home, summary);
-});
-
-function renameRow(home, summary) {
-  const row = sessionList.querySelector(`.session-row[data-session="${summary.id}"]`);
-  if (!row) return;
-  const field = el("input", "field rename");
-  field.value = summary.title;
-  field.maxLength = TITLE_LIMIT;
-  field.spellcheck = false;
-  field.autocomplete = "off";
-  field.setAttribute("aria-label", "Nombre de la sesión");
-  renaming = summary.id;
-  row.dataset.renaming = "true";
-  row.prepend(field);
-  field.focus();
-  field.select();
-
-  let settled = false;
-  const settle = async (keep) => {
-    if (settled) return;
-    settled = true;
-    const title = field.value.trim();
-    const changed = keep && title && title !== summary.title;
-    try {
-      if (changed) await invoke("rename_session", { root: home, id: summary.id, title });
-    } catch (reason) {
-      owed = String(reason);
-    }
-    renaming = "";
-    await paintRail();
-    backToRow(summary.id);
-  };
-
-  field.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== "Escape") return;
-    event.preventDefault();
-    event.stopPropagation();
-    settle(event.key === "Enter");
-  });
-  field.addEventListener("blur", () => {
-    if (document.hasFocus()) settle(true);
-  });
-}
-
-rowMenu.sheet.querySelector('[data-act="archive"]').addEventListener("click", () => {
-  const { home, summary } = managing;
-  rowMenu.shut();
-  attempt(sessionList, async () => {
-    await invoke("archive_session", { root: home, id: summary.id, archived: !summary.archived });
-    await paintRail();
-    backToRow(summary.id);
-  });
-});
-
-rowMenu.sheet.querySelector('[data-act="erase"]').addEventListener("click", (event) => {
-  const item = event.currentTarget;
-  if (item.dataset.armed !== "true") {
-    item.dataset.armed = "true";
-    item.querySelector(".act-text").textContent = "Confirmar";
-    return;
-  }
-  const { home, summary } = managing;
-  rowMenu.shut();
-  attempt(sessionList, async () => {
-    await invoke("delete_session", { root: home, id: summary.id });
-    if (home === root && summary.id === current) return draft(home);
-    await paintRail();
-    backToRow(summary.id);
-  });
-});
-
-sessionList.addEventListener("scroll", () => rowMenu.shut(), { passive: true });
 
 document.addEventListener("pointerdown", (event) => {
   for (const one of sheets) {
@@ -3113,25 +2840,8 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-const initials = (name) =>
-  name.split(/\s+/).slice(0, 2).map((word) => [...word][0]).join("").toUpperCase();
-
-function paintPerson({ person, fault: failed }) {
-  if (failed) {
-    fault(foot, failed);
-    return;
-  }
-  foot.querySelector(".fault")?.remove();
-  const name = (person.name || "").trim();
-  if (name) avatar.textContent = initials(name);
-  else avatar.innerHTML = ICONS.user;
-  profileName.textContent = name || "Sin nombre";
-  profileName.dataset.empty = String(!name);
-}
-
-profile.subscribe(paintPerson);
-
-let panelBack = profileBtn;
+// Where the focus goes back when the shared dialog closes.
+let panelBack = null;
 
 function showPanel(title, ...nodes) {
   panelTitle.textContent = title;
@@ -3232,49 +2942,6 @@ listen("update", ({ payload }) => {
   if (status) say(status, UPDATE_STAGES[payload.stage]);
 });
 
-const SHORTCUTS = [
-  ["Enter", "Enviar"],
-  ["Mayús+Enter", "Nueva línea"],
-  ["Ctrl+V", "Pegar una imagen en el mensaje"],
-  ["Ctrl+B", "Mostrar u ocultar la barra lateral"],
-  ["Ctrl+N", "Sesión nueva"],
-  ["Ctrl+O", "Abrir carpeta"],
-  ["Esc", "Cerrar"],
-];
-
-function openKeys() {
-  const table = el("table", "keys");
-  for (const [keys, does] of SHORTCUTS) {
-    const row = table.insertRow();
-    row.insertCell().append(el("kbd", null, keys));
-    row.insertCell().textContent = does;
-  }
-  showPanel("Atajos de teclado", table);
-}
-
-async function openAbout() {
-  const version = el("span", "mono");
-  const name = el("p", "about");
-  name.append(el("b", null, "sens"), version);
-  showPanel("Acerca de Sens", name, el("p", "mono selectable", "github.com/iiTzSenn/Sens"));
-  try {
-    version.textContent = await getVersion();
-  } catch (reason) {
-    version.className = "fault";
-    version.textContent = String(reason);
-  }
-}
-
-const PANELS = { settings: () => showView("settings"), keys: openKeys, about: openAbout };
-const menuSheet = steer(popover(menu, profileBtn));
-
-for (const item of menu.querySelectorAll("[data-panel]")) {
-  item.addEventListener("click", () => {
-    menuSheet.shut();
-    PANELS[item.dataset.panel]();
-  });
-}
-
 document.getElementById("panel-close").addEventListener("click", () => panel.close());
 panel.addEventListener("click", (event) => {
   if (event.target === panel) panel.close();
@@ -3282,8 +2949,8 @@ panel.addEventListener("click", (event) => {
 panel.addEventListener("close", () => {
   panel.dataset.wide = "false";
   panelBody.replaceChildren();
-  if (panelBack.isConnected) panelBack.focus();
-  panelBack = profileBtn;
+  if (panelBack?.isConnected) panelBack.focus();
+  panelBack = null;
 });
 
 const RAIL_CLOSED = "sens.rail.closed";
@@ -3477,7 +3144,7 @@ async function afterTurn() {
   await readRepo();
   if (panelShows("changes")) await loadChanges();
   await loadFiles();
-  await paintRail();
+  await loadRail();
 }
 
 function hear(event) {
@@ -3497,7 +3164,7 @@ listen("chat", ({ payload }) => {
   }
   if (CLOSING.has(event.kind)) nameSession(session);
   if (session !== current) {
-    if (CLOSING.has(event.kind)) paintRail();
+    if (CLOSING.has(event.kind)) loadRail();
     return;
   }
   noteTask(event);
@@ -3529,9 +3196,9 @@ async function boot() {
     const last = await invoke("last_project");
     if (last) return draft(last);
   } catch (reason) {
-    owed = String(reason);
+    oweRail(reason);
   }
-  await paintRail();
+  await loadRail();
 }
 
 Object.assign(legacy, {
@@ -3553,6 +3220,10 @@ Object.assign(legacy, {
   outward,
   preview,
   resume,
+  draft,
+  fresh,
+  chooseFolder,
+  showView,
   session: () => current,
   panelShows,
   diffView: (hunks, preview, path) => patchView(hunks, preview, languageOf(path)).node,

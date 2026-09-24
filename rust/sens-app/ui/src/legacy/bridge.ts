@@ -1,3 +1,5 @@
+import type { View } from "../features/project/store";
+
 // What the React zones still borrow from app.js while both run. app.js fills
 // it in on start; each entry goes away when the zone that owns it moves.
 export const legacy = {
@@ -18,8 +20,14 @@ export const legacy = {
   outward: (_target: string): void => {},
   // The shared dialog, wide, for a picture.
   preview: (_title: string, _back: HTMLElement, _node: Node): void => {},
-  // Opens a session of a project in the chat.
+  // Opens a session of a project in the chat, or a new one (`fresh` in the
+  // open project, asking for a folder when there is none).
   resume: (_home: string, _id: string): void => {},
+  draft: async (_home: string): Promise<void> => {},
+  fresh: (): void => {},
+  chooseFolder: (): void => {},
+  // Puts a view over the chat, or the chat back with "".
+  showView: (_view: View): void => {},
   // The session open in the chat, and whether a tool panel is on screen.
   session: (): string => "",
   panelShows: (_tool: string): boolean => false,

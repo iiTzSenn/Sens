@@ -5,12 +5,14 @@ import { mountCapabilities } from "./features/capabilities/Capabilities";
 import { mountChanges } from "./features/changes/Changes";
 import { mountTree } from "./features/files/Tree";
 import { mountViewer } from "./features/files/Viewer";
+import { mountRail } from "./features/rail/Rail";
 import { mountSettings } from "./features/settings/Settings";
 import { mountTasks } from "./features/tasks/TasksPanel";
 
 const byId = (id: string) => document.getElementById(id)!;
 
 // Each zone React owns is mounted here; app.js no longer touches its nodes.
+mountRail(byId("rail"));
 mountShelf(byId("shelf-body"));
 mountCapabilities(byId("capabilities-body"));
 mountSettings(byId("settings-body"));

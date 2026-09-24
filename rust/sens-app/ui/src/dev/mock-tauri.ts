@@ -238,6 +238,28 @@ const REPLAY = [
   agent({ kind: "finished", millis: 4200, tokensOut: 812 }),
 ];
 
+// Two projects whose sessions can be renamed, archived and deleted.
+const SPACES = [
+  {
+    root: ROOT,
+    name: "demo",
+    activeAt: now - HOUR,
+    sessions: [
+      { id: "demo-1", title: "Migrar la interfaz a React", startedAt: now - HOUR, tasks: 3, archived: false },
+      { id: "demo-2", title: "Revisar el catálogo", startedAt: now - 5 * HOUR, tasks: 1, archived: false },
+      { id: "demo-3", title: "Probar el instalador", startedAt: now - 30 * HOUR, tasks: 2, archived: true },
+    ],
+  },
+  {
+    root: "C:/Proyectos/web",
+    name: "web",
+    activeAt: now - 48 * HOUR,
+    sessions: [{ id: "web-1", title: "Arreglar el formulario de contacto", startedAt: now - 48 * HOUR, tasks: 4, archived: false }],
+  },
+];
+
+const sessionOf = (id: unknown) => SPACES.flatMap((space) => space.sessions).find((one) => one.id === id)!;
+
 const entries = (path: string) =>
   (FOLDERS[path] ?? []).map((name) => {
     const dir = name.endsWith("/");
@@ -297,17 +319,13 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
     needs: [],
   }),
   market_file: ({ path }) => (String(path).endsWith(".md") ? `# ${path}\n\nContenido de prueba.` : "echo formatea"),
-  workspaces: () => [
-    {
-      root: ROOT,
-      name: "demo",
-      activeAt: now - HOUR,
-      sessions: [
-        { id: "demo-1", title: "Migrar la interfaz a React", startedAt: now - HOUR, tasks: 3, archived: false },
-        { id: "demo-2", title: "Revisar el catálogo", startedAt: now - 5 * HOUR, tasks: 1, archived: false },
-      ],
-    },
-  ],
+  workspaces: () => structuredClone(SPACES),
+  rename_session: ({ id, title }) => (sessionOf(id).title = String(title)),
+  archive_session: ({ id, archived }) => void (sessionOf(id).archived = Boolean(archived)),
+  delete_session: ({ id }) => {
+    for (const space of SPACES) space.sessions = space.sessions.filter((one) => one.id !== id);
+  },
+  title_session: () => null,
   replay: ({ id }) => (id === "demo-1" ? REPLAY : []),
   providers: () => [{ id: "claude", vendor: "Anthropic", label: "Claude Code" }],
   models: () => [
