@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sens-ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "sens-app-ui"],
+      "port": 5173
+    }
+  ]
+}
