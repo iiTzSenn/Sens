@@ -177,14 +177,18 @@
   .icon-btn[hidden] { display: none; }
   .icon-btn:disabled { opacity: .4; pointer-events: none; }
 
+  /* The rail leaves --rest beside it: the chat's least 360px, and a tool's
+     320px when one is open. With a tool open it yields first, down to 180px;
+     narrower than that (shell.ts's ROOMY) it folds. */
   .body {
-    --rail: clamp(180px, var(--rail-width, 232px), 420px);
+    --rest: 360px;
+    --rail: clamp(180px, var(--rail-width, 232px), min(420px, 100% - var(--rest)));
     --tools: clamp(320px, var(--tools-width, 46%), calc(100% - var(--rail) - 360px));
     position: relative;
     display: grid; grid-template-columns: var(--rail) minmax(0, 1fr) 0;
     min-height: 0; transition: grid-template-columns var(--slow) var(--curve);
   }
-  .body[data-code="open"] { grid-template-columns: var(--rail) minmax(0, 1fr) var(--tools); }
+  .body[data-code="open"] { --rest: 680px; grid-template-columns: var(--rail) minmax(0, 1fr) var(--tools); }
   .body[data-rail="closed"] { --rail: 0px; }
   .body[data-sizing="true"] { transition: none; }
   .body[data-sizing="true"], .body[data-sizing="true"] * { cursor: col-resize; }
@@ -329,9 +333,11 @@
     background: var(--ground); border-bottom: 1px solid var(--hair);
   }
   .view-add { position: relative; margin-left: auto; }
-  .tabs { display: flex; gap: 20px; }
+  /* Tabs that do not fit scroll sideways; the chosen one's line sits on the
+     head's rule. */
+  .tabs { display: flex; gap: 20px; min-width: 0; margin-bottom: -1px; overflow-x: auto; scrollbar-width: none; }
   .tab {
-    height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 2px; margin-bottom: -1px;
+    height: 36px; display: flex; flex: none; align-items: center; gap: 6px; padding: 0 2px; white-space: nowrap;
     border-bottom: 1px solid transparent; font-size: 13px; color: var(--faint);
     transition: color var(--fast) var(--curve), border-color var(--fast) var(--curve);
   }
@@ -1141,9 +1147,9 @@
 
   .code {
     background: var(--panel); border-left: 1px solid var(--hair);
-    display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden;
+    display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); min-height: 0; overflow: hidden;
   }
-  .code > .tool { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; }
+  .code > .tool { display: grid; grid-template: auto minmax(0, 1fr) / minmax(0, 1fr); min-height: 0; min-width: 0; }
   .code > .tool[hidden] { display: none; }
   .code-head {
     display: flex; align-items: center; gap: 12px; padding: 0 16px;
@@ -1211,8 +1217,9 @@
   .task-actions .quiet { border: 1px solid var(--hair-strong); font-size: 12px; }
   .task-actions .fault { font-size: 12px; }
 
+  /* The tree leaves the file it opens at least 180px. */
   .code-body {
-    --tree: clamp(150px, var(--tree-width, 232px), 60%);
+    --tree: clamp(150px, var(--tree-width, 232px), min(60%, 100% - 180px));
     position: relative; display: grid; grid-template-columns: var(--tree) minmax(0, 1fr); min-height: 0;
   }
   .code-body[data-tree="hidden"] { grid-template-columns: 0 minmax(0, 1fr); }
@@ -1254,8 +1261,8 @@
   .source[hidden] { display: none; }
   /* Tabs as wide as VS Code draws them, wherever code shows. */
   .source, .diff .lines, .codeblock pre, .prose pre { tab-size: 4; }
-  .site { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; background: var(--ground); }
-  .site-bar { display: flex; align-items: center; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--hair); }
+  .site { display: grid; grid-template: auto minmax(0, 1fr) auto / minmax(0, 1fr); min-height: 0; background: var(--ground); }
+  .site-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--hair); }
   .site-bar .segment { margin-left: auto; }
   #site-reload[data-loading="true"] svg { animation: pulse 1.2s ease-in-out infinite; }
   .site-frame { min-height: 0; display: grid; place-items: center; }

@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { syncBrowser } from "../features/web/store";
 import { sheets } from "./sheets.js";
 
+// How close to the window's side a sheet may open.
+const EDGE = 8;
+
 // A menu over the shell: one open at a time, a click outside or Escape shuts
 // it (the app listens for both, over the list every sheet joins), arrows move
-// between its items, and focus leaving shuts it.
+// between its items, and focus leaving shuts it. One that opens past a side of
+// the window moves back inside it.
 export function useSheet<Anchor extends HTMLElement = HTMLButtonElement>() {
   const [open, setOpen] = useState(false);
   const sheet = useRef<HTMLDivElement>(null);
@@ -25,6 +29,15 @@ export function useSheet<Anchor extends HTMLElement = HTMLButtonElement>() {
       sheets.splice(sheets.indexOf(one), 1);
     };
   }, []);
+
+  useLayoutEffect(() => {
+    const node = sheet.current;
+    if (!open || !node || getComputedStyle(node).position === "fixed") return;
+    node.style.translate = "";
+    const { left, right } = node.getBoundingClientRect();
+    const shift = Math.max(EDGE - left, Math.min(0, window.innerWidth - EDGE - right));
+    if (shift) node.style.translate = `${Math.round(shift)}px 0`;
+  }, [open]);
 
   useEffect(() => {
     if (open) sheet.current?.querySelector<HTMLElement>('input, [role^="menuitem"]')?.focus();

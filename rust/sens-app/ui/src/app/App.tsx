@@ -11,7 +11,7 @@ import { sheets } from "../shared/sheets.js";
 import { Dialog } from "./Dialog";
 import { dialog } from "./modal";
 import { chooseFolder, fresh } from "./session";
-import { shell, toggleRail } from "./shell";
+import { railFolded, shell, toggleRail } from "./shell";
 import { Splitter } from "./Splitter";
 import { ToolsPanel } from "./ToolsPanel";
 import { Topbar } from "./Topbar";
@@ -22,7 +22,7 @@ const HOTKEYS: Record<string, () => unknown> = { n: fresh, o: chooseFolder, b: t
 // The whole window: the title bar; the rail, the chat or a view over it, and
 // the tool panel, with the splitters between them; and the dialog.
 export function App() {
-  const railClosed = useStore(shell, (s) => s.railClosed);
+  const railClosed = useStore(shell, railFolded);
   const toolsOpen = useStore(shell, (s) => s.toolsOpen);
   const sizingNow = useStore(shell, (s) => s.sizing);
   const sizes = useStore(shell, (s) => s.sizes);

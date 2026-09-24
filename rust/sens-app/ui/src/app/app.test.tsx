@@ -6,7 +6,7 @@ import { project } from "../features/project/store";
 import { App } from "./App";
 import { dialog } from "./modal";
 import { draft, resume, showView } from "./session";
-import { shell } from "./shell";
+import { shell, showTool } from "./shell";
 
 const ipc = vi.hoisted(() => ({
   commands: new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, {
@@ -57,6 +57,20 @@ describe("the shell", () => {
     expect(localStorage.getItem("sens.rail.closed")).toBe("true");
     fireEvent.keyDown(document, { key: "b", ctrlKey: true });
     expect(body().dataset.rail).toBe("open");
+  });
+
+  it("folds the rail for a tool in a narrow window, without forgetting it was open", () => {
+    render(<App />);
+    act(() => shell.setState({ narrow: true }));
+    act(() => showTool("changes"));
+    expect(body().dataset).toMatchObject({ rail: "closed", code: "open" });
+    expect(document.getElementById("rail")?.hasAttribute("inert")).toBe(true);
+    act(() => shell.setState({ narrow: false }));
+    expect(body().dataset).toMatchObject({ rail: "open", code: "open" });
+    act(() => shell.setState({ narrow: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar la barra lateral" }));
+    expect(body().dataset).toMatchObject({ rail: "open", code: "closed" });
+    expect(localStorage.getItem("sens.rail.closed")).toBe("false");
   });
 
   it("opens a tool from the tools menu, and closes the panel", () => {

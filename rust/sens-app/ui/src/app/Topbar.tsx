@@ -10,13 +10,13 @@ import { anchorMenu } from "../shared/anchorMenu";
 import { Icon } from "../shared/Icon";
 import { ICONS } from "../shared/icons.js";
 import { useSheet, type Sheet } from "../shared/useSheet";
-import { panelShows, shell, showTool, toggleRail, type Tool } from "./shell";
+import { panelShows, railFolded, shell, showTool, toggleRail, type Tool } from "./shell";
 
 // The title bar Sens draws instead of the system's: the rail switch, the
 // brand, an update when there is one, the tools, and the window's controls.
 // It drags the window.
 export function Topbar() {
-  const closed = useStore(shell, (s) => s.railClosed);
+  const closed = useStore(shell, railFolded);
   const label = closed ? "Mostrar la barra lateral" : "Ocultar la barra lateral";
   return (
     <header className="topbar">
