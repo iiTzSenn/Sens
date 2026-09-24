@@ -148,11 +148,18 @@ fn offered() -> Result<Value, String> {
 }
 
 fn cards(offered: &Value) -> Vec<Card> {
+    let entries: Vec<&Value> = offered.as_array().into_iter().flatten().collect();
+    let aliased: Vec<&str> = entries
+        .iter()
+        .filter(|entry| entry["value"] != DEFAULT_ENTRY)
+        .map(|entry| id_of(entry))
+        .collect();
     let mut found: Vec<Card> = Vec::new();
     let mut families: Vec<String> = Vec::new();
-    for entry in offered.as_array().into_iter().flatten() {
+    for entry in entries {
         let Some(card) = card(entry) else { continue };
-        if found.iter().any(|kept| kept.id == card.id) {
+        let spare = entry["value"] == DEFAULT_ENTRY && aliased.contains(&card.id.as_str());
+        if spare || found.iter().any(|kept| kept.id == card.id) {
             continue;
         }
         let family = family_of(&card.id);
@@ -165,10 +172,14 @@ fn cards(offered: &Value) -> Vec<Card> {
     found
 }
 
-fn card(entry: &Value) -> Option<Card> {
+fn id_of(entry: &Value) -> &str {
     let value = entry["value"].as_str().unwrap_or_default();
-    let id = entry["resolvedModel"].as_str().filter(|id| !id.is_empty()).unwrap_or(value);
-    if value == DEFAULT_ENTRY || id.is_empty() || !plausible(id) {
+    entry["resolvedModel"].as_str().filter(|id| !id.is_empty()).unwrap_or(value)
+}
+
+fn card(entry: &Value) -> Option<Card> {
+    let id = id_of(entry);
+    if id.is_empty() || !plausible(id) {
         return None;
     }
     let Traits { effort, thinking, .. } = traits(id);
@@ -337,6 +348,21 @@ mod tests {
         assert_eq!(of("claude-opus-5-5").effort, "medium");
         assert_eq!(of("claude-opus-4-7").effort, "xhigh");
         assert_eq!(of("claude-fable-5").thinking, Thinking::Always);
+    }
+
+    #[test]
+    fn an_older_claude_code_keeps_its_default_model_since_nothing_else_offers_it() {
+        let older = json!([
+            { "value": "default", "displayName": "Default (recommended)", "description": "Opus 4.8 with 1M context · Most capable for complex work", "supportsEffort": true, "supportedEffortLevels": ["low", "medium", "high", "xhigh", "max"] },
+            { "value": "sonnet", "displayName": "Sonnet", "description": "Sonnet 4.6 · Best for everyday tasks", "supportsEffort": true, "supportedEffortLevels": ["low", "medium", "high", "max"] },
+            { "value": "haiku", "displayName": "Haiku", "description": "Haiku 4.5 · Fastest for quick answers" },
+        ]);
+        let found = cards(&older);
+        let ids: Vec<&str> = found.iter().map(|card| card.id.as_str()).collect();
+        assert_eq!(ids, vec!["default", "sonnet", "haiku"]);
+        assert_eq!(found[0].label, "Default (recommended)");
+        assert_eq!(found[0].efforts, EFFORTS);
+        assert!(found.iter().all(|card| card.latest));
     }
 
     #[test]
