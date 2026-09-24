@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { readdirSync, existsSync } from "node:fs";
+import { readdirSync, existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,10 +39,16 @@ payloads.push({ label: "Glob", body: { tool_name: "Glob", tool_input: { pattern:
 payloads.push({ label: "herramienta ajena", body: { tool_name: "Bash", tool_input: { command: "ls" } } });
 payloads.push({ label: "payload vacío", body: {} });
 
+const fresh = () => {
+  for (const tool of ["Grep", "Glob"]) rmSync(path.join(tmpdir(), `sens-hook-difftest-${tool}`), { force: true });
+};
+
 let same = 0, delegated = 0, differing = [];
 for (const p of payloads) {
   const input = JSON.stringify({ hook_event_name: "PreToolUse", session_id: "difftest", ...p.body });
+  fresh();
   const fromNode = run("node", [nodeHook], input);
+  fresh();
   const fromRust = run(rustBin, [], input);
   if (fromRust === fromNode) {
     same++;
