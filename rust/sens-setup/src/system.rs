@@ -110,6 +110,6 @@ pub fn sweep_later(folders: &[&Path], files: &[&Path]) {
     let _ = Command::new("cmd")
         .raw_arg(line)
         .current_dir(std::env::temp_dir())
-        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+        .creation_flags(CREATE_NO_WINDOW)
         .spawn();
 }
