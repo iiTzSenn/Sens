@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { commands } from "../../ipc/commands";
 import type { Detail } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { returnTo } from "../../app/modal";
 import { PanelForm, Pair, openPanel } from "../../shared/Panel";
 import { project } from "../project/store";
 import { envOf, listed, runsOf, type Spec } from "./kinds";
@@ -160,7 +160,7 @@ export function confirmRemoval(spec: Spec, name: string, back: HTMLElement) {
       act={async () => {
         await commands.removeCapability(spec.origin, name);
         const add = document.getElementById("caps-add");
-        if (add) legacy.panelReturnsTo(add);
+        if (add) returnTo(add);
       }}
       after={loadCapabilities}
     >

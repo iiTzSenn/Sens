@@ -2,7 +2,9 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Artifact } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { dialog } from "../../app/modal";
+import { resume } from "../../app/session";
+import { shell } from "../../app/shell";
 import { viewer } from "../files/view";
 import { project } from "../project/store";
 import { showSite } from "../web/store";
@@ -19,6 +21,7 @@ const ipc = vi.hoisted(() => ({
 }));
 
 vi.mock("../../ipc/commands", () => ({ commands: ipc.commands }));
+vi.mock("../../app/session", () => ({ resume: vi.fn(), draft: vi.fn(async () => {}), fresh: vi.fn(), chooseFolder: vi.fn(), showView: vi.fn() }));
 vi.mock(import("../web/store"), async (original) => ({ ...(await original()), showSite: vi.fn(async () => {}) }));
 
 const artifact = (name: string, over: Partial<Artifact> = {}): Artifact => ({
@@ -56,9 +59,8 @@ beforeEach(() => {
   ]);
   ipc.commands.artifactData.mockResolvedValue("data:image/png;base64,AAAA");
   ipc.commands.artifactText.mockResolvedValue("# Plan");
-  legacy.preview = vi.fn();
-  legacy.showTool = vi.fn();
-  legacy.resume = vi.fn();
+  shell.setState(shell.getInitialState(), true);
+  dialog.setState(dialog.getInitialState(), true);
 });
 
 afterEach(() => {
@@ -85,7 +87,7 @@ describe("the shelf", () => {
     await open();
     await act(async () => fireEvent.click(within(card("plan.md")).getByRole("button", { name: /plan.md/ })));
     expect(viewer.getState()).toMatchObject({ title: "C:/demo/.sens/artifacts/plan.md", text: "# Plan", home: "C:/demo", opened: "" });
-    expect(legacy.showTool).toHaveBeenCalledWith("files");
+    expect(shell.getState()).toMatchObject({ toolsOpen: true, tool: "files" });
 
     await act(async () => fireEvent.click(within(card("informe.html")).getByRole("button", { name: /informe.html/ })));
     expect(showSite).toHaveBeenCalledWith("C:/demo/.sens/artifacts/informe.html", "C:/demo");
@@ -104,7 +106,7 @@ describe("the shelf", () => {
   it("goes to the session an artifact came from", async () => {
     await open();
     fireEvent.click(within(card("plan.md")).getByText("Migrar"));
-    expect(legacy.resume).toHaveBeenCalledWith("C:/demo", "s1");
+    expect(resume).toHaveBeenCalledWith("C:/demo", "s1");
     expect(within(card("informe.html")).getByText("sin sesión").tagName).toBe("SPAN");
   });
 
@@ -115,7 +117,7 @@ describe("the shelf", () => {
     expect(within(thumb).getByRole("img", { hidden: true }).getAttribute("src")).toBe("data:image/png;base64,AAAA");
 
     await act(async () => fireEvent.click(thumb));
-    expect(legacy.preview).toHaveBeenCalledWith("foto.png", thumb, expect.any(HTMLImageElement));
+    expect(dialog.getState()).toMatchObject({ open: true, title: "foto.png", wide: true });
     expect(ipc.commands.artifactData).toHaveBeenCalledOnce();
   });
 

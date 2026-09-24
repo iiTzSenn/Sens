@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatEvent, SessionEntry } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { shell } from "../../app/shell";
 import { composer } from "../composer/store";
 import { project } from "../project/store";
 import { blank, chat, hearChat, hello, load, notice, send } from "./store";
@@ -52,10 +52,7 @@ beforeEach(() => {
   ipc.commands.openSession.mockResolvedValue("s1");
   ipc.commands.tree.mockResolvedValue([]);
   ipc.commands.folder.mockResolvedValue([]);
-  Object.assign(legacy, {
-    showTool: vi.fn(),
-    panelShows: () => false,
-  });
+  shell.setState(shell.getInitialState(), true);
 });
 
 afterEach(cleanup);
@@ -174,7 +171,7 @@ describe("the chat", () => {
 
     expect(grep.querySelector(".step-meta")?.textContent).toBe("1 resultado");
     fireEvent.click(within(grep).getByRole("button", { name: /src\/app.ts/ }));
-    expect(legacy.showTool).toHaveBeenCalledWith("files");
+    expect(shell.getState()).toMatchObject({ toolsOpen: true, tool: "files" });
   });
 
   it("asks for permission, and answers with what you chose", async () => {

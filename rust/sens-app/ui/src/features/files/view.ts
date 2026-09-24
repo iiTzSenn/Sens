@@ -1,6 +1,6 @@
 import { createStore } from "zustand/vanilla";
 import { commands } from "../../ipc/commands";
-import { legacy } from "../../legacy/bridge";
+import { showTool } from "../../app/shell";
 import { MARKDOWN, PAGE } from "../../shared/format.js";
 import { project } from "../project/store";
 import { showSite } from "../web/store";
@@ -51,7 +51,7 @@ export async function openFile(path: string) {
 
 // A file opened from elsewhere (the chat, the changes): the panel turns to Ficheros.
 export function showFile(path: string) {
-  legacy.showTool("files");
+  showTool("files");
   return openFile(path);
 }
 

@@ -1,31 +1,18 @@
-import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { createRoot } from "react-dom/client";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { openOutside } from "../../shared/outside";
-import { addressOf, aim, goBack, goForward, hearBrowser, holdFrame, pickWidth, reloadSite, syncBrowser, toggleLog, web } from "./store";
+import { addressOf, aim, goBack, goForward, holdFrame, pickWidth, reloadSite, syncBrowser, toggleLog, web } from "./store";
 
 const WIDTHS = [0, 390, 768, 1280];
 
-// The web panel: the address bar in its header, "open outside" among the
-// header's tools, and below them the bar, the frame the native page is laid
-// over, and its console.
-export function mountWeb(host: Element, address: Element, out: Element) {
-  hearBrowser();
-  createRoot(host).render(
-    <StrictMode>
-      <Web address={address} out={out} />
-    </StrictMode>,
-  );
-}
-
-export function Web({ address, out }: { address: Element; out: Element }) {
+// The web panel's body: its bar, the frame the native page is laid over, and
+// its console. The address bar (Address) and "open outside" (Outside) go in
+// the panel's header.
+export function Web() {
   return (
     <>
-      {createPortal(<Address />, address)}
-      {createPortal(<Outside />, out)}
       <Bar />
       <Page />
       <Log />
@@ -35,7 +22,7 @@ export function Web({ address, out }: { address: Element; out: Element }) {
 
 // What is typed stays while the field has the focus; otherwise the bar follows
 // the page.
-function Address() {
+export function Address() {
   const url = useStore(web, (s) => s.url);
   const base = useStore(web, (s) => s.base);
   const title = useStore(web, (s) => s.title);
@@ -74,7 +61,7 @@ function Address() {
   );
 }
 
-function Outside() {
+export function Outside() {
   const url = useStore(web, (s) => s.url);
   if (!url) return null;
   return (

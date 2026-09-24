@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClaudeCodeProgress, ProviderState } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { dialog } from "../../app/modal";
 import { readAccount, refreshModels } from "../models/store";
 import { profile } from "../profile/store";
 import { updates } from "../updates/store";
@@ -71,7 +71,7 @@ beforeEach(() => {
   updates.setState(updates.getInitialState(), true);
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.providersState.mockResolvedValue([claude()]);
-  legacy.showPanel = vi.fn();
+  dialog.setState(dialog.getInitialState(), true);
 });
 
 afterEach(cleanup);
@@ -113,7 +113,7 @@ describe("general settings", () => {
     updates.setState({ latest: { version: "9.9.9", notes: "", page: "", size: 0 } });
     await open("general");
     fireEvent.click(screen.getByText("Ver Sens 9.9.9"));
-    expect(legacy.showPanel).toHaveBeenCalledWith("Sens 9.9.9", expect.anything(), expect.anything());
+    expect(dialog.getState()).toMatchObject({ open: true, title: "Sens 9.9.9" });
   });
 });
 

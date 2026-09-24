@@ -1,5 +1,4 @@
-import { StrictMode, useEffect, useState, type CSSProperties } from "react";
-import { createRoot } from "react-dom/client";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useStore } from "zustand";
 import { commands } from "../../ipc/commands";
 import type { Entry } from "../../ipc/types";
@@ -12,15 +11,6 @@ import { files, loadFolder, toggleFolder } from "./store";
 import { openFile, viewer } from "./view";
 
 const SEEK_WAIT = 120;
-
-// The filter and the list go in .tree; the splitter beside it stays in app.js.
-export function mountTree(host: Element) {
-  createRoot(host).render(
-    <StrictMode>
-      <Tree />
-    </StrictMode>,
-  );
-}
 
 export function Tree() {
   const [needle, setNeedle] = useState("");

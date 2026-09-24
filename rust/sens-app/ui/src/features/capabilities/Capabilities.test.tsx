@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Capabilities as Caps, Detail, Listing, Market } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { Dialog } from "../../app/Dialog";
+import { dialog } from "../../app/modal";
 import { project } from "../project/store";
 import { Capabilities } from "./Capabilities";
 import { NO_CAPS } from "./kinds";
@@ -71,7 +72,19 @@ const detail = (id: string, over: Partial<Detail> = {}): Detail => ({
   ...over,
 });
 
-let shown: { title: string; node: Node } | null = null;
+// The dialog's title while it is open.
+const shown = () => (dialog.getState().open ? { title: dialog.getState().title } : null);
+
+// jsdom has no modal dialogs: these open and close it, as the WebView does.
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+    this.dispatchEvent(new Event("close"));
+  };
+});
 
 beforeEach(() => {
   capabilities.setState(capabilities.getInitialState(), true);
@@ -80,13 +93,7 @@ beforeEach(() => {
   ipc.commands.capabilities.mockResolvedValue(installed());
   ipc.commands.market.mockResolvedValue(market);
   ipc.commands.marketSearch.mockResolvedValue([]);
-  shown = null;
-  legacy.showPanel = vi.fn((title: string, node: Node) => {
-    shown = { title, node };
-    document.body.append(node);
-  });
-  legacy.closePanel = vi.fn();
-  legacy.panelReturnsTo = vi.fn();
+  dialog.setState(dialog.getInitialState(), true);
   localStorage.clear();
 });
 
@@ -96,7 +103,12 @@ afterEach(() => {
 });
 
 async function open() {
-  render(<Capabilities />);
+  render(
+    <>
+      <Capabilities />
+      <Dialog />
+    </>,
+  );
   await act(async () => enterCapabilities());
 }
 
@@ -145,7 +157,7 @@ describe("installed capabilities", () => {
     const add = screen.getByText("Añadir");
     expect(add.getAttribute("aria-haspopup")).toBeNull();
     act(() => fireEvent.click(add));
-    expect(shown?.title).toBe("Añadir servidor MCP");
+    expect(shown()?.title).toBe("Añadir servidor MCP");
 
     fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "db" } });
     fireEvent.change(screen.getByLabelText("Variables de entorno"), { target: { value: "sin igual" } });
@@ -158,12 +170,12 @@ describe("installed capabilities", () => {
     await open();
     fireEvent.click(within(card("notas")).getByRole("button", { name: "Acciones de notas" }));
     act(() => fireEvent.click(within(card("notas")).getByRole("menuitem", { hidden: true })));
-    expect(shown?.title).toBe("Quitar notas");
+    expect(shown()?.title).toBe("Quitar notas");
 
     await act(async () => fireEvent.click(screen.getByText("Quitar", { selector: "button[type=submit]" })));
     expect(ipc.commands.removeCapability).toHaveBeenCalledWith("skill", "notas");
-    expect(legacy.panelReturnsTo).toHaveBeenCalledWith(document.getElementById("caps-add"));
-    expect(legacy.closePanel).toHaveBeenCalled();
+    expect(dialog.getState().open).toBe(false);
+    expect(document.activeElement).toBe(document.getElementById("caps-add"));
   });
 });
 
@@ -196,7 +208,7 @@ describe("market", () => {
     await act(async () => openDetail("market/tests"));
     await act(async () => fireEvent.click(screen.getByText("Instalar")));
     expect(ipc.commands.marketInstall).toHaveBeenCalledWith("C:/Proyectos/demo", "market/tests", {});
-    expect(shown).toBeNull();
+    expect(shown()).toBeNull();
   });
 
   it("asks first when the install needs values", async () => {
@@ -206,7 +218,7 @@ describe("market", () => {
     await open();
     await act(async () => openDetail("market/tests"));
     act(() => fireEvent.click(screen.getByText("Instalar")));
-    expect(shown?.title).toBe("Instalar Tests");
+    expect(shown()?.title).toBe("Instalar Tests");
     const token = screen.getByLabelText("TOKEN");
     expect(token.getAttribute("type")).toBe("password");
     fireEvent.change(token, { target: { value: "abc" } });

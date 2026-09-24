@@ -12,14 +12,6 @@ const SECTIONS: [Section, string][] = [
   ["providers", "Proveedores"],
 ];
 
-export function mountSettings(host: Element) {
-  createRoot(host).render(
-    <StrictMode>
-      <Settings />
-    </StrictMode>,
-  );
-}
-
 export function Settings() {
   const section = useStore(settings, (s) => s.section);
   const visits = useStore(settings, (s) => s.visits);

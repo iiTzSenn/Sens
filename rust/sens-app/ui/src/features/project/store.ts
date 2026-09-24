@@ -13,8 +13,8 @@ export type View = "" | "capabilities" | "artifacts" | "settings";
 
 // The project open in Sens, the session its chat shows ("" before the first
 // message of a new one), the view over the chat, and the files the agent
-// edited in this session. app.js still decides them until the chat moves; the
-// React zones only read them.
+// edited in this session. The session module and the chat decide them; the
+// other zones read them.
 export const project = createStore(() => ({
   root: "",
   session: "",

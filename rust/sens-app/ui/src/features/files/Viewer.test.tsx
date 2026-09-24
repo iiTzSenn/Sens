@@ -5,7 +5,7 @@ import { paint } from "../../shared/syntax/paint";
 import { forgetEdits, noteEdit, project } from "../project/store";
 import { showSite } from "../web/store";
 import { forgetViewer, openFile, present, viewer } from "./view";
-import { Viewer } from "./Viewer";
+import { Viewer, ViewerHead, ViewerModes } from "./Viewer";
 
 const ipc = vi.hoisted(() => ({ commands: { openFile: vi.fn(), folder: vi.fn(), tree: vi.fn(), findFiles: vi.fn() } }));
 
@@ -37,7 +37,11 @@ afterEach(() => {
   forgetEdits();
 });
 
-const show = () => render(<Viewer head={head} modes={modes} />);
+const show = () => {
+  render(<ViewerHead />, { container: head });
+  render(<ViewerModes />, { container: modes });
+  return render(<Viewer />);
+};
 const lines = () => [...document.querySelectorAll(".source .line .src")].map((line) => line.textContent);
 const button = (name: string) => screen.getByRole("button", { name });
 

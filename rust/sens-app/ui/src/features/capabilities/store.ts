@@ -2,7 +2,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { createStore } from "zustand/vanilla";
 import { commands } from "../../ipc/commands";
 import type { Capabilities, Detail, Listing, Market } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { showTool } from "../../app/shell";
 import { store, stored } from "../../shared/storage.js";
 import { createDebouncedSearch, createMarketRanker } from "../market/search.js";
 import { present } from "../files/view";
@@ -146,7 +146,7 @@ export const openSkill = (name: string) =>
   attempt("listFault", async () => {
     const text = await commands.skillText(name);
     present(`skills/${name}/SKILL.md`, text, "");
-    legacy.showTool("files");
+    showTool("files");
   });
 
 export const importSkill = () =>

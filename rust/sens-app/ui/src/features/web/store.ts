@@ -1,9 +1,11 @@
 import { createStore } from "zustand/vanilla";
 import { commands, events } from "../../ipc/commands";
 import type { Frame, Heard } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { dialog } from "../../app/modal";
+import { panelShows, shell, showTool } from "../../app/shell";
 import { PAGE } from "../../shared/format.js";
 import { sheets } from "../../shared/sheets.js";
+import { warn as notice } from "../chat/state";
 import { project } from "../project/store";
 
 export interface Said {
@@ -50,7 +52,7 @@ let browserFrame = 0;
 
 export const holdFrame = (element: HTMLElement | null) => void (frame = element);
 
-const warn = (reason: unknown) => legacy.warn(String(reason));
+const warn = (reason: unknown) => notice(String(reason));
 
 // What the address bar shows: a page of the project by its path.
 export function addressOf(url: string, base: string) {
@@ -97,7 +99,7 @@ export async function showSite(path: string, home = project.getState().root) {
 
 export async function aimSite(url: string) {
   set({ url, log: [], fault: false });
-  legacy.showTool("web");
+  showTool("web");
   const [where, zoom] = spotOf();
   try {
     await commands.browserOpen(url, where, zoom);
@@ -140,7 +142,7 @@ function spotOf(): [Frame, number] {
 const overlaps = (one: DOMRect, two: DOMRect) => one.left < two.right && one.right > two.left && one.top < two.bottom && one.bottom > two.top;
 
 function covered() {
-  if (document.querySelector<HTMLDialogElement>("#panel")?.open) return true;
+  if (dialog.getState().open) return true;
   const box = frame?.getBoundingClientRect();
   return Boolean(box) && sheets.some(({ sheet }) => sheet && !sheet.hidden && overlaps(sheet.getBoundingClientRect(), box!));
 }
@@ -153,7 +155,7 @@ export function syncBrowser() {
 function placeBrowser() {
   browserFrame = 0;
   if (!browsing) return;
-  const shown = legacy.panelShows("web") && Boolean(web.getState().url) && !covered();
+  const shown = panelShows("web") && Boolean(web.getState().url) && !covered();
   const [where, zoom] = spotOf();
   const spot = JSON.stringify([where, zoom]);
   if (shown && spot !== browserSpot) {
@@ -187,6 +189,10 @@ export function forgetSite() {
   browserSpot = "";
   set({ url: "", base: "", loading: false, title: "", log: [], logShown: false, fault: false });
 }
+
+// The panel opening or closing, the dialog over it: the page follows.
+shell.subscribe(syncBrowser);
+dialog.subscribe(syncBrowser);
 
 // Once, when the panel is mounted: the page tells where it went and what its
 // console said.

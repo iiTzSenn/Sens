@@ -33,8 +33,7 @@ import type {
 
 export type CapabilityKind = "skill" | "server" | "plugin";
 
-// Every call from the migrated zones to Rust, typed. app.js still calls invoke
-// directly until its zones move here.
+// Every call from the shell to Rust, typed.
 export const commands = {
   profile: () => invoke<Profile>("profile"),
   saveProfile: (name: string) => invoke<void>("save_profile", { name }),

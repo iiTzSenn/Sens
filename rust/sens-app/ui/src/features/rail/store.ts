@@ -1,7 +1,6 @@
 import { createStore } from "zustand/vanilla";
 import { commands } from "../../ipc/commands";
 import type { SessionSummary, Workspace } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
 import { store, stored } from "../../shared/storage.js";
 import { project } from "../project/store";
 
@@ -74,15 +73,18 @@ export const renameSession = (home: string, id: string, title: string) => change
 export const archiveSession = (home: string, summary: SessionSummary) =>
   change(() => commands.archiveSession(home, summary.id, !summary.archived));
 
-// Deleting the session on screen leaves a new one of its project there.
+// Whether the session deleted was the one on screen: then a new one of its
+// project takes its place.
 export async function deleteSession(home: string, id: string) {
   const { root, session } = project.getState();
   try {
     await commands.deleteSession(home, id);
   } catch (reason) {
     oweRail(reason);
-    return loadRail();
+    await loadRail();
+    return false;
   }
-  if (home === root && id === session) return legacy.draft(home);
+  if (home === root && id === session) return true;
   await loadRail();
+  return false;
 }

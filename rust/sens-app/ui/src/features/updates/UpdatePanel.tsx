@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useStore } from "zustand";
 import { commands } from "../../ipc/commands";
-import { legacy } from "../../legacy/bridge";
+import { closeDialog } from "../../app/modal";
 import { weigh } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
@@ -68,7 +68,7 @@ function UpdatePanel() {
           <Icon svg={ICONS.external} />
           <span>Ver en GitHub</span>
         </button>
-        <button className="quiet" onClick={() => legacy.closePanel()}>
+        <button className="quiet" onClick={closeDialog}>
           Más tarde
         </button>
         <button className={sure ? "primary danger" : "primary"} disabled={!installable || busy} onClick={install}>

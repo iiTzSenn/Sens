@@ -1,5 +1,5 @@
 import { useStore } from "zustand";
-import { legacy } from "../../legacy/bridge";
+import { showView } from "../../app/session";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { openPanel } from "../../shared/Panel";
@@ -45,7 +45,7 @@ export function Me() {
         </p>
       )}
       <div className="sheet menu" id="menu" role="menu" aria-label="Perfil" {...menu.sheet}>
-        <button className="menu-item" role="menuitem" tabIndex={-1} onClick={pick(() => legacy.showView("settings"))}>
+        <button className="menu-item" role="menuitem" tabIndex={-1} onClick={pick(() => showView("settings"))}>
           <Icon svg={ICONS.gear} />
           <span>Ajustes</span>
         </button>

@@ -1,9 +1,8 @@
-import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { createRoot } from "react-dom/client";
 import { useStore } from "zustand";
 import type { SessionSummary, Workspace } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { chooseFolder, draft, fresh, resume, showView } from "../../app/session";
 import { anchorMenu } from "../../shared/anchorMenu";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
@@ -15,15 +14,7 @@ import { archiveSession, deleteSession, fold, rail, renameSession } from "./stor
 const TITLE_LIMIT = 56;
 
 // The sidebar: where to go, the projects with their sessions, and who is
-// using Sens. app.js keeps the rail itself (folding it, its width).
-export function mountRail(host: Element) {
-  createRoot(host).render(
-    <StrictMode>
-      <Rail />
-    </StrictMode>,
-  );
-}
-
+// using Sens.
 export function Rail() {
   return (
     <>
@@ -44,7 +35,7 @@ function Nav() {
   const view = useStore(project, (s) => s.view);
   return (
     <div className="rail-nav">
-      <button className="nav-row" id="new-session" aria-keyshortcuts="Control+N" aria-current={drafting} onClick={() => legacy.fresh()}>
+      <button className="nav-row" id="new-session" aria-keyshortcuts="Control+N" aria-current={drafting} onClick={() => fresh()}>
         <span className="nav-icon">
           <Icon svg={ICONS.pen} />
         </span>
@@ -55,7 +46,7 @@ function Nav() {
         </span>
       </button>
       {VIEWS.map((one) => (
-        <button key={one.view} className="nav-row" id={one.view} aria-current={view === one.view} onClick={() => legacy.showView(one.view)}>
+        <button key={one.view} className="nav-row" id={one.view} aria-current={view === one.view} onClick={() => showView(one.view)}>
           <span className="nav-icon">
             <Icon svg={one.icon} />
           </span>
@@ -138,7 +129,7 @@ function EmptyRail() {
     <div className="rail-empty">
       <Icon svg={ICONS.folder} />
       <p>Todavía no hay sesiones.</p>
-      <button onClick={() => legacy.chooseFolder()}>
+      <button onClick={() => chooseFolder()}>
         <Icon svg={ICONS.plus} />
         Abrir proyecto
       </button>
@@ -168,7 +159,7 @@ function Project({ space, shut, renaming, managing, manage, renamed }: ProjectPr
           </span>
           <span className="name">{space.name}</span>
         </button>
-        <button className="add" title={`Sesión nueva en ${space.name}`} aria-label={`Sesión nueva en ${space.name}`} onClick={() => legacy.draft(space.root)}>
+        <button className="add" title={`Sesión nueva en ${space.name}`} aria-label={`Sesión nueva en ${space.name}`} onClick={() => draft(space.root)}>
           <Icon svg={ICONS.plus} />
         </button>
       </div>
@@ -207,7 +198,7 @@ function SessionRow({ home, summary, renaming, managed, manage, renamed }: RowPr
   return (
     <div className="session-row" data-session={summary.id} data-current={String(current)} data-renaming={renaming ? "true" : undefined}>
       {renaming && <Rename home={home} summary={summary} done={renamed} />}
-      <button className="session" aria-current={current} title={said.filter(Boolean).join(" · ")} onClick={() => legacy.resume(home, summary.id)}>
+      <button className="session" aria-current={current} title={said.filter(Boolean).join(" · ")} onClick={() => resume(home, summary.id)}>
         <span className="name">{summary.title}</span>
         {summary.archived && (
           <span className="kept">
@@ -306,7 +297,7 @@ function RowMenu({ menu, managed, rename }: { menu: ReturnType<typeof useSheet>;
         role="menuitem"
         tabIndex={-1}
         data-armed={String(armed)}
-        onClick={armed ? act((one) => deleteSession(one.home, one.summary.id)) : () => setArmed(true)}
+        onClick={armed ? act(async (one) => (await deleteSession(one.home, one.summary.id)) && draft(one.home)) : () => setArmed(true)}
       >
         <span className="act-icon">
           <Icon svg={ICONS.trash} />

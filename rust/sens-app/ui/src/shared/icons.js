@@ -1,5 +1,5 @@
-// SVG markup for every icon in the shell. The legacy script sets it as
-// innerHTML; React renders the same <svg> through Icon, from its shape.
+// Every icon in the shell, as SVG markup that also names it: Icon draws the
+// <svg> from its shape.
 
 const shapes = new Map();
 
@@ -54,6 +54,7 @@ export const ICONS = {
   forward: icon('<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>', 14),
   external: icon('<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>', 14),
   close: icon('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', 14, 1.8),
+  dismiss: icon('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   listChecks: icon('<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>'),
   split: icon('<path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/>'),
   wrench: icon('<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>'),
@@ -81,6 +82,13 @@ export const ICONS = {
   caret: icon('<path d="M6 9l6 6 6-6"/>', 11, 2.4),
   remove: icon('<path d="M6 6l12 12M18 6L6 18"/>', 11, 2.4),
   tick: icon('<path d="M20 6 9 17l-5-5"/>', 12, 2.4),
+  // The shell's own: the tree switch, the tools and the window's controls.
+  treeLines: icon('<path d="M4 6h6M4 12h16M4 18h10"/>', 13, 1.8),
+  moreVertical: icon('<circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>', 15, 1.8),
+  minimize: icon('<path d="M5 12h14"/>', 15, 1.8),
+  maximize: icon('<rect x="5" y="5" width="14" height="14" rx="2"/>', 15, 1.7),
+  restore: icon('<rect x="9" y="3" width="12" height="12" rx="2"/><path d="M15 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h4"/>', 15, 1.7),
+  shutWindow: icon('<path d="M18 6 6 18M6 6l12 12"/>', 15, 1.8),
   brain: icon('<path d="M12 18V5"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.598 6.5a3 3 0 1 0-5.598-1.5 3 3 0 1 0-5.598 1.5"/><path d="M19.967 17.484A4 4 0 0 1 18 18a4 4 0 0 1-4-4"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M6 18a4 4 0 0 1-1.967-.516A4 4 0 0 0 10 14"/><path d="M19.938 10.5a4 4 0 0 1 .585.396 4 4 0 0 1-.585 6.588"/><path d="M4.062 10.5a4 4 0 0 0-.585.396 4 4 0 0 0 .585 6.588"/><path d="M4.062 10.5a4 4 0 0 1 2.526-5.375"/><path d="M19.938 10.5a4 4 0 0 0-2.526-5.375"/>', 18, 1.4),
   shieldCheck: icon('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>'),
   archive: icon('<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>', 16),

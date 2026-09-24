@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Card } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { chooseFolder } from "../../app/session";
 import { blank, chat } from "../chat/store";
 import { accountLine, loadCatalog, models, noteLimits } from "../models/store";
 import { project } from "../project/store";
@@ -28,6 +28,7 @@ const ipc = vi.hoisted(() => ({
 }));
 
 vi.mock("../../ipc/commands", () => ({ commands: ipc.commands, events: { claudeCode: () => Promise.resolve(() => {}) } }));
+vi.mock("../../app/session", () => ({ resume: vi.fn(), draft: vi.fn(async () => {}), fresh: vi.fn(), chooseFolder: vi.fn(), showView: vi.fn() }));
 
 const card = (id: string, over: Partial<Card> = {}): Card => ({
   id,
@@ -59,7 +60,6 @@ beforeEach(async () => {
   composer.setState(composer.getInitialState(), true);
   project.setState({ root: "C:/demo", session: "", view: "", touched: new Map() });
   blank("");
-  Object.assign(legacy, { chooseFolder: vi.fn(), showView: vi.fn(), panelShows: () => false });
   await loadCatalog();
   await act(async () => new Promise((settle) => setTimeout(settle)));
 });
@@ -102,7 +102,7 @@ describe("the composer", () => {
     fireEvent.click(button("Quitar plan.pdf"));
     expect(composer.getState().attached).toEqual([]);
     fireEvent.click(button(/demo/));
-    expect(legacy.chooseFolder).toHaveBeenCalled();
+    expect(chooseFolder).toHaveBeenCalled();
   });
 
   it("chooses a model, and hides models while editing the list", () => {

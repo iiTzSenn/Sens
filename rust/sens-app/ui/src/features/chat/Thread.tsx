@@ -1,13 +1,12 @@
-import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
-import { legacy } from "../../legacy/bridge";
+import { openPicture } from "../../app/Dialog";
 import { seconds, whole } from "../../shared/format.js";
 import { Ask } from "./Ask";
 import { grain } from "./grain";
 import { Said, Thought } from "./Said";
 import { Step } from "./Step";
-import { chat, hearChat } from "./store";
+import { chat } from "./store";
 import type { Notice as NoticeTurn, Picture, Reply as ReplyTurn, You as YouTurn } from "./turns";
 
 // Within this of the bottom, the chat follows what arrives.
@@ -15,15 +14,6 @@ const NEAR_BOTTOM = 160;
 
 // The conversation: what arrives keeps it at the bottom unless you scrolled
 // up to read; the edges fade where there is more to scroll.
-export function mountThread(host: Element) {
-  hearChat();
-  createRoot(host).render(
-    <StrictMode>
-      <Thread />
-    </StrictMode>,
-  );
-}
-
 export function Thread() {
   const turns = useStore(chat, (s) => s.turns);
   const hint = useStore(chat, (s) => s.hint);
@@ -130,11 +120,7 @@ function Sent({ picture }: { picture: Picture }) {
       type="button"
       title="Ver imagen"
       aria-label="Ver imagen"
-      onClick={(event) => {
-        if (!src) return;
-        const shown = Object.assign(document.createElement("img"), { className: "sight", alt: "Imagen enviada", src });
-        legacy.preview("Imagen enviada", event.currentTarget, shown);
-      }}
+      onClick={(event) => src && openPicture("Imagen enviada", src, event.currentTarget)}
     >
       <img alt="" src={src || undefined} />
     </button>

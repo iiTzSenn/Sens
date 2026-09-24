@@ -67,7 +67,7 @@
 
   * { box-sizing: border-box; }
   :root { interpolate-size: allow-keywords; }
-  html, body { height: 100%; margin: 0; }
+  html, body, #app { height: 100%; margin: 0; }
 
   body {
     background: var(--ground); color: var(--text);
@@ -1210,9 +1210,6 @@
   .task-actions[hidden] { display: none; }
   .task-actions .quiet { border: 1px solid var(--hair-strong); font-size: 12px; }
   .task-actions .fault { font-size: 12px; }
-
-  /* A box React renders into that lays out as if its children were its parent's. */
-  .hosted { display: contents; }
 
   .code-body {
     --tree: clamp(150px, var(--tree-width, 232px), 60%);

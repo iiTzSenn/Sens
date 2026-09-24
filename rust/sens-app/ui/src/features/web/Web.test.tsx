@@ -2,11 +2,12 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Heard } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { shell } from "../../app/shell";
+import { chat } from "../chat/state";
 import { sheets } from "../../shared/sheets.js";
 import { project } from "../project/store";
 import { aimSite, forgetSite, hearBrowser, onProject, syncBrowser, web } from "./store";
-import { Web } from "./Web";
+import { Address, Outside, Web } from "./Web";
 
 const ipc = vi.hoisted(() => ({
   commands: {
@@ -42,7 +43,8 @@ beforeEach(() => {
   project.setState({ root: "C:/demo" });
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.previewUrl.mockResolvedValue("http://127.0.0.1:4321/p7/docs/index.html");
-  Object.assign(legacy, { showTool: vi.fn(), warn: vi.fn(), panelShows: vi.fn(() => true) });
+  shell.setState({ ...shell.getInitialState(), toolsOpen: true, tool: "web" }, true);
+  chat.setState({ turns: [] });
 });
 
 afterEach(() => {
@@ -52,7 +54,11 @@ afterEach(() => {
   forgetSite();
 });
 
-const show = () => render(<Web address={address} out={out} />);
+const show = () => {
+  render(<Address />, { container: address });
+  render(<Outside />, { container: out });
+  return render(<Web />);
+};
 const bar = () => screen.getByRole("textbox", { name: "Dirección o página del proyecto" }) as HTMLInputElement;
 
 async function type(text: string) {
@@ -73,13 +79,13 @@ describe("web panel", () => {
     const opened = () => ipc.commands.browserOpen.mock.calls.at(-1)?.[0];
     await type("localhost:5173");
     expect(opened()).toBe("http://localhost:5173");
-    expect(legacy.showTool).toHaveBeenCalledWith("web");
+    expect(shell.getState()).toMatchObject({ toolsOpen: true, tool: "web" });
     await type("example.com/docs");
     expect(opened()).toBe("https://example.com/docs");
     await type("cómo centrar un div");
     expect(opened()).toBe("https://www.google.com/search?q=c%C3%B3mo%20centrar%20un%20div");
     await type("ftp://viejo.net");
-    expect(legacy.warn).toHaveBeenCalledWith("El navegador solo abre direcciones http y https.");
+    expect(chat.getState().turns.at(-1)).toMatchObject({ kind: "notice", parts: ["El navegador solo abre direcciones http y https."], tone: "warn" });
   });
 
   it("serves a page of the project, and shows it by its path", async () => {

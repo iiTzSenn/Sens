@@ -1,7 +1,8 @@
 import { createStore } from "zustand/vanilla";
 import { commands } from "../../ipc/commands";
 import type { Artifact } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { openPicture } from "../../app/Dialog";
+import { showTool } from "../../app/shell";
 import { PAGE } from "../../shared/format.js";
 import { store, stored } from "../../shared/storage.js";
 import { present } from "../files/view";
@@ -57,17 +58,13 @@ export function pickTab(tab: ShelfTab) {
 }
 
 async function showPicture(item: Artifact, back: HTMLElement) {
-  const img = document.createElement("img");
-  img.className = "sight";
-  img.alt = item.name;
-  img.src = await picture(item);
-  legacy.preview(item.name, back, img);
+  openPicture(item.name, await picture(item), back);
 }
 
 async function showText(item: Artifact) {
   present(item.target, await commands.artifactText(item.target), item.root);
   if (PAGE.test(item.name)) return showSite(item.target, item.root);
-  legacy.showTool("files");
+  showTool("files");
 }
 
 const OPENERS = {

@@ -1,6 +1,6 @@
 import { createStore } from "zustand/vanilla";
 import { commands } from "../../ipc/commands";
-import { legacy } from "../../legacy/bridge";
+import { panelShows } from "../../app/shell";
 import { project } from "../project/store";
 import { diffedFiles, freshFile, type DiffFile } from "./diff";
 
@@ -47,7 +47,7 @@ export function soonChanges() {
 
 export function forgetChanges() {
   set({ changed: null, versioned: true, fault: "", unfolded: new Set() });
-  if (legacy.panelShows("changes")) loadChanges();
+  if (panelShows("changes")) loadChanges();
 }
 
 export function unfold(path: string, open: boolean) {

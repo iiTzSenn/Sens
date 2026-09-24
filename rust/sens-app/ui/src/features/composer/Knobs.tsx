@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useStore } from "zustand";
 import type { Card, Provider } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { showView } from "../../app/session";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { useSheet, type Sheet } from "../../shared/useSheet";
@@ -85,7 +85,7 @@ export function ModelPicker() {
           onClick={() => {
             sheet.shut();
             showSection("providers");
-            legacy.showView("settings");
+            showView("settings");
           }}
         >
           <Icon svg={ICONS.logIn} />

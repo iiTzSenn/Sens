@@ -1,7 +1,6 @@
-import { createStore } from "zustand/vanilla";
 import { commands, events } from "../../ipc/commands";
 import type { AgentEvent, ChatEvent, Decision, Message, SessionEntry, Settings } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { panelShows } from "../../app/shell";
 import { loadShelf } from "../artifacts/store";
 import { loadChanges, soonChanges } from "../changes/store";
 import { loadFiles } from "../files/store";
@@ -13,20 +12,10 @@ import { forgetTasks, noteTask, settleTasks } from "../tasks/store";
 import { TASK_EVENTS } from "../tasks/tasks";
 import { onProject, reloadSite } from "../web/store";
 import { SILENT, consulting, editOf, statusOf } from "./looks";
-import { CLOSING, answered, heard, nextKey, opening, type Picture, type Piece, type Reply, type Turn } from "./turns";
+import { chat, notice, warn } from "./state";
+import { CLOSING, answered, heard, nextKey, opening, type Picture, type Reply } from "./turns";
 
-// The chat of the session on screen: its turns; whether Claude is working
-// (`busy`) and being stopped; the hint the empty chat shows; whether a
-// session is being drawn back, which skips the entry animations; and how many
-// turns ended, for what reads the project again after one.
-export const chat = createStore(() => ({
-  turns: [] as Turn[],
-  busy: false,
-  stopping: false,
-  hint: "",
-  replaying: false,
-  ended: 0,
-}));
+export { chat, notice, warn };
 
 const set = chat.setState;
 
@@ -64,12 +53,6 @@ const setSession = (id: string) => project.setState({ session: id });
 
 // The empty chat invites to start, or to pick a folder first.
 export const hello = () => set({ hint: project.getState().root ? nextHint() : NO_ROOT });
-
-export function notice(parts: Piece[], tone: "" | "warn" = "") {
-  set(({ turns }) => ({ turns: [...turns, { kind: "notice", key: nextKey(), parts, tone }] }));
-}
-
-export const warn = (text: string) => notice([text], "warn");
 
 function onReply(key: number | null, change: (reply: Reply) => Reply) {
   if (key === null) return;
@@ -112,8 +95,8 @@ export function blank(id: string) {
 function touched(edit: { path: string; lines: number[]; plus: number; minus: number }) {
   noteEdit(edit);
   if (viewer.getState().opened === edit.path) openFile(edit.path);
-  if (onProject() && legacy.panelShows("web")) reloadSite();
-  if (legacy.panelShows("changes")) soonChanges();
+  if (onProject() && panelShows("web")) reloadSite();
+  if (panelShows("changes")) soonChanges();
 }
 
 // One event on the reply it goes to, and what the live line says of it.
@@ -259,7 +242,7 @@ async function afterTurn() {
   idle(true);
   set(({ ended }) => ({ ended: ended + 1 }));
   if (project.getState().view === "artifacts") loadShelf();
-  if (legacy.panelShows("changes")) await loadChanges();
+  if (panelShows("changes")) await loadChanges();
   await loadFiles();
   await loadRail();
 }

@@ -1,6 +1,4 @@
-import { StrictMode, memo, useLayoutEffect, useMemo, useRef } from "react";
-import { createPortal } from "react-dom";
-import { createRoot } from "react-dom/client";
+import { memo, useLayoutEffect, useMemo, useRef } from "react";
 import { useStore } from "zustand";
 import { FRONT_MATTER } from "../../shared/format.js";
 import { Markdown } from "../../shared/markdown/Markdown";
@@ -10,24 +8,15 @@ import { useSeen } from "../../shared/useSeen";
 import { project, type Edits } from "../project/store";
 import { setMode, viewer, viewOf } from "./view";
 
-// The file panel beside the tree: its name and the agent's counts in the
-// header, the Código/Vista switch among the header's tools, and the text.
-export function mountViewer(host: Element, head: Element, modes: Element) {
-  createRoot(host).render(
-    <StrictMode>
-      <Viewer head={head} modes={modes} />
-    </StrictMode>,
-  );
-}
-
-export function Viewer({ head, modes }: { head: Element; modes: Element }) {
+// The file beside the tree: as code, or as a page when it reads as one. Its
+// name and the agent's counts (ViewerHead) and the Código/Vista switch
+// (ViewerModes) go in the panel's header.
+export function Viewer() {
   const title = useStore(viewer, (s) => s.title);
   const mode = useStore(viewer, (s) => s.mode);
   const reading = mode === "view" && viewOf(title) === "reading";
   return (
     <>
-      {createPortal(<Where />, head)}
-      {createPortal(<Modes />, modes)}
       <Source hidden={reading} />
       {viewOf(title) === "reading" && <Reading hidden={!reading} />}
     </>
@@ -39,7 +28,7 @@ const useEdits = () => {
   return useStore(project, (s) => (opened ? s.touched.get(opened) : undefined));
 };
 
-function Where() {
+export function ViewerHead() {
   const title = useStore(viewer, (s) => s.title) || "Ningún fichero abierto";
   const edits = useEdits();
   return (
@@ -59,7 +48,7 @@ function Where() {
   );
 }
 
-function Modes() {
+export function ViewerModes() {
   const title = useStore(viewer, (s) => s.title);
   const mode = useStore(viewer, (s) => s.mode);
   const kind = viewOf(title);

@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { legacy } from "../../legacy/bridge";
+import { shell } from "../../app/shell";
 import { viewer } from "../files/view";
 import { noteEdit, project } from "../project/store";
 import { forgetTasks, noteTask, settleTasks } from "../tasks/store";
-import { TasksPanel } from "../tasks/TasksPanel";
-import { ChangesPanel } from "./Changes";
+import { TaskTally, TasksPanel } from "../tasks/TasksPanel";
+import { ChangeTotals, ChangesPanel } from "./Changes";
 import { changes, loadChanges } from "./store";
 
 const ipc = vi.hoisted(() => ({
@@ -26,6 +26,16 @@ const DIFF = [
 
 let header: HTMLElement;
 
+// Each panel with its header's count, as the tool panel draws them.
+const showChanges = () => {
+  render(<ChangeTotals />, { container: header });
+  return render(<ChangesPanel />);
+};
+const showTasks = () => {
+  render(<TaskTally />, { container: header });
+  return render(<TasksPanel />);
+};
+
 beforeEach(() => {
   header = document.createElement("span");
   document.body.append(header);
@@ -35,8 +45,7 @@ beforeEach(() => {
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.changes.mockResolvedValue({ diff: DIFF, fresh: ["notes.md"] });
   ipc.commands.openFile.mockResolvedValue("a\nb\nc");
-  legacy.showTool = vi.fn();
-  legacy.panelShows = () => true;
+  shell.setState({ ...shell.getInitialState(), toolsOpen: true, tool: "changes" }, true);
 });
 
 afterEach(() => {
@@ -48,7 +57,7 @@ const row = (name: string) => screen.getByText(name, { selector: ".change .name"
 
 describe("changes panel", () => {
   it("lists what differs from the last commit and totals it in the header", async () => {
-    render(<ChangesPanel totals={header} />);
+    showChanges();
     await act(async () => loadChanges());
     expect(header.textContent).toBe("2 ficheros+1−1");
     expect(row("app.js").querySelector(".state")?.textContent).toBe("M");
@@ -59,14 +68,14 @@ describe("changes panel", () => {
 
   it("says why there is nothing to list", async () => {
     ipc.commands.changes.mockResolvedValue(null);
-    render(<ChangesPanel totals={header} />);
+    showChanges();
     expect(screen.getByText("Leyendo cambios…")).toBeTruthy();
     await act(async () => loadChanges());
     expect(screen.getByText("Esta carpeta no está en un repositorio git.")).toBeTruthy();
   });
 
   it("draws the diff when a row opens, and counts a new file once read", async () => {
-    render(<ChangesPanel totals={header} />);
+    showChanges();
     await act(async () => loadChanges());
     await act(async () => fireEvent(row("app.js"), new Event("toggle")));
     expect(row("app.js").querySelector(".diff")).toBeNull();
@@ -86,12 +95,12 @@ describe("changes panel", () => {
   });
 
   it("marks what the agent touched and jumps to the file panel", async () => {
-    render(<ChangesPanel totals={header} />);
+    showChanges();
     await act(async () => loadChanges());
     act(() => noteEdit({ path: "src/app.js", lines: [1], plus: 1, minus: 0 }));
     expect(row("app.js").dataset.touched).toBe("true");
     await act(async () => fireEvent.click(row("app.js").querySelector(".jump")!));
-    expect(legacy.showTool).toHaveBeenCalledWith("files");
+    expect(shell.getState()).toMatchObject({ toolsOpen: true, tool: "files" });
     await act(async () => {});
     expect(viewer.getState()).toMatchObject({ title: "src/app.js", opened: "src/app.js" });
   });
@@ -99,7 +108,7 @@ describe("changes panel", () => {
 
 describe("tasks panel", () => {
   it("counts running tasks in the header and settles the ones Rust dropped", () => {
-    render(<TasksPanel count={header} />);
+    showTasks();
     expect(screen.getByText(/Aquí verás los subagentes/)).toBeTruthy();
     act(() => noteTask({ kind: "taskStarted", id: "t1", runner: "local_agent", description: "Revisar" }));
     expect(header.textContent).toBe("1 en marcha");
@@ -110,7 +119,7 @@ describe("tasks panel", () => {
 
   it("reads a command's output when opened and stops it on request", async () => {
     ipc.commands.taskOutput.mockResolvedValue("hola\n\n");
-    render(<TasksPanel count={header} />);
+    showTasks();
     act(() => {
       noteTask({ kind: "tool", name: "Bash", id: "c1", input: { command: "npm test" } });
       noteTask({ kind: "taskStarted", id: "t1", runner: "local_bash", description: "Tests", tool: "c1" });

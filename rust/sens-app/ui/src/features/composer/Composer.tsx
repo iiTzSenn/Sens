@@ -1,8 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { StrictMode, useEffect, useLayoutEffect, useRef, useState, type AnimationEvent, type CSSProperties, type RefObject } from "react";
-import { createRoot } from "react-dom/client";
+import { useEffect, useLayoutEffect, useRef, useState, type AnimationEvent, type CSSProperties, type RefObject } from "react";
 import { useStore } from "zustand";
-import { legacy } from "../../legacy/bridge";
+import { chooseFolder } from "../../app/session";
 import { stem, weigh } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
@@ -11,19 +10,10 @@ import { chat, halt } from "../chat/store";
 import { models } from "../models/store";
 import { project } from "../project/store";
 import { Effort, ModelPicker, ModePicker, Think } from "./Knobs";
-import { attachPaths, canSend, composer, dropFile, dropPicture, fileLabel, hearDrops, send, switchTo, takePictures, warm } from "./store";
+import { attachPaths, canSend, composer, dropFile, dropPicture, fileLabel, send, switchTo, takePictures, warm } from "./store";
 
 // Where you write to Claude: the folder and branch, what goes attached, the
 // message, and the knobs of the next turn under it.
-export function mountComposer(host: Element) {
-  hearDrops();
-  createRoot(host).render(
-    <StrictMode>
-      <Composer />
-    </StrictMode>,
-  );
-}
-
 export function Composer() {
   return (
     <div className="composer">
@@ -55,7 +45,7 @@ function Workspace() {
 
   return (
     <div className="workspace">
-      <button className="chipbtn" id="folder" title={root || "Elegir carpeta de trabajo"} disabled={busy} onClick={() => legacy.chooseFolder()}>
+      <button className="chipbtn" id="folder" title={root || "Elegir carpeta de trabajo"} disabled={busy} onClick={() => chooseFolder()}>
         <Icon svg={ICONS.folderSmall} />
         <span id="root">{root ? stem(root) : "Elegir carpeta…"}</span>
       </button>

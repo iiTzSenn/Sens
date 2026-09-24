@@ -1,6 +1,4 @@
-import { StrictMode, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { createRoot } from "react-dom/client";
+import { useEffect, useMemo, useState } from "react";
 import { useStore } from "zustand";
 import { commands } from "../../ipc/commands";
 import { PICTURE, parentOf, plural, stem } from "../../shared/format.js";
@@ -19,16 +17,7 @@ const CHANGE_PREVIEW = 400;
 const CHANGE_CAP = 300;
 const CHANGE_WORD: Record<DiffFile["state"], string> = { A: "Nuevo", M: "Modificado", D: "Borrado", R: "Renombrado" };
 
-// The list goes in the panel body; the totals, in the header app.js owns.
-export function mountChanges(host: Element, totals: Element) {
-  createRoot(host).render(
-    <StrictMode>
-      <ChangesPanel totals={totals} />
-    </StrictMode>,
-  );
-}
-
-export function ChangesPanel({ totals }: { totals: Element }) {
+export function ChangesPanel() {
   const changed = useStore(changes, (s) => s.changed);
   const versioned = useStore(changes, (s) => s.versioned);
   const fault = useStore(changes, (s) => s.fault);
@@ -46,7 +35,6 @@ export function ChangesPanel({ totals }: { totals: Element }) {
 
   return (
     <>
-      {createPortal(<Totals files={files} />, totals)}
       {fault ? (
         <p className="none fault">{fault}</p>
       ) : quiet ? (
@@ -65,7 +53,9 @@ export function ChangesPanel({ totals }: { totals: Element }) {
   );
 }
 
-function Totals({ files }: { files: DiffFile[] }) {
+// What changed in all, for the panel's header.
+export function ChangeTotals() {
+  const files = useStore(changes, (s) => s.changed) || [];
   if (!files.length) return null;
   const sum = (key: "plus" | "minus") => files.reduce((total, file) => total + file[key], 0);
   return (

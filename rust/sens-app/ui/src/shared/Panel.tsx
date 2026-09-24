@@ -1,20 +1,8 @@
-import { StrictMode, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
-import { flushSync } from "react-dom";
-import { createRoot } from "react-dom/client";
-import { legacy } from "../legacy/bridge";
+import { useState, type FormEvent, type ReactElement, type ReactNode } from "react";
+import { closeDialog, openDialog } from "../app/modal";
 
-// React content in the shared dialog app.js owns. It renders before the dialog
-// opens, so the field marked data-autofocus takes the focus, and it unmounts
-// when the dialog closes.
-export function openPanel(title: string, content: ReactElement, back?: HTMLElement) {
-  const host = document.createElement("div");
-  host.style.display = "contents";
-  const root = createRoot(host);
-  flushSync(() => root.render(<StrictMode>{content}</StrictMode>));
-  legacy.showPanel(title, host, back);
-  host.querySelector<HTMLElement>("[data-autofocus]")?.focus();
-  document.getElementById("panel")?.addEventListener("close", () => root.unmount(), { once: true });
-}
+// A form or a panel in the shared dialog; `back` takes the focus when it closes.
+export const openPanel = (title: string, content: ReactElement, back?: HTMLElement) => openDialog(title, content, back);
 
 export type Control = {
   id: string;
@@ -63,7 +51,7 @@ export function PanelForm({
     setBusy(true);
     try {
       await act();
-      legacy.closePanel();
+      closeDialog();
       await after?.();
     } catch (reason) {
       setFault(String(reason));

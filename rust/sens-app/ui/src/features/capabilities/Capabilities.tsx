@@ -11,14 +11,6 @@ import { Installed } from "./Installed";
 import { CAP_TABS } from "./kinds";
 import { capabilities, consumeScroll, importSkill, showMode, type Mode } from "./store";
 
-export function mountCapabilities(host: Element) {
-  createRoot(host).render(
-    <StrictMode>
-      <Capabilities />
-    </StrictMode>,
-  );
-}
-
 export function Capabilities() {
   const mode = useStore(capabilities, (s) => s.mode);
   const detailing = useStore(capabilities, (s) => Boolean(s.detailing));

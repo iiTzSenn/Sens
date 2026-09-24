@@ -1,8 +1,7 @@
-import { StrictMode, useEffect, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { Artifact } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { resume } from "../../app/session";
 import { EmptyView } from "../../shared/EmptyView";
 import { ago, when } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
@@ -12,14 +11,6 @@ import { CountTabs, ProjectFocus, ViewSeek } from "../../shared/ViewParts";
 import { plain } from "../market/search.js";
 import { KIND_ICON, KIND_LABEL, SHELF_TABS, keeps, keptTally, originOf, pictureKey, saying, sessionOf, type ShelfTab } from "./items";
 import { artifacts, openArtifact, pickTab, picture } from "./store";
-
-export function mountShelf(host: Element) {
-  createRoot(host).render(
-    <StrictMode>
-      <Shelf />
-    </StrictMode>,
-  );
-}
 
 export function Shelf() {
   const items = useStore(artifacts, (s) => s.items);
@@ -150,7 +141,7 @@ function Origin({ item }: { item: Artifact }) {
   const said = sessionOf(item);
   const session = item.session;
   return (
-    <button className="from" title={`Abrir la sesión · ${said}`} onClick={() => legacy.resume(item.root, session)}>
+    <button className="from" title={`Abrir la sesión · ${said}`} onClick={() => resume(item.root, session)}>
       {said}
     </button>
   );

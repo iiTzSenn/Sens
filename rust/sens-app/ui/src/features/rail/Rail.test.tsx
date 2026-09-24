@@ -2,7 +2,9 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Workspace } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
+import { Dialog } from "../../app/Dialog";
+import { dialog } from "../../app/modal";
+import { chooseFolder, draft, fresh, resume, showView } from "../../app/session";
 import { profile } from "../profile/store";
 import { project } from "../project/store";
 import { Rail } from "./Rail";
@@ -19,6 +21,7 @@ const ipc = vi.hoisted(() => ({
 }));
 
 vi.mock("../../ipc/commands", () => ({ commands: ipc.commands }));
+vi.mock("../../app/session", () => ({ resume: vi.fn(), draft: vi.fn(async () => {}), fresh: vi.fn(), chooseFolder: vi.fn(), showView: vi.fn() }));
 
 const SPACES: Workspace[] = [
   {
@@ -40,14 +43,8 @@ beforeEach(() => {
   profile.setState({ person: { name: "Ada Lovelace", checkUpdates: true }, fault: "" });
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.workspaces.mockResolvedValue(structuredClone(SPACES));
-  Object.assign(legacy, {
-    fresh: vi.fn(),
-    draft: vi.fn(async () => {}),
-    resume: vi.fn(),
-    showView: vi.fn(),
-    chooseFolder: vi.fn(),
-    showPanel: vi.fn(),
-  });
+  vi.clearAllMocks();
+  dialog.setState(dialog.getInitialState(), true);
 });
 
 afterEach(cleanup);
@@ -71,21 +68,21 @@ describe("the rail", () => {
     expect(screen.getByText("Sin sesiones.")).toBeTruthy();
 
     fireEvent.click(within(row("Probar el instalador")).getByRole("button", { name: /Probar/ }));
-    expect(legacy.resume).toHaveBeenCalledWith("C:/demo", "old");
+    expect(resume).toHaveBeenCalledWith("C:/demo", "old");
     fireEvent.click(screen.getByRole("button", { name: "Sesión nueva en web" }));
-    expect(legacy.draft).toHaveBeenCalledWith("C:/web");
+    expect(draft).toHaveBeenCalledWith("C:/web");
   });
 
   it("goes to a new session or a view, marking where it is", async () => {
     await open();
-    const fresh = screen.getByRole("button", { name: "Sesión nueva" });
-    fireEvent.click(fresh);
-    expect(legacy.fresh).toHaveBeenCalled();
+    const newOne = screen.getByRole("button", { name: "Sesión nueva" });
+    fireEvent.click(newOne);
+    expect(fresh).toHaveBeenCalled();
     act(() => project.setState({ session: "" }));
-    expect(fresh.getAttribute("aria-current")).toBe("true");
+    expect(newOne.getAttribute("aria-current")).toBe("true");
 
     fireEvent.click(screen.getByRole("button", { name: "Artefactos" }));
-    expect(legacy.showView).toHaveBeenCalledWith("artifacts");
+    expect(showView).toHaveBeenCalledWith("artifacts");
     act(() => project.setState({ view: "artifacts", session: "one" }));
     expect(screen.getByRole("button", { name: "Artefactos" }).getAttribute("aria-current")).toBe("true");
     expect(row("Migrar la interfaz").dataset.current).toBe("false");
@@ -131,7 +128,7 @@ describe("the rail", () => {
     expect(ipc.commands.deleteSession).not.toHaveBeenCalled();
     await act(async () => fireEvent.click(screen.getByRole("menuitem", { name: "Confirmar" })));
     expect(ipc.commands.deleteSession).toHaveBeenCalledWith("C:/demo", "one");
-    expect(legacy.draft).toHaveBeenCalledWith("C:/demo");
+    expect(draft).toHaveBeenCalledWith("C:/demo");
   });
 
   it("says why a change or the list failed, once it is read again", async () => {
@@ -155,7 +152,7 @@ describe("the rail", () => {
     expect(screen.queryByText("Todavía no hay sesiones.")).toBeNull();
     await act(async () => loadRail());
     fireEvent.click(screen.getByRole("button", { name: "Abrir proyecto" }));
-    expect(legacy.chooseFolder).toHaveBeenCalled();
+    expect(chooseFolder).toHaveBeenCalled();
   });
 
   it("shows a title the model gives a session", async () => {
@@ -172,11 +169,11 @@ describe("the rail", () => {
     expect(me.querySelector(".avatar")?.textContent).toBe("AL");
     fireEvent.click(me);
     fireEvent.click(screen.getByRole("menuitem", { name: "Ajustes" }));
-    expect(legacy.showView).toHaveBeenCalledWith("settings");
+    expect(showView).toHaveBeenCalledWith("settings");
 
     fireEvent.click(me);
     fireEvent.click(screen.getByRole("menuitem", { name: "Atajos de teclado" }));
-    expect(legacy.showPanel).toHaveBeenCalledWith("Atajos de teclado", expect.anything(), me);
+    expect(dialog.getState()).toMatchObject({ open: true, title: "Atajos de teclado" });
 
     act(() => profile.setState({ person: { name: "", checkUpdates: true } }));
     expect(screen.getByText("Sin nombre").dataset.empty).toBe("true");

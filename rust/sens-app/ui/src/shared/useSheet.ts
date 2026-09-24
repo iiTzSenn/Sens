@@ -2,9 +2,9 @@ import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from
 import { syncBrowser } from "../features/web/store";
 import { sheets } from "./sheets.js";
 
-// A menu over the shell that behaves like the legacy ones, because it joins
-// the same list: one open at a time, a click outside or Escape shuts it (app.js
-// listens for both), arrows move between its items, and focus leaving shuts it.
+// A menu over the shell: one open at a time, a click outside or Escape shuts
+// it (the app listens for both, over the list every sheet joins), arrows move
+// between its items, and focus leaving shuts it.
 export function useSheet<Anchor extends HTMLElement = HTMLButtonElement>() {
   const [open, setOpen] = useState(false);
   const sheet = useRef<HTMLDivElement>(null);

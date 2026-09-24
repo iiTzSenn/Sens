@@ -1,9 +1,7 @@
-import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { createRoot } from "react-dom/client";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { commands } from "../../ipc/commands";
-import { legacy } from "../../legacy/bridge";
+import { panelShows } from "../../app/shell";
 import { FoldedText } from "../../shared/Folded";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
@@ -13,16 +11,10 @@ import { project } from "../project/store";
 import { tasks, tickTasks } from "./store";
 import { TASK_STATE, inOrder, isAgent, isRunning, isShell, shellEnding, tally, taskTime, taskUsage, type Task } from "./tasks";
 
-// The cards go in the panel body; the tally, in the header app.js owns.
-export function mountTasks(host: Element, count: Element) {
-  createRoot(host).render(
-    <StrictMode>
-      <TasksPanel count={count} />
-    </StrictMode>,
-  );
-}
+// How many run and how many ended, for the panel's header.
+export const TaskTally = () => tally(useStore(tasks, (s) => s.tasks));
 
-export function TasksPanel({ count }: { count: Element }) {
+export function TasksPanel() {
   const all = useStore(tasks, (s) => s.tasks);
   const now = useStore(tasks, (s) => s.now);
   const list = inOrder(all);
@@ -31,14 +23,13 @@ export function TasksPanel({ count }: { count: Element }) {
   useEffect(() => {
     if (!running) return;
     const clock = setInterval(() => {
-      if (legacy.panelShows("tasks")) tickTasks();
+      if (panelShows("tasks")) tickTasks();
     }, 1000);
     return () => clearInterval(clock);
   }, [running]);
 
   return (
     <>
-      {createPortal(tally(all), count)}
       {list.length ? (
         list.map((task) => <TaskCard key={task.id} task={task} now={now} />)
       ) : (
