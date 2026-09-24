@@ -2,12 +2,14 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Card } from "../../ipc/types";
+import { dialog } from "../../app/modal";
 import { chooseFolder, showView } from "../../app/session";
-import { blank, chat } from "../chat/store";
-import { accountLine, loadCatalog, models, noteLimits } from "../models/store";
+import { blank } from "../chat/store";
+import { focused } from "../panes/store";
+import { accountLine, choose, loadCatalog, models, noteLimits } from "../models/store";
 import { project } from "../project/store";
 import { Composer } from "./Composer";
-import { composer, currentSettings, readRepo } from "./store";
+import { BYPASS, composer, currentSettings, readRepo, readTrust } from "./store";
 
 const ipc = vi.hoisted(() => ({
   commands: {
@@ -25,6 +27,8 @@ const ipc = vi.hoisted(() => ({
     workspaces: vi.fn(),
     tree: vi.fn(),
     folder: vi.fn(),
+    trustProject: vi.fn(),
+    projectTrusted: vi.fn(),
   },
 }));
 
@@ -59,7 +63,11 @@ beforeEach(async () => {
   models.setState(models.getInitialState(), true);
   models.setState({ known: {}, hidden: new Set() });
   composer.setState(composer.getInitialState(), true);
-  project.setState({ root: "C:/demo", session: "", view: "", touched: new Map() });
+  dialog.setState(dialog.getInitialState(), true);
+  project.setState({ view: "", touched: new Map() });
+  focused().chat.setState(focused().chat.getInitialState(), true);
+  focused().desk.setState(focused().desk.getInitialState(), true);
+  focused().desk.setState({ root: "C:/demo" });
   blank("");
   await loadCatalog();
   await act(async () => new Promise((settle) => setTimeout(settle)));
@@ -82,7 +90,7 @@ describe("the composer", () => {
   it("sends what is written with what is attached, and stops Claude while it works", async () => {
     render(<Composer />);
     expect((button("Enviar") as HTMLButtonElement).disabled).toBe(true);
-    act(() => composer.setState({ attached: [{ path: "src/app.ts", name: "app.ts", bytes: 2048, outside: false }] }));
+    act(() => focused().desk.setState({ attached: [{ path: "src/app.ts", name: "app.ts", bytes: 2048, outside: false }] }));
     expect(screen.getByText("src/app.ts", { selector: ".clip span" })).toBeTruthy();
     fireEvent.change(field(), { target: { value: "  Revisa esto  " } });
     await act(async () => fireEvent.keyDown(field(), { key: "Enter" }));
@@ -94,14 +102,14 @@ describe("the composer", () => {
     await act(async () => fireEvent.click(button("Parar")));
     expect(ipc.commands.chatStop).toHaveBeenCalledWith("s1");
     expect(button("Parando…")).toHaveProperty("disabled", true);
-    act(() => chat.setState({ busy: false, stopping: false }));
+    act(() => focused().chat.setState({ busy: false, stopping: false }));
   });
 
   it("drops an attached file, and asks for a folder from its chip", () => {
-    act(() => composer.setState({ attached: [{ path: "C:/fuera/plan.pdf", name: "plan.pdf", bytes: 10, outside: true }] }));
+    act(() => focused().desk.setState({ attached: [{ path: "C:/fuera/plan.pdf", name: "plan.pdf", bytes: 10, outside: true }] }));
     render(<Composer />);
     fireEvent.click(button("Quitar plan.pdf"));
-    expect(composer.getState().attached).toEqual([]);
+    expect(focused().desk.getState().attached).toEqual([]);
     fireEvent.click(button(/demo/));
     expect(chooseFolder).toHaveBeenCalled();
   });
@@ -122,6 +130,58 @@ describe("the composer", () => {
     expect(document.getElementById("crew")?.textContent).toBe("Sonnet");
   });
 
+  it("describes a model by its tagline, in Spanish, and spins while asking for models", () => {
+    const offered = [
+      card("claude-opus-5-5[1m]", { label: "Opus 5.5 (1M)", description: "Opus 5.5 with 1M context · Best for everyday, complex tasks" }),
+      card("claude-opus-4-8", { label: "Opus 4.8", description: "", latest: false }),
+    ];
+    act(() => {
+      models.setState({ known: { claude: offered } });
+      choose("claude", "claude-opus-5-5[1m]");
+    });
+    render(<Composer />);
+    fireEvent.click(button(/Opus 5\.5/));
+    const picker = document.getElementById("picker")!;
+    expect([...picker.querySelectorAll(".mode-sub")].map((said) => said.textContent)).toEqual(["El mejor para el trabajo complejo de cada día"]);
+
+    act(() => models.setState({ fetching: true }));
+    const refresh = document.getElementById("models-refresh")!;
+    expect(refresh.getAttribute("aria-busy")).toBe("true");
+    expect(refresh.textContent).toBe("Actualizando…");
+  });
+
+  it("asks to trust the folder before Sin control, and Sin control acts only in that folder", async () => {
+    render(<Composer />);
+    fireEvent.click(button(/Preguntar/));
+    const sheet = document.getElementById("mode-sheet")!;
+    fireEvent.click(within(sheet).getByRole("menuitemradio", { name: /Sin control/ }));
+    expect(dialog.getState().title).toBe("¿Confías en este proyecto?");
+    expect(currentSettings().mode).toBe("default");
+
+    render(<>{dialog.getState().content}</>);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Confiar y activar" })));
+    expect(ipc.commands.trustProject).toHaveBeenCalledWith("C:/demo", true);
+    expect(currentSettings().mode).toBe(BYPASS);
+    expect(document.getElementById("mode-label")?.textContent).toBe("Sin control");
+    fireEvent.click(button(/Sin control/));
+    expect(within(sheet).getByRole("menuitemradio", { checked: true }).textContent).toMatch(/^Sin control/);
+
+    act(() => focused().desk.setState({ root: "C:/otra" }));
+    expect(currentSettings().mode).toBe("default");
+    expect(document.getElementById("mode-label")?.textContent).toBe("Preguntar");
+  });
+
+  it("switches to Sin control without asking in a folder already trusted", async () => {
+    ipc.commands.projectTrusted.mockResolvedValue(true);
+    await act(async () => readTrust());
+    expect(ipc.commands.projectTrusted).toHaveBeenCalledWith("C:/demo");
+    render(<Composer />);
+    fireEvent.click(button(/Preguntar/));
+    fireEvent.click(within(document.getElementById("mode-sheet")!).getByRole("menuitemradio", { name: /Sin control/ }));
+    expect(dialog.getState().open).toBe(false);
+    expect(currentSettings().mode).toBe(BYPASS);
+  });
+
   it("points to the newer Claude Code from the picker only when there is one", async () => {
     render(<Composer />);
     fireEvent.click(button(/Sonnet/));
@@ -136,7 +196,9 @@ describe("the composer", () => {
     expect(showView).toHaveBeenCalledWith("settings");
   });
 
-  it("sets the permission mode, thinking and effort for the next turn", () => {
+  it("sets the permission mode, thinking and effort for the next turn", async () => {
+    ipc.commands.projectTrusted.mockResolvedValue(true);
+    await act(async () => readTrust());
     render(<Composer />);
     fireEvent.click(button(/Preguntar/));
     fireEvent.click(within(document.getElementById("mode-sheet")!).getByRole("menuitemradio", { name: /Sin control/ }));
@@ -167,6 +229,6 @@ describe("the composer", () => {
     await act(async () => fireEvent.click(button("feat/ui")));
     expect(ipc.commands.checkout).toHaveBeenCalledWith("C:/demo", "feat/ui");
     expect(document.getElementById("branch-name")?.textContent).toBe("feat/ui");
-    expect(chat.getState().turns.at(-1)).toMatchObject({ kind: "notice", parts: ["rama · ", { bold: "feat/ui" }] });
+    expect(focused().chat.getState().turns.at(-1)).toMatchObject({ kind: "notice", parts: ["rama · ", { bold: "feat/ui" }] });
   });
 });

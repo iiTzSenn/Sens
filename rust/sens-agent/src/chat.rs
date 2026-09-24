@@ -13,7 +13,8 @@ use crate::catalog::{self, Thinking};
 use crate::process::{self, hidden, unlaunched};
 use crate::session::{self, Entry};
 
-pub const MODES: &[&str] = &["default", "acceptEdits", "auto", "plan", "bypassPermissions"];
+pub const BYPASS: &str = "bypassPermissions";
+pub const MODES: &[&str] = &["default", "acceptEdits", "auto", "plan", BYPASS];
 
 const STREAMING: &[&str] = &[
     "-p",

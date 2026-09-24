@@ -155,19 +155,34 @@ fn cards(offered: &Value) -> Vec<Card> {
         .map(|entry| id_of(entry))
         .collect();
     let mut found: Vec<Card> = Vec::new();
-    let mut families: Vec<String> = Vec::new();
     for entry in entries {
         let Some(card) = card(entry) else { continue };
         let spare = entry["value"] == DEFAULT_ENTRY && aliased.contains(&card.id.as_str());
-        if spare || found.iter().any(|kept| kept.id == card.id) {
-            continue;
+        if !spare && !found.iter().any(|kept| kept.id == card.id) {
+            found.push(card);
         }
+    }
+    marked(found)
+}
+
+pub fn with_served(mut found: Vec<Card>, served: &Value) -> Vec<Card> {
+    for model in served.as_array().into_iter().flatten() {
+        let Some(card) = served_card(model) else { continue };
+        if !found.iter().any(|kept| named(&kept.id) == named(&card.id)) {
+            found.push(card);
+        }
+    }
+    marked(found)
+}
+
+fn marked(mut found: Vec<Card>) -> Vec<Card> {
+    let mut families: Vec<String> = Vec::new();
+    for card in &mut found {
         let family = family_of(&card.id);
-        let latest = !families.contains(&family);
-        if latest {
+        card.latest = !families.contains(&family);
+        if card.latest {
             families.push(family);
         }
-        found.push(Card { latest, ..card });
     }
     found
 }
@@ -185,8 +200,34 @@ fn card(entry: &Value) -> Option<Card> {
     let Traits { effort, thinking, .. } = traits(id);
     let efforts = efforts_of(entry);
     Some(Card {
-        label: entry["displayName"].as_str().map_or_else(|| named(id), str::to_string),
+        label: label_of(entry, id),
         description: entry["description"].as_str().unwrap_or_default().to_string(),
+        latest: false,
+        effort: starting_effort(effort, &efforts),
+        id: id.to_string(),
+        efforts,
+        thinking,
+    })
+}
+
+fn label_of(entry: &Value, id: &str) -> String {
+    match (id.starts_with("claude-"), id.ends_with("[1m]")) {
+        (true, true) => format!("{} (1M)", named(id)),
+        (true, false) => named(id),
+        (false, _) => entry["displayName"].as_str().map_or_else(|| named(id), str::to_string),
+    }
+}
+
+fn served_card(model: &Value) -> Option<Card> {
+    let id = model["id"].as_str().filter(|id| !id.is_empty() && plausible(id))?;
+    let Traits { effort, thinking, .. } = traits(id);
+    let levels = &model["capabilities"]["effort"];
+    let efforts: Vec<&'static str> = EFFORTS.iter().copied().filter(|level| levels[*level]["supported"] == true).collect();
+    Some(Card {
+        label: model["display_name"]
+            .as_str()
+            .map_or_else(|| named(id), |name| name.trim_start_matches("Claude ").to_string()),
+        description: String::new(),
         latest: false,
         effort: starting_effort(effort, &efforts),
         id: id.to_string(),
@@ -334,6 +375,77 @@ mod tests {
             .map(|card| card.label)
             .collect();
         assert_eq!(latest, vec!["Opus 5.5", "Fable 5.1", "Sonnet 5", "Haiku 4.5"]);
+    }
+
+    fn offered_by_the_installed_claude_code() -> Value {
+        let every = ["low", "medium", "high", "xhigh", "max"];
+        json!([
+            { "value": "default", "resolvedModel": "claude-opus-5-5[1m]", "displayName": "Default (recommended)", "description": "Opus 5.5 with 1M context · Best for everyday, complex tasks", "supportsEffort": true, "supportedEffortLevels": every },
+            { "value": "opus[1m]", "resolvedModel": "claude-opus-5-5[1m]", "displayName": "Opus (1M context)", "description": "Opus 5.5 with 1M context · Best for everyday, complex tasks", "supportsEffort": true, "supportedEffortLevels": every },
+            { "value": "claude-fable-5-1[1m]", "resolvedModel": "claude-fable-5-1", "displayName": "Fable", "description": "Fable 5.1 · Most capable for your hardest and longest-running tasks", "supportsEffort": true, "supportedEffortLevels": every },
+            { "value": "sonnet", "resolvedModel": "claude-sonnet-5", "displayName": "Sonnet", "description": "Sonnet 5 · Efficient for routine tasks", "supportsEffort": true, "supportedEffortLevels": every },
+            { "value": "haiku", "resolvedModel": "claude-haiku-4-5-20251001", "displayName": "Haiku", "description": "Haiku 4.5 · Fastest for quick answers" },
+        ])
+    }
+
+    fn served_by_the_account() -> Value {
+        let model = |id: &str, name: &str, levels: &[&str]| {
+            let effort: serde_json::Map<String, Value> = EFFORTS
+                .iter()
+                .map(|level| (level.to_string(), json!({ "supported": levels.contains(level) })))
+                .collect();
+            json!({ "type": "model", "id": id, "display_name": name, "capabilities": { "effort": effort } })
+        };
+        json!([
+            model("claude-opus-5-5", "Claude Opus 5.5", EFFORTS),
+            model("claude-fable-5-1", "Claude Fable 5.1", EFFORTS),
+            model("claude-opus-5", "Claude Opus 5", EFFORTS),
+            model("claude-sonnet-5", "Claude Sonnet 5", EFFORTS),
+            model("claude-opus-4-8", "Claude Opus 4.8", EFFORTS),
+            model("claude-opus-4-5-20251101", "Claude Opus 4.5", &["low", "medium", "high"]),
+            model("claude-haiku-4-5-20251001", "Claude Haiku 4.5", &[]),
+            model("claude-sonnet-4-5-20250929", "Claude Sonnet 4.5", &[]),
+        ])
+    }
+
+    #[test]
+    fn an_alias_is_named_by_the_model_it_resolves_to() {
+        let labels: Vec<String> = cards(&offered_by_the_installed_claude_code()).into_iter().map(|card| card.label).collect();
+        assert_eq!(labels, vec!["Opus 5.5 (1M)", "Fable 5.1", "Sonnet 5", "Haiku 4.5"]);
+    }
+
+    #[test]
+    fn the_models_the_account_serves_follow_the_ones_claude_code_offers() {
+        let found = with_served(cards(&offered_by_the_installed_claude_code()), &served_by_the_account());
+        let listed: Vec<(&str, bool)> = found.iter().map(|card| (card.label.as_str(), card.latest)).collect();
+        assert_eq!(
+            listed,
+            vec![
+                ("Opus 5.5 (1M)", true),
+                ("Fable 5.1", true),
+                ("Sonnet 5", true),
+                ("Haiku 4.5", true),
+                ("Opus 5", false),
+                ("Opus 4.8", false),
+                ("Opus 4.5", false),
+                ("Sonnet 4.5", false),
+            ]
+        );
+        let of = |label: &str| found.iter().find(|card| card.label == label).unwrap().clone();
+        assert_eq!(of("Opus 4.5").id, "claude-opus-4-5-20251101");
+        assert_eq!(of("Opus 4.5").efforts, vec!["low", "medium", "high"]);
+        assert_eq!(of("Opus 4.5").effort, "high");
+        assert!(of("Sonnet 4.5").efforts.is_empty());
+        assert_eq!(of("Sonnet 4.5").effort, "");
+        assert_eq!(of("Opus 5").efforts, EFFORTS);
+    }
+
+    #[test]
+    fn without_served_models_the_picker_keeps_what_claude_code_offers() {
+        let offered = cards(&offered_by_the_installed_claude_code());
+        assert_eq!(with_served(offered.clone(), &Value::Null), offered);
+        let odd = json!([{ "id": "" }, { "id": "--dangerously-skip-permissions" }, "suelto"]);
+        assert_eq!(with_served(offered.clone(), &odd), offered);
     }
 
     #[test]

@@ -2,8 +2,7 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import { useStore } from "zustand";
 import { Shelf } from "../features/artifacts/Shelf";
 import { Capabilities } from "../features/capabilities/Capabilities";
-import { Thread } from "../features/chat/Thread";
-import { Composer } from "../features/composer/Composer";
+import { Panes } from "../features/panes/Panes";
 import { project } from "../features/project/store";
 import { Rail } from "../features/rail/Rail";
 import { Settings } from "../features/settings/Settings";
@@ -81,8 +80,7 @@ export function App() {
           </nav>
           <Splitter id="rail-split" label="Ancho de la barra lateral" name="--rail-width" host={body} pane={rail} grow={1} />
           <section className="chat" hidden={Boolean(view)}>
-            <Thread />
-            <Composer />
+            <Panes />
           </section>
           <section className="view" id="shelf" aria-label="Artefactos" hidden={view !== "artifacts"}>
             <div className="view-inner" id="shelf-body">

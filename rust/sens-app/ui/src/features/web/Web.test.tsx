@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Heard } from "../../ipc/types";
 import { shell } from "../../app/shell";
-import { chat } from "../chat/state";
+import { focused } from "../panes/store";
 import { sheets } from "../../shared/sheets.js";
 import { project } from "../project/store";
 import { aimSite, forgetSite, hearBrowser, onProject, syncBrowser, web } from "./store";
@@ -44,7 +44,7 @@ beforeEach(() => {
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.previewUrl.mockResolvedValue("http://127.0.0.1:4321/p7/docs/index.html");
   shell.setState({ ...shell.getInitialState(), toolsOpen: true, tool: "web" }, true);
-  chat.setState({ turns: [] });
+  focused().chat.setState({ turns: [] });
 });
 
 afterEach(() => {
@@ -85,7 +85,7 @@ describe("web panel", () => {
     await type("cómo centrar un div");
     expect(opened()).toBe("https://www.google.com/search?q=c%C3%B3mo%20centrar%20un%20div");
     await type("ftp://viejo.net");
-    expect(chat.getState().turns.at(-1)).toMatchObject({ kind: "notice", parts: ["El navegador solo abre direcciones http y https."], tone: "warn" });
+    expect(focused().chat.getState().turns.at(-1)).toMatchObject({ kind: "notice", parts: ["El navegador solo abre direcciones http y https."], tone: "warn" });
   });
 
   it("serves a page of the project, and shows it by its path", async () => {

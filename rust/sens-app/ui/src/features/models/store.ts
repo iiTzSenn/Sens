@@ -3,9 +3,9 @@ import { commands } from "../../ipc/commands";
 import type { Account, Card, Provider } from "../../ipc/types";
 import { API_KEY_SOURCE, PLANS, keyed } from "../../shared/account";
 import { store, stored } from "../../shared/storage.js";
+import { CHOICE, focused, panes, type Pane } from "../panes/store";
 
-const RECALL = "sens.choice";
-const KNOWN = "sens.models.v3";
+const KNOWN = "sens.models.v4";
 const HIDDEN = "sens.models.hidden";
 const ASKED = "sens.models.asked";
 
@@ -17,7 +17,6 @@ export const models = createStore(() => ({
   catalog: [] as Provider[],
   known: stored(KNOWN, {}) as Record<string, Card[]>,
   hidden: new Set<string>([].concat(stored(HIDDEN, []))),
-  choice: { provider: "", model: "" },
   fetching: false,
   note: "",
   account: null as Account | null,
@@ -35,7 +34,10 @@ const MODEL_SAID: Record<string, string> = {
   "Fastest for quick answers": "El más rápido para respuestas cortas",
 };
 
-export const saidOf = (card: Card) => (card.latest ? MODEL_SAID[card.description] || card.description : "");
+export function saidOf(card: Card) {
+  const tagline = card.description.split(" · ").pop()!;
+  return MODEL_SAID[tagline] || tagline;
+}
 
 const claudeCodeAbsent = (reason: unknown) => String(reason).startsWith("no encuentro Claude Code");
 
@@ -61,24 +63,27 @@ export function modelName(id: string) {
   return card ? card.label : prettyModel(id);
 }
 
-export function chosenCard() {
-  const { known, choice } = models.getState();
+export function chosenCard(pane: Pane = focused()) {
+  const { known } = models.getState();
+  const { choice } = pane.desk.getState();
   return (known[choice.provider] || []).find((card) => card.id === choice.model);
 }
 
 // The choice kept if it is still offered, else the first model offered.
-function settle(wanted = models.getState().choice) {
+export function settle(pane: Pane, wanted = pane.desk.getState().choice) {
   const { catalog } = models.getState();
   const offered = catalog.flatMap((provider) => offeredBy(provider).map((card) => ({ provider, card })));
   const kept = offered.find(({ provider, card }) => provider.id === wanted.provider && card.id === wanted.model) || offered[0];
   const provider = kept ? kept.provider : catalog[0];
   if (!provider) return;
   const choice = { provider: provider.id, model: kept ? kept.card.id : "" };
-  store(RECALL, choice);
-  set({ choice });
+  if (pane === focused()) store(CHOICE, choice);
+  pane.desk.setState({ choice });
 }
 
-export const choose = (provider: string, model: string) => settle({ provider, model });
+const settleAll = () => panes.getState().open.forEach((pane) => settle(pane));
+
+export const choose = (provider: string, model: string, pane: Pane = focused()) => settle(pane, { provider, model });
 
 export function toggleHidden(id: string) {
   set(({ hidden }) => {
@@ -87,15 +92,16 @@ export function toggleHidden(id: string) {
     store(HIDDEN, [...next]);
     return { hidden: next };
   });
-  settle();
+  settleAll();
 }
 
 // What the chosen model is called in the picker: the model, or its provider
 // while there is none.
-export function chosenLabel() {
-  const card = chosenCard();
+export function chosenLabel(pane: Pane = focused()) {
+  const card = chosenCard(pane);
   if (card) return card.label;
-  const { catalog, choice } = models.getState();
+  const { catalog } = models.getState();
+  const { choice } = pane.desk.getState();
   return catalog.find((provider) => provider.id === choice.provider)?.label || "modelo";
 }
 
@@ -114,7 +120,7 @@ export async function refreshModels() {
   }
   store(KNOWN, known);
   set({ known, fetching: false, note: failures.join(" · ") });
-  settle();
+  settleAll();
 }
 
 // A provider without models, or a day without asking, asks again.
@@ -128,7 +134,7 @@ export async function loadCatalog() {
   const catalog = await commands.providers();
   set({ catalog });
   if (!catalog.length) return;
-  settle({ ...models.getState().choice, ...stored(RECALL, {}) });
+  settleAll();
   refreshWhenDue();
   readAccount();
   checkClaudeCode();

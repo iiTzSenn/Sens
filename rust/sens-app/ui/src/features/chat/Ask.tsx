@@ -7,6 +7,7 @@ import { CodeBlock, Markdown } from "../../shared/markdown/Markdown";
 import { addedRows, replacedRows } from "../../shared/rows";
 import { languageOf } from "../../shared/syntax/languages";
 import { chooseMode } from "../composer/store";
+import { usePane } from "../panes/context";
 import { SHELLS, describe } from "./looks";
 import { Ran, WebLink, DIFF_PREVIEW } from "./Step";
 import { answer } from "./store";
@@ -54,6 +55,7 @@ function Frame({
   after?: (decision: Decision) => void;
   children: ReactNode;
 }) {
+  const pane = usePane();
   const [busy, setBusy] = useState(false);
   const [fault, setFault] = useState("");
   const settled = SETTLED[part.state]?.(part.answers);
@@ -64,7 +66,7 @@ function Frame({
     setBusy(true);
     setFault("");
     try {
-      await answer(reply, part.event.request, chosen);
+      await answer(reply, part.event.request, chosen, pane);
       after?.(chosen);
     } catch (reason) {
       setFault(String(reason));
@@ -115,9 +117,10 @@ function Permission({ part, reply }: { part: AskPart; reply: number }) {
     ...(remember ? [[remember, false, { allow: true, remember: true }] as Choice] : []),
     ["Rechazar", false, { allow: false }],
   ];
+  const pane = usePane();
   const adopt = (decision: Decision) => {
     const switched = decision.remember && suggestions?.find((one) => one.type === "setMode");
-    if (switched && switched.mode) chooseMode(switched.mode);
+    if (switched && switched.mode) chooseMode(switched.mode, pane);
   };
   return (
     <Frame part={part} reply={reply} icon={ICONS.shieldAlert} title={`Claude quiere ${look.ask || look.verb.toLowerCase()}`} target={look.target} mono={look.mono} choices={choices} after={adopt}>
@@ -153,6 +156,7 @@ function Preview({ tool, input }: { tool: string; input: AskPart["event"]["input
 
 // An approved plan runs in the mode chosen with it.
 function Plan({ part, reply }: { part: AskPart; reply: number }) {
+  const pane = usePane();
   const choices: Choice[] = [
     ["Aprobar y ejecutar", true, { allow: true, mode: "default" }],
     ["Aprobar y aceptar ediciones", false, { allow: true, mode: "acceptEdits" }],
@@ -165,7 +169,7 @@ function Plan({ part, reply }: { part: AskPart; reply: number }) {
       icon={ICONS.map}
       title="Plan listo para revisar"
       choices={choices}
-      after={(decision) => decision.allow && decision.mode && chooseMode(decision.mode)}
+      after={(decision) => decision.allow && decision.mode && chooseMode(decision.mode, pane)}
     >
       <Markdown text={part.event.input.plan || ""} />
     </Frame>

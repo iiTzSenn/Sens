@@ -9,28 +9,46 @@ export const tasks = createStore(() => ({
   now: Date.now(),
 }));
 
-const calls: Calls = new Map();
+const kept = new Map<string, { tasks: Map<string, Task>; calls: Calls }>();
+let shown = "";
 
-export function noteTask(event: AgentEvent, at = Date.now()) {
-  const before = tasks.getState().tasks;
-  const after = afterEvent(before, calls, event, at);
-  if (after !== before) tasks.setState({ tasks: after, now: Date.now() });
+function of(session: string) {
+  let one = kept.get(session);
+  if (!one) kept.set(session, (one = { tasks: new Map(), calls: new Map() }));
+  return one;
 }
 
-export function forgetTasks() {
-  calls.clear();
-  tasks.setState({ tasks: new Map() });
+function put(session: string, after: Map<string, Task>) {
+  of(session).tasks = after;
+  if (session === shown) tasks.setState({ tasks: after, now: Date.now() });
+}
+
+export function showTasksOf(session: string) {
+  if (session === shown && tasks.getState().tasks === of(session).tasks) return;
+  shown = session;
+  tasks.setState({ tasks: of(session).tasks, now: Date.now() });
+}
+
+export function noteTask(event: AgentEvent, at = Date.now(), session = shown) {
+  const one = of(session);
+  const after = afterEvent(one.tasks, one.calls, event, at);
+  if (after !== one.tasks) put(session, after);
+}
+
+export function forgetTasks(session = shown) {
+  kept.delete(session);
+  if (session === shown) tasks.setState({ tasks: of(session).tasks });
 }
 
 // Whatever Rust no longer runs, after a replay, was stopped.
-export function settleTasks(alive: string[]) {
+export function settleTasks(alive: string[], session = shown) {
   const live = new Set(alive);
-  const before = tasks.getState().tasks;
+  const before = of(session).tasks;
   const after = new Map(before);
   for (const task of before.values()) {
     if (isRunning(task) && !live.has(task.id)) after.set(task.id, { ...task, status: "stopped" });
   }
-  tasks.setState({ tasks: after, now: Date.now() });
+  put(session, after);
 }
 
 export const tickTasks = () => tasks.setState({ now: Date.now() });

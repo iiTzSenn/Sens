@@ -6,7 +6,8 @@ import { shell } from "../../app/shell";
 import { composer } from "../composer/store";
 import { project } from "../project/store";
 import { rail } from "../rail/store";
-import { blank, chat, hearChat, hello, load, notice, send } from "./store";
+import { focused } from "../panes/store";
+import { blank, hearChat, hello, load, notice, send } from "./store";
 import { Thread } from "./Thread";
 import { heard, opening, type Reply } from "./turns";
 
@@ -46,7 +47,9 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  project.setState({ root: "C:/demo", session: "", view: "", touched: new Map() });
+  project.setState({ view: "", touched: new Map() });
+  focused().chat.setState(focused().chat.getInitialState(), true);
+  focused().desk.setState({ root: "C:/demo", session: "" });
   blank("");
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.workspaces.mockResolvedValue([]);
@@ -108,7 +111,7 @@ describe("the chat", () => {
     hello();
     render(<Thread />);
     expect(document.querySelector(".hello-hint")?.textContent).not.toBe("");
-    act(() => project.setState({ root: "" }));
+    act(() => focused().desk.setState({ root: "" }));
     act(() => hello());
     expect(screen.getByText("Elige una carpeta de trabajo para empezar.")).toBeTruthy();
   });
@@ -120,13 +123,14 @@ describe("the chat", () => {
     expect(project.getState().session).toBe("s1");
     expect(screen.getByText("Hola", { selector: ".body-text" })).toBeTruthy();
     expect(screen.getByText("a.ts", { selector: ".asked-files span" })).toBeTruthy();
-    expect(chat.getState().busy).toBe(true);
+    expect(focused().chat.getState().busy).toBe(true);
     expect(document.querySelector(".live-said")?.textContent).toBe("Enviando…");
 
     tell({ kind: "started", model: "claude-demo" });
     tell({ kind: "delta", thinking: true, text: "pienso" });
     await settle();
     expect(document.querySelector(".thought")?.getAttribute("data-live")).toBe("true");
+    expect(document.querySelector(".live-said")?.textContent).toBe("Trabajando…");
     tell({ kind: "delta", thinking: false, text: "Aquí **va**" });
     expect(document.querySelector(".live-said")?.textContent).toBe("Escribiendo…");
     tell({ kind: "said", text: "Aquí **va** todo." });
@@ -138,8 +142,8 @@ describe("the chat", () => {
     expect(document.querySelector(".reply-foot .foot-count")?.textContent).toBe("20");
     expect(document.querySelector(".thought")?.getAttribute("data-live")).toBe("false");
     expect(document.querySelector(".live")).toBeNull();
-    expect(chat.getState().busy).toBe(false);
-    expect(chat.getState().ended).toBe(1);
+    expect(focused().chat.getState().busy).toBe(false);
+    expect(focused().chat.getState().ended).toBe(1);
   });
 
   it("says why a message could not go", async () => {
@@ -147,11 +151,11 @@ describe("the chat", () => {
     render(<Thread />);
     await act(async () => send({ message: { text: "Otra", files: [], images: [] }, shownFiles: [], pictures: [] }, SETTINGS));
     expect(screen.getByText("Claude sigue trabajando en esta sesión.", { selector: ".reply-fault" })).toBeTruthy();
-    expect(chat.getState().busy).toBe(false);
+    expect(focused().chat.getState().busy).toBe(false);
   });
 
   it("shows what tools did: a command's output, an edit as a diff, results that open", async () => {
-    project.setState({ session: "s1" });
+    focused().desk.setState({ session: "s1" });
     render(<Thread />);
     tell({ kind: "tool", id: "t1", name: "Bash", input: { command: "npm test" } });
     tell({ kind: "toolDone", id: "t1", output: "", error: true, detail: { stdout: "1 failed", stderr: "boom" } });
@@ -182,7 +186,7 @@ describe("the chat", () => {
   });
 
   it("asks for permission, and answers with what you chose", async () => {
-    project.setState({ session: "s1" });
+    focused().desk.setState({ session: "s1" });
     render(<Thread />);
     tell({ kind: "asking", request: "r1", tool: "Bash", input: { command: "rm -rf dist", description: "Limpia" }, suggestions: [{ type: "setMode", mode: "acceptEdits" }] });
     const ask = document.querySelector(".ask") as HTMLElement;
@@ -197,7 +201,7 @@ describe("the chat", () => {
   });
 
   it("asks until every question has an answer", async () => {
-    project.setState({ session: "s1" });
+    focused().desk.setState({ session: "s1" });
     render(<Thread />);
     tell({
       kind: "asking",
@@ -233,11 +237,11 @@ describe("the chat", () => {
     expect(document.querySelector(".said")?.textContent).toBe("Hecho.");
     expect((document.querySelector(".ask") as HTMLElement).dataset.state).toBe("waiting");
     expect(document.querySelector(".live-said")?.textContent).toBe("Trabajando…");
-    expect(chat.getState().busy).toBe(true);
+    expect(focused().chat.getState().busy).toBe(true);
   });
 
   it("tells the rail which sessions work, wait, or finished out of sight", () => {
-    project.setState({ session: "s1" });
+    focused().desk.setState({ session: "s1" });
     const other = (event: ChatEvent) => act(() => ipc.heard!("s2", event));
     const of = (id: string) => rail.getState().activity.get(id);
 

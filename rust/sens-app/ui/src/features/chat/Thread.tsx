@@ -2,12 +2,12 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { openPicture } from "../../app/Dialog";
 import { seconds, whole } from "../../shared/format.js";
+import { useIds, usePane } from "../panes/context";
 import { Ask } from "./Ask";
 import { grain } from "./grain";
 import { FOOT_JOIN, TOKENS } from "./looks";
 import { Said, Thought } from "./Said";
 import { Step } from "./Step";
-import { chat } from "./store";
 import type { Notice as NoticeTurn, Picture, Reply as ReplyTurn, You as YouTurn } from "./turns";
 
 // Within this of the bottom, the chat follows what arrives.
@@ -16,9 +16,11 @@ const NEAR_BOTTOM = 160;
 // The conversation: what arrives keeps it at the bottom unless you scrolled
 // up to read; the edges fade where there is more to scroll.
 export function Thread() {
-  const turns = useStore(chat, (s) => s.turns);
-  const hint = useStore(chat, (s) => s.hint);
-  const replaying = useStore(chat, (s) => s.replaying);
+  const pane = usePane();
+  const id = useIds();
+  const turns = useStore(pane.chat, (s) => s.turns);
+  const hint = useStore(pane.chat, (s) => s.hint);
+  const replaying = useStore(pane.chat, (s) => s.replaying);
   const thread = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -48,10 +50,10 @@ export function Thread() {
   }, [turns.length]);
 
   return (
-    <div className="stream" id="stream" data-over={String(edges.over)} data-under={String(edges.under)}>
+    <div className="stream" id={id("stream")} data-over={String(edges.over)} data-under={String(edges.under)}>
       <div
         className="thread"
-        id="thread"
+        id={id("thread")}
         ref={thread}
         data-replaying={replaying ? "true" : undefined}
         onScroll={() => {
@@ -60,7 +62,7 @@ export function Thread() {
           paint();
         }}
       >
-        <div className="thread-inner" id="thread-inner" ref={inner}>
+        <div className="thread-inner" id={id("thread-inner")} ref={inner}>
           {turns.length ? (
             turns.map((turn) =>
               turn.kind === "you" ? <You key={turn.key} turn={turn} /> : turn.kind === "notice" ? <Notice key={turn.key} turn={turn} /> : <Reply key={turn.key} turn={turn} />,

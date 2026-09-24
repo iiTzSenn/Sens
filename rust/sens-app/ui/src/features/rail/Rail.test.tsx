@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Workspace } from "../../ipc/types";
 import { Dialog } from "../../app/Dialog";
 import { dialog } from "../../app/modal";
-import { chooseFolder, draft, fresh, resume, showView } from "../../app/session";
+import { chooseFolder, draft, dropShown, fresh, openBeside, resume, showView } from "../../app/session";
+import { focused } from "../panes/store";
 import { profile } from "../profile/store";
 import { project } from "../project/store";
 import { Rail } from "./Rail";
@@ -17,11 +18,12 @@ const ipc = vi.hoisted(() => ({
     renameSession: vi.fn(),
     archiveSession: vi.fn(),
     deleteSession: vi.fn(),
+    trustProject: vi.fn(),
   },
 }));
 
 vi.mock("../../ipc/commands", () => ({ commands: ipc.commands }));
-vi.mock("../../app/session", () => ({ resume: vi.fn(), draft: vi.fn(async () => {}), fresh: vi.fn(), chooseFolder: vi.fn(), showView: vi.fn() }));
+vi.mock("../../app/session", () => ({ resume: vi.fn(), draft: vi.fn(async () => {}), dropShown: vi.fn(async () => {}), openBeside: vi.fn(async () => {}), fresh: vi.fn(), chooseFolder: vi.fn(), showView: vi.fn() }));
 
 const SPACES: Workspace[] = [
   {
@@ -32,8 +34,9 @@ const SPACES: Workspace[] = [
       { id: "old", title: "Probar el instalador", startedAt: 1, tasks: 2, archived: true },
       { id: "one", title: "Migrar la interfaz", startedAt: 2, tasks: 1, archived: false },
     ],
+    trusted: true,
   },
-  { root: "C:/web", name: "web", activeAt: 1, sessions: [] },
+  { root: "C:/web", name: "web", activeAt: 1, sessions: [], trusted: false },
 ];
 
 beforeEach(() => {
@@ -161,12 +164,23 @@ describe("the rail", () => {
     await act(async () => fireEvent.click(screen.getByRole("menuitem", { name: "Desarchivar" })));
     expect(ipc.commands.archiveSession).toHaveBeenCalledWith("C:/demo", "old", false);
 
+    focused().desk.setState({ root: "C:/demo", session: "one" });
     fireEvent.click(dots("Migrar la interfaz"));
     fireEvent.click(screen.getByRole("menuitem", { name: "Eliminar" }));
     expect(ipc.commands.deleteSession).not.toHaveBeenCalled();
     await act(async () => fireEvent.click(screen.getByRole("menuitem", { name: "Confirmar" })));
     expect(ipc.commands.deleteSession).toHaveBeenCalledWith("C:/demo", "one");
-    expect(draft).toHaveBeenCalledWith("C:/demo");
+    expect(dropShown).toHaveBeenCalledWith(focused(), "C:/demo");
+  });
+
+  it("offers to open beside only a session that is not on screen", async () => {
+    focused().desk.setState({ root: "C:/demo", session: "one" });
+    await open();
+    fireEvent.click(dots("Migrar la interfaz"));
+    expect(screen.queryByRole("menuitem", { name: "Abrir al lado" })).toBeNull();
+    fireEvent.click(dots("Probar el instalador"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Abrir al lado" }));
+    expect(openBeside).toHaveBeenCalledWith("C:/demo", "old");
   });
 
   it("says why a change or the list failed, once it is read again", async () => {
@@ -191,6 +205,19 @@ describe("the rail", () => {
     await act(async () => loadRail());
     fireEvent.click(screen.getByRole("button", { name: "Abrir proyecto" }));
     expect(chooseFolder).toHaveBeenCalled();
+  });
+
+  it("lets a trusted folder be trusted no more, which stops Sin control there", async () => {
+    await open();
+    focused().desk.setState({ root: "C:/demo", trusted: "C:/demo" });
+    expect(screen.queryByRole("button", { name: "Gestionar web" })).toBeNull();
+    ipc.commands.workspaces.mockResolvedValue(structuredClone(SPACES).map((space) => ({ ...space, trusted: false })));
+
+    fireEvent.click(screen.getByRole("button", { name: "Gestionar demo" }));
+    await act(async () => fireEvent.click(screen.getByRole("menuitem", { name: "Dejar de confiar" })));
+    expect(ipc.commands.trustProject).toHaveBeenCalledWith("C:/demo", false);
+    expect(focused().desk.getState().trusted).toBe("");
+    expect(screen.queryByRole("button", { name: "Gestionar demo" })).toBeNull();
   });
 
   it("shows a title the model gives a session", async () => {

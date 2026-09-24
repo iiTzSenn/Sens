@@ -10,7 +10,7 @@ import { Terminal } from "../../shared/Terminal";
 import { project } from "../project/store";
 import { showFile } from "../files/view";
 import { aimSite } from "../web/store";
-import { SHELLS, describe, editOf, hitsOf, hostOf, relative, searchSummary } from "./looks";
+import { EDITS, SHELLS, describe, editOf, hitsOf, hostOf, relative, searchSummary } from "./looks";
 import type { Step as StepPart } from "./turns";
 
 // Diffs in the chat show this many rows until asked for more.
@@ -36,7 +36,7 @@ export function Step({ part }: { part: StepPart }) {
   }, [state]);
 
   return (
-    <details className={empty ? "step empty" : "step"} data-state={state} ref={box}>
+    <details className={empty ? "step empty" : "step"} data-state={state} data-edits={EDITS.has(name) ? "true" : undefined} ref={box}>
       <summary onClick={(event) => empty && event.preventDefault()}>
         <span className="step-icon">{look.site ? <Favicon url={look.site} /> : <Icon svg={look.icon} />}</span>
         <span className="step-verb">{look.verb}</span>

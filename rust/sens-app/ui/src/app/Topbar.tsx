@@ -2,7 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "zustand";
-import { composer } from "../features/composer/store";
+import { focused, panes } from "../features/panes/store";
 import { project } from "../features/project/store";
 import { runningTasks, tasks } from "../features/tasks/store";
 import { openUpdate } from "../features/updates/UpdatePanel";
@@ -157,7 +157,8 @@ function ToolsButton() {
 }
 
 function ToolsMenu({ sheet }: { sheet: Sheet }) {
-  const dirty = useStore(composer, (s) => s.repo?.dirty ?? 0);
+  const pane = useStore(panes, () => focused());
+  const dirty = useStore(pane.desk, (s) => s.repo?.dirty ?? 0);
   const running = useStore(tasks, () => runningTasks());
   useStore(shell, (s) => `${s.toolsOpen}/${s.tool}`);
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { chat } from "../features/chat/state";
+import { focused } from "../features/panes/store";
 import { project } from "../features/project/store";
 import { App } from "./App";
 import { dialog } from "./modal";
@@ -36,6 +36,7 @@ beforeEach(() => {
   shell.setState(shell.getInitialState(), true);
   dialog.setState(dialog.getInitialState(), true);
   project.setState({ root: "", session: "", view: "", touched: new Map() });
+  focused().desk.setState({ root: "", session: "" });
   ipc.commands.workspaces.mockResolvedValue([]);
   ipc.commands.replay.mockResolvedValue([{ kind: "task", at: 1, text: "Hola", files: [], images: [] }]);
   ipc.commands.chatTasks.mockResolvedValue([]);
@@ -99,7 +100,7 @@ describe("the shell", () => {
     render(<App />);
     await act(async () => resume("C:/demo", "s7"));
     expect(project.getState().session).toBe("s7");
-    expect(chat.getState().turns).toMatchObject([{ kind: "you", text: "Hola" }]);
+    expect(focused().chat.getState().turns).toMatchObject([{ kind: "you", text: "Hola" }]);
   });
 
   it("names the project of the session in focus in the title bar", async () => {

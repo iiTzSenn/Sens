@@ -9,6 +9,7 @@ const now = Date.now();
 const HOUR = 3_600_000;
 const ROOT = "C:/Proyectos/demo";
 const person = { name: "Demo", checkUpdates: false };
+const trusted = new Set<string>();
 
 const caps: Capabilities = {
   skills: [
@@ -68,6 +69,16 @@ const artifact = (kind: string, name: string, hoursAgo: number, session: string 
   sessionTitle: session ? "Migrar la interfaz a React" : null,
   at: now - hoursAgo * HOUR,
   bytes: 2048,
+});
+
+const demoModel = (id: string, label: string, description: string, latest: boolean) => ({
+  id,
+  label,
+  description,
+  latest,
+  efforts: ["low", "medium", "high"],
+  effort: "medium",
+  thinking: "toggle",
 });
 
 const SQUARE = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect width="4" height="4" fill="#c7ff4a"/></svg>')}`;
@@ -270,6 +281,8 @@ const entries = (path: string) =>
 
 const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   last_project: () => ROOT,
+  trust_project: ({ root, trusted: sure }) => void (sure ? trusted.add(String(root)) : trusted.delete(String(root))),
+  project_trusted: ({ root }) => trusted.has(String(root)),
   folder: ({ path }) => entries(String(path ?? "")),
   find_files: ({ needle }) =>
     Object.keys(FOLDERS)
@@ -336,7 +349,7 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
     needs: [],
   }),
   market_file: ({ path }) => (String(path).endsWith(".md") ? `# ${path}\n\nContenido de prueba.` : "echo formatea"),
-  workspaces: () => structuredClone(SPACES),
+  workspaces: () => structuredClone(SPACES).map((space) => ({ ...space, trusted: trusted.has(space.root) })),
   rename_session: ({ id, title }) => (sessionOf(id).title = String(title)),
   archive_session: ({ id, archived }) => void (sessionOf(id).archived = Boolean(archived)),
   delete_session: ({ id }) => {
@@ -352,29 +365,37 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   chat_send: ({ sessionId, message }) => {
     const session = String(sessionId);
     const said = `Recibido: «${(message as { text: string }).text}». Te cuento lo que he mirado:\n\n- El **árbol** del proyecto\n- Los ficheros \`src/app.tsx\` y \`main.py\`\n\n${FENCE}ts\nconst listo = true;\n${FENCE}\n\nListo.`;
+    const thought = "Miro primero cómo está montado el proyecto y qué ficheros toca la petición.";
     const events: [number, unknown][] = [[80, { kind: "started", model: "demo-model" }]];
-    for (let at = 0; at < said.length; at += 9) events.push([120 + at * 6, { kind: "delta", thinking: false, text: said.slice(at, at + 9) }]);
-    const end = 200 + said.length * 6;
+    for (let at = 0; at < thought.length; at += 6) events.push([120 + at * 30, { kind: "delta", thinking: true, text: thought.slice(at, at + 6) }]);
+    const start = 200 + thought.length * 30;
+    for (let at = 0; at < said.length; at += 9) events.push([start + at * 6, { kind: "delta", thinking: false, text: said.slice(at, at + 9) }]);
+    const end = start + said.length * 6;
+    const edit = { file_path: `${ROOT}/src/app.tsx`, old_string: "const listo = false;", new_string: "const listo = true;" };
     events.push(
       [end, { kind: "said", text: said }],
       [end + 100, { kind: "tool", id: "run-1", name: "Bash", input: { command: "npm test" } }],
-      [end + 700, { kind: "toolDone", id: "run-1", output: "", error: false, detail: { stdout: "✓ 12 tests", stderr: "" } }],
-      [end + 800, { kind: "finished", ok: true, stopped: false, millis: 2400, turns: 1, tokensIn: 10, tokensOut: 180, error: "" }],
+      [end + 2500, { kind: "toolDone", id: "run-1", output: "", error: false, detail: { stdout: "✓ 12 tests", stderr: "" } }],
+      [end + 2600, { kind: "tool", id: "edit-1", name: "Edit", input: edit }],
+      [end + 3000, { kind: "toolDone", id: "edit-1", output: "", error: false, detail: null }],
+      [end + 3100, { kind: "finished", ok: true, stopped: false, millis: 2400, turns: 1, tokensIn: 10, tokensOut: 180, error: "" }],
     );
     for (const [after, event] of events) setTimeout(() => emit("chat", { session, event }), after);
   },
   providers: () => [{ id: "claude", vendor: "Anthropic", label: "Claude Code" }],
-  models: () => [
-    {
-      id: "demo-model",
-      label: "Modelo de prueba",
-      description: "Datos simulados del navegador",
-      latest: true,
-      efforts: ["low", "medium", "high"],
-      effort: "medium",
-      thinking: "toggle",
-    },
-  ],
+  models: () =>
+    new Promise((done) =>
+      setTimeout(
+        () =>
+          done([
+            demoModel("claude-opus-5-5[1m]", "Opus 5.5 (1M)", "Opus 5.5 with 1M context · Best for everyday, complex tasks", true),
+            demoModel("claude-sonnet-5", "Sonnet 5", "Sonnet 5 · Efficient for routine tasks", true),
+            demoModel("claude-opus-5", "Opus 5", "", false),
+            demoModel("claude-opus-4-8", "Opus 4.8", "", false),
+          ]),
+        1500,
+      ),
+    ),
   claude_account: () => ({ billing: "subscription", plan: "max", source: "claude.ai", email: "demo@example.com" }),
   providers_state: () => [
     {

@@ -1,9 +1,11 @@
 use std::path::Path;
 
+use sens_agent::chat::BYPASS;
 use sens_agent::session::{self, Summary};
 use serde::{Deserialize, Serialize};
 
 const FILE: &str = "projects.json";
+const UNTRUSTED: &str = "Sin control solo actúa en proyectos de confianza: confía en esta carpeta desde el selector de permisos";
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -17,6 +19,8 @@ pub struct Registry {
 pub struct Known {
     pub root: String,
     pub opened: u64,
+    #[serde(default)]
+    pub trusted: bool,
 }
 
 #[derive(Serialize)]
@@ -26,17 +30,27 @@ pub struct Workspace {
     pub name: String,
     pub active_at: u64,
     pub sessions: Vec<Summary>,
+    pub trusted: bool,
 }
 
 impl Registry {
+    fn known(&mut self, root: &str) -> &mut Known {
+        let at = match self.projects.iter().position(|known| known.root == root) {
+            Some(at) => at,
+            None => {
+                self.projects.push(Known {
+                    root: root.to_string(),
+                    opened: 0,
+                    trusted: false,
+                });
+                self.projects.len() - 1
+            }
+        };
+        &mut self.projects[at]
+    }
+
     fn note(&mut self, root: &str, at: u64) {
-        match self.projects.iter_mut().find(|known| known.root == root) {
-            Some(known) => known.opened = at,
-            None => self.projects.push(Known {
-                root: root.to_string(),
-                opened: at,
-            }),
-        }
+        self.known(root).opened = at;
         self.last = Some(root.to_string());
     }
 }
@@ -49,6 +63,27 @@ pub fn remember(base: &Path, root: &str) -> Result<(), String> {
     let mut registry = load(base);
     registry.note(root, session::now());
     crate::store::store(base, FILE, &registry)
+}
+
+pub fn trust(base: &Path, root: &str, trusted: bool) -> Result<(), String> {
+    let mut registry = load(base);
+    match registry.projects.iter().position(|known| known.root == root) {
+        Some(at) => registry.projects[at].trusted = trusted,
+        None if trusted => registry.known(root).trusted = true,
+        None => return Ok(()),
+    }
+    crate::store::store(base, FILE, &registry)
+}
+
+pub fn trusted(registry: &Registry, root: &str) -> bool {
+    registry.projects.iter().any(|known| known.root == root && known.trusted)
+}
+
+pub fn allows(registry: &Registry, root: &str, mode: &str) -> Result<(), String> {
+    match mode == BYPASS && !trusted(registry, root) {
+        true => Err(UNTRUSTED.into()),
+        false => Ok(()),
+    }
 }
 
 pub fn last(registry: &Registry) -> Option<String> {
@@ -82,6 +117,7 @@ fn workspace(known: &Known) -> Workspace {
             .max()
             .unwrap_or(known.opened),
         sessions,
+        trusted: known.trusted,
     }
 }
 
@@ -119,7 +155,7 @@ mod tests {
     }
 
     fn known(root: &Path, opened: u64) -> Known {
-        Known { root: text(root), opened }
+        Known { root: text(root), opened, trusted: false }
     }
 
     #[test]
@@ -147,6 +183,51 @@ mod tests {
         assert_eq!(registry.projects.len(), 2);
         assert!(registry.projects[0].opened > before);
         assert_eq!(registry.last.as_deref(), Some("C:/a"));
+    }
+
+    #[test]
+    fn trusting_a_folder_is_remembered_and_lets_sin_control_act_only_there() {
+        let base = temp_root("trust");
+        remember(&base, "C:/a").unwrap();
+        remember(&base, "C:/b").unwrap();
+        assert!(allows(&load(&base), "C:/a", BYPASS).is_err());
+
+        trust(&base, "C:/a", true).unwrap();
+        remember(&base, "C:/a").unwrap();
+        let registry = load(&base);
+        assert!(trusted(&registry, "C:/a"));
+        assert!(!trusted(&registry, "C:/b"));
+        assert!(allows(&registry, "C:/a", BYPASS).is_ok());
+        assert!(allows(&registry, "C:/b", BYPASS).is_err());
+        assert!(allows(&registry, "C:/b", "acceptEdits").is_ok());
+        assert_eq!(registry.projects.len(), 2);
+
+        trust(&base, "C:/a", false).unwrap();
+        assert!(allows(&load(&base), "C:/a", BYPASS).is_err());
+
+        trust(&base, "C:/nunca", false).unwrap();
+        assert_eq!(load(&base).projects.len(), 2);
+    }
+
+    #[test]
+    fn the_rail_learns_which_folders_are_trusted() {
+        let base = temp_root("trust-rail");
+        let (sure, unsure) = (temp_root("trust-rail-sure"), temp_root("trust-rail-unsure"));
+        remember(&base, &text(&sure)).unwrap();
+        remember(&base, &text(&unsure)).unwrap();
+        trust(&base, &text(&sure), true).unwrap();
+        let trusted: Vec<(String, bool)> = workspaces(&load(&base)).into_iter().map(|space| (space.root, space.trusted)).collect();
+        assert!(trusted.contains(&(text(&sure), true)));
+        assert!(trusted.contains(&(text(&unsure), false)));
+    }
+
+    #[test]
+    fn a_registry_saved_before_trust_existed_trusts_nothing() {
+        let base = temp_root("before-trust");
+        std::fs::write(base.join(FILE), r#"{ "last": "C:/a", "projects": [{ "root": "C:/a", "opened": 5 }] }"#).unwrap();
+        let registry = load(&base);
+        assert_eq!(registry.projects[0].opened, 5);
+        assert!(!trusted(&registry, "C:/a"));
     }
 
     #[test]

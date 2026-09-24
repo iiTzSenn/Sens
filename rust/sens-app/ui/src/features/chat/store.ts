@@ -6,26 +6,17 @@ import { loadChanges, soonChanges } from "../changes/store";
 import { loadFiles } from "../files/store";
 import { openFile, viewer } from "../files/view";
 import { modelName, noteLimits } from "../models/store";
+import { focused, paneOf, type Pane } from "../panes/store";
 import { noteEdit, project } from "../project/store";
 import { loadRail, nameSession, noteActivity, type Activity } from "../rail/store";
 import { forgetTasks, noteTask, settleTasks } from "../tasks/store";
 import { TASK_EVENTS } from "../tasks/tasks";
 import { onProject, reloadSite } from "../web/store";
 import { SILENT, consulting, editOf, statusOf } from "./looks";
-import { chat, notice, warn } from "./state";
+import { notice, warn } from "./state";
 import { CLOSING, answered, heard, nextKey, opening, type Picture, type Reply } from "./turns";
 
-export { chat, notice, warn };
-
-const set = chat.setState;
-
-// The reply the live events go to, if one is open.
-let replying: number | null = null;
-// The model named last in this chat: a reply names its model only when it changes.
-let named = "";
-// A new session's id, asked for before its first message so it can warm up.
-let pendingId: Promise<string> | null = null;
-let warmed = "";
+export { notice, warn };
 
 const HINTS = [
   "Pregunta lo que necesites, pega un error o señálame un fichero.",
@@ -48,46 +39,48 @@ function nextHint() {
   return HINTS[Math.max(at, 0)];
 }
 
-const session = () => project.getState().session;
-const setSession = (id: string) => project.setState({ session: id });
+const session = (pane: Pane) => pane.desk.getState().session;
+const setSession = (pane: Pane, id: string) => pane.desk.setState({ session: id });
+const rootOf = (pane: Pane) => pane.desk.getState().root;
+const onScreen = (pane: Pane) => rootOf(pane) === project.getState().root;
 
 // The empty chat invites to start, or to pick a folder first.
-export const hello = () => set({ hint: project.getState().root ? nextHint() : NO_ROOT });
+export const hello = (pane: Pane = focused()) => pane.chat.setState({ hint: rootOf(pane) ? nextHint() : NO_ROOT });
 
-function onReply(key: number | null, change: (reply: Reply) => Reply) {
+function onReply(pane: Pane, key: number | null, change: (reply: Reply) => Reply) {
   if (key === null) return;
-  set(({ turns }) => ({ turns: turns.map((turn) => (turn.kind === "reply" && turn.key === key ? change(turn) : turn)) }));
+  pane.chat.setState(({ turns }) => ({ turns: turns.map((turn) => (turn.kind === "reply" && turn.key === key ? change(turn) : turn)) }));
 }
 
 // A new reply, named after its model when the model changed since the last.
-function open(model: string) {
-  const reply = opening(nameOf(model));
-  set(({ turns }) => ({ turns: [...turns, reply] }));
+function open(pane: Pane, model: string) {
+  const reply = opening(nameOf(pane, model));
+  pane.chat.setState(({ turns }) => ({ turns: [...turns, reply] }));
   return reply.key;
 }
 
-function nameOf(model: string) {
+function nameOf(pane: Pane, model: string) {
   if (!model) return "";
   const said = modelName(model);
-  if (said === named) return "";
-  const first = !named;
-  named = said;
+  if (said === pane.named) return "";
+  const first = !pane.named;
+  pane.named = said;
   return first ? "" : said;
 }
 
-export function idle(on: boolean) {
-  set({ busy: !on, stopping: false });
+export function idle(on: boolean, pane: Pane = focused()) {
+  pane.chat.setState({ busy: !on, stopping: false });
 }
 
 // A new session, empty: it gets its id once the first message goes.
-export function blank(id: string) {
-  setSession(id);
-  named = "";
-  replying = null;
-  pendingId = null;
-  warmed = "";
-  set({ turns: [] });
-  forgetTasks();
+export function blank(id: string, pane: Pane = focused()) {
+  setSession(pane, id);
+  pane.named = "";
+  pane.replying = null;
+  pane.pendingId = null;
+  pane.warmed = "";
+  pane.chat.setState({ turns: [] });
+  forgetTasks(id);
 }
 
 // The agent changed a file: the tree and the viewer mark it, and what shows it
@@ -100,20 +93,23 @@ function touched(edit: { path: string; lines: number[]; plus: number; minus: num
 }
 
 // One event on the reply it goes to, and what the live line says of it.
-function route(key: number, event: ChatEvent, live: boolean) {
-  onReply(key, (reply) => heard(reply, event, live));
+function route(pane: Pane, key: number, event: ChatEvent, live: boolean) {
+  onReply(pane, key, (reply) => heard(reply, event, live));
   if (event.kind === "started") {
-    const who = nameOf(event.model);
-    if (who) onReply(key, (reply) => ({ ...reply, who }));
+    const who = nameOf(pane, event.model);
+    if (who) onReply(pane, key, (reply) => ({ ...reply, who }));
   }
   if (event.kind === "toolDone") {
-    const step = chat.getState().turns.flatMap((turn) => (turn.kind === "reply" ? turn.parts : [])).find((part) => part.kind === "step" && part.id === event.id);
+    const step = pane.chat
+      .getState()
+      .turns.flatMap((turn) => (turn.kind === "reply" ? turn.parts : []))
+      .find((part) => part.kind === "step" && part.id === event.id);
     const edit = step?.kind === "step" ? editOf(step.name, step.input, event.detail) : null;
-    if (edit?.path && !event.error) touched({ path: edit.path, lines: edit.added, plus: edit.plus, minus: edit.minus });
+    if (edit?.path && !event.error && onScreen(pane)) touched({ path: edit.path, lines: edit.added, plus: edit.plus, minus: edit.minus });
   }
   if (!live) return;
   const said = working(event);
-  if (said) onReply(key, (reply) => (reply.closed ? reply : { ...reply, working: said }));
+  if (said) onReply(pane, key, (reply) => (reply.closed ? reply : { ...reply, working: said }));
 }
 
 function working(event: ChatEvent) {
@@ -121,7 +117,7 @@ function working(event: ChatEvent) {
     case "started":
       return "Trabajando…";
     case "delta":
-      return event.thinking ? "Razonando…" : "Escribiendo…";
+      return event.thinking ? "Trabajando…" : "Escribiendo…";
     case "tool":
       return SILENT.has(event.name) ? "" : statusOf(event.name, event.input || {});
     case "consulted":
@@ -133,51 +129,56 @@ function working(event: ChatEvent) {
   }
 }
 
-const inRoot = (path: string) => `${project.getState().root.replace(/[\\/]+$/, "")}/${path}`;
+const inRoot = (pane: Pane, path: string) => `${rootOf(pane).replace(/[\\/]+$/, "")}/${path}`;
 
 // A saved session drawn back as it went. A question still waiting when the
 // session is still running can be answered.
-export async function load(id: string) {
-  blank(id);
-  const { root } = project.getState();
+export async function load(id: string, pane: Pane = focused()) {
+  blank(id, pane);
+  const root = rootOf(pane);
   const [entries, running, alive] = await Promise.all([commands.replay(root, id), commands.chatBusy(id), commands.chatTasks(id)]);
   const answeredOnes = new Set(entries.flatMap((entry) => (entry.kind === "agent" && entry.event.kind === "answered" ? [entry.event.request] : [])));
 
-  set({ replaying: true });
-  requestAnimationFrame(() => requestAnimationFrame(() => set({ replaying: false })));
+  pane.chat.setState({ replaying: true });
+  requestAnimationFrame(() => requestAnimationFrame(() => pane.chat.setState({ replaying: false })));
 
   let reply: number | null = null;
   let asking = false;
   for (const entry of entries as SessionEntry[]) {
     if (entry.kind === "task") {
-      asked(entry.text, entry.files, (entry.images || []).map((path) => commands.artifactData(inRoot(path))));
+      asked(
+        pane,
+        entry.text,
+        entry.files,
+        (entry.images || []).map((path) => commands.artifactData(inRoot(pane, path))),
+      );
       reply = null;
       continue;
     }
     if (entry.kind !== "agent") continue;
     const event = entry.event;
-    noteTask(event as AgentEvent, entry.at);
+    noteTask(event as AgentEvent, entry.at, id);
     if (TASK_EVENTS.has(event.kind)) continue;
-    reply ??= open(event.kind === "started" ? event.model : "");
+    reply ??= open(pane, event.kind === "started" ? event.model : "");
     const waiting = running && event.kind === "asking" && !answeredOnes.has(event.request);
     asking ||= waiting;
-    route(reply, event, waiting);
+    route(pane, reply, event, waiting);
     if (CLOSING.has(event.kind)) reply = null;
   }
 
   if (running) {
-    replying = reply ?? open("");
-    onReply(replying, (open) => ({ ...open, working: "Trabajando…" }));
+    pane.replying = reply ?? open(pane, "");
+    onReply(pane, pane.replying, (open) => ({ ...open, working: "Trabajando…" }));
   }
-  settleTasks(alive);
+  settleTasks(alive, id);
   noteActivity(id, running ? (asking ? "waiting" : "working") : null);
-  idle(!running);
-  if (!chat.getState().turns.length) hello();
+  idle(!running, pane);
+  if (!pane.chat.getState().turns.length) hello(pane);
   await loadRail();
 }
 
-function asked(text: string, files: string[], pictures: Picture[]) {
-  set(({ turns }) => ({ turns: [...turns, { kind: "you", key: nextKey(), text, files, pictures }] }));
+function asked(pane: Pane, text: string, files: string[], pictures: Picture[]) {
+  pane.chat.setState(({ turns }) => ({ turns: [...turns, { kind: "you", key: nextKey(), text, files, pictures }] }));
 }
 
 // A message as the composer hands it: what to send, and how it shows.
@@ -187,75 +188,81 @@ export interface Outgoing {
   pictures: string[];
 }
 
-export async function send({ message, shownFiles, pictures }: Outgoing, settings: Settings) {
-  const { root } = project.getState();
-  asked(message.text, shownFiles, pictures);
-  replying = open(settings.model);
-  onReply(replying, (reply) => ({ ...reply, working: "Enviando…" }));
-  idle(false);
+export async function send({ message, shownFiles, pictures }: Outgoing, settings: Settings, pane: Pane = focused()) {
+  const root = rootOf(pane);
+  asked(pane, message.text, shownFiles, pictures);
+  pane.replying = open(pane, settings.model);
+  onReply(pane, pane.replying, (reply) => ({ ...reply, working: "Enviando…" }));
+  idle(false, pane);
   try {
-    if (!session()) setSession(await commands.openSession(root, pendingId ? await pendingId : null));
-    pendingId = null;
-    await commands.chatSend(root, session(), message, settings);
+    if (!session(pane)) setSession(pane, await commands.openSession(root, pane.pendingId ? await pane.pendingId : null));
+    pane.pendingId = null;
+    await commands.chatSend(root, session(pane), message, settings);
     loadRail();
   } catch (reason) {
-    onReply(replying, (reply) => heard(reply, { kind: "failed", reason: String(reason) }, false));
-    replying = null;
-    idle(true);
+    onReply(pane, pane.replying, (reply) => heard(reply, { kind: "failed", reason: String(reason) }, false));
+    pane.replying = null;
+    idle(true, pane);
   }
 }
 
-export async function halt() {
-  const { stopping } = chat.getState();
-  if (stopping || !session()) return;
-  set({ stopping: true });
-  onReply(replying, (reply) => ({ ...reply, working: "Parando…" }));
+export async function halt(pane: Pane = focused()) {
+  const { stopping } = pane.chat.getState();
+  if (stopping || !session(pane)) return;
+  pane.chat.setState({ stopping: true });
+  onReply(pane, pane.replying, (reply) => ({ ...reply, working: "Parando…" }));
   try {
-    await commands.chatStop(session());
+    await commands.chatStop(session(pane));
   } catch (reason) {
-    warn(String(reason));
-    set({ stopping: false });
+    warn(String(reason), pane);
+    pane.chat.setState({ stopping: false });
   }
 }
 
 // Claude Code starts before the first message, with the settings chosen, so
 // the reply comes sooner.
-export async function warm(settings: Settings) {
-  const { root } = project.getState();
-  if (!root || chat.getState().busy || !settings.provider) return;
+export async function warm(settings: Settings, pane: Pane = focused()) {
+  const root = rootOf(pane);
+  if (!root || pane.chat.getState().busy || !settings.provider) return;
   try {
-    const id = session() || (await (pendingId ??= commands.newSessionId()));
+    const id = session(pane) || (await (pane.pendingId ??= commands.newSessionId()));
     const key = JSON.stringify([root, id, settings]);
-    if (key === warmed) return;
-    warmed = key;
+    if (key === pane.warmed) return;
+    pane.warmed = key;
     await commands.chatWarm(root, id, settings);
   } catch {
-    warmed = "";
+    pane.warmed = "";
   }
 }
 
 // An answer to a question in `reply`: it shows at once, or the question says
 // why it could not go.
-export async function answer(reply: number, request: string, decision: Decision) {
-  await commands.chatAnswer(session(), request, decision);
-  onReply(reply, (open) => answered(open, request, decision.allow, decision.answers ?? null));
+export async function answer(reply: number, request: string, decision: Decision, pane: Pane = focused()) {
+  await commands.chatAnswer(session(pane), request, decision);
+  onReply(pane, reply, (open) => answered(open, request, decision.allow, decision.answers ?? null));
 }
 
-async function afterTurn() {
-  idle(true);
-  set(({ ended }) => ({ ended: ended + 1 }));
+const turnEnded: ((pane: Pane) => unknown)[] = [];
+export const whenTurnEnds = (then: (pane: Pane) => unknown) => void turnEnded.push(then);
+
+async function afterTurn(pane: Pane) {
+  idle(true, pane);
+  pane.chat.setState(({ ended }) => ({ ended: ended + 1 }));
+  for (const then of turnEnded) then(pane);
   if (project.getState().view === "artifacts") loadShelf();
-  if (panelShows("changes")) await loadChanges();
-  await loadFiles();
+  if (onScreen(pane)) {
+    if (panelShows("changes")) await loadChanges();
+    await loadFiles();
+  }
   await loadRail();
 }
 
-function hear(event: ChatEvent) {
-  replying ??= open("");
-  route(replying, event, true);
+function hear(pane: Pane, event: ChatEvent) {
+  pane.replying ??= open(pane, "");
+  route(pane, pane.replying, event, true);
   if (!CLOSING.has(event.kind)) return;
-  replying = null;
-  afterTurn();
+  pane.replying = null;
+  afterTurn(pane);
 }
 
 // Once: what every session says. Another session's end only refreshes the
@@ -266,13 +273,14 @@ const activityAfter = (kind: string, seen: boolean): Activity | null =>
 export const hearChat = () =>
   events.chat((from, event) => {
     if (event.kind === "limits") return noteLimits(event.windows);
-    if (!TASK_EVENTS.has(event.kind)) noteActivity(from, activityAfter(event.kind, from === session()));
+    const pane = paneOf(from);
+    if (!TASK_EVENTS.has(event.kind)) noteActivity(from, activityAfter(event.kind, Boolean(pane)));
     if (CLOSING.has(event.kind)) nameSession(from);
-    if (from !== session()) {
+    if (!pane) {
       if (CLOSING.has(event.kind)) loadRail();
       return;
     }
-    noteTask(event as AgentEvent);
+    noteTask(event as AgentEvent, Date.now(), from);
     if (TASK_EVENTS.has(event.kind)) return;
-    hear(event);
+    hear(pane, event);
   });

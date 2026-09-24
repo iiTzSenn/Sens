@@ -140,10 +140,10 @@ describe("the desktop shell", () => {
 
   it("gives the composer an attach, a dictate and one send control", () => {
     for (const control of ["attach", "dictate", "send"]) {
-      expect(shell, control).toContain(`id="${control}"`);
+      expect(shell, control).toContain(`id={id("${control}")}`);
     }
     expect(shell).toContain('.composer .box[data-busy="true"] .send .halt');
-    expect(shell).toContain("await commands.chatStop(session());");
+    expect(shell).toContain("await commands.chatStop(session(pane));");
     expect(shell).toContain("data-stopping={String(stopping)}");
   });
 

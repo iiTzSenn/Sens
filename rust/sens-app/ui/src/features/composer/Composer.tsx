@@ -6,9 +6,9 @@ import { stem, weigh } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { useSheet, type Sheet } from "../../shared/useSheet";
-import { chat, halt } from "../chat/store";
-import { models } from "../models/store";
-import { project } from "../project/store";
+import { halt } from "../chat/store";
+import { useIds, usePane } from "../panes/context";
+import { panes } from "../panes/store";
 import { Effort, ModelPicker, ModePicker, Think } from "./Knobs";
 import { attachPaths, canSend, composer, dropFile, dropPicture, fileLabel, send, switchTo, takePictures, warm } from "./store";
 
@@ -37,22 +37,24 @@ export function Composer() {
 }
 
 function Workspace() {
-  const root = useStore(project, (s) => s.root);
-  const busy = useStore(chat, (s) => s.busy);
-  const repo = useStore(composer, (s) => s.repo);
+  const pane = usePane();
+  const id = useIds();
+  const root = useStore(pane.desk, (s) => s.root);
+  const busy = useStore(pane.chat, (s) => s.busy);
+  const repo = useStore(pane.desk, (s) => s.repo);
   const sheet = useSheet();
   const pending = repo && (repo.dirty === 1 ? "1 fichero sin confirmar" : `${repo.dirty} ficheros sin confirmar`);
 
   return (
     <div className="workspace">
-      <button className="chipbtn" id="folder" title={root || "Elegir carpeta de trabajo"} disabled={busy} onClick={() => chooseFolder()}>
+      <button className="chipbtn" id={id("folder")} title={root || "Elegir carpeta de trabajo"} disabled={busy} onClick={() => chooseFolder()}>
         <Icon svg={ICONS.folderSmall} />
-        <span id="root">{root ? stem(root) : "Elegir carpeta…"}</span>
+        <span id={id("root")}>{root ? stem(root) : "Elegir carpeta…"}</span>
       </button>
       {repo && (
         <button
           className="chipbtn"
-          id="branch"
+          id={id("branch")}
           ref={sheet.anchor}
           aria-haspopup="true"
           aria-expanded={sheet.open}
@@ -61,8 +63,8 @@ function Workspace() {
           onClick={sheet.toggle}
         >
           <Icon svg={ICONS.branch} />
-          <span id="branch-name">{repo.branch}</span>
-          {repo.dirty > 0 && <span className="dirty" id="dirty" />}
+          <span id={id("branch-name")}>{repo.branch}</span>
+          {repo.dirty > 0 && <span className="dirty" id={id("dirty")} />}
         </button>
       )}
       {repo && <Branches sheet={sheet} />}
@@ -72,7 +74,9 @@ function Workspace() {
 
 // The branch you are on, and the others to switch to, filtered by name.
 function Branches({ sheet }: { sheet: Sheet }) {
-  const repo = useStore(composer, (s) => s.repo)!;
+  const pane = usePane();
+  const id = useIds();
+  const repo = useStore(pane.desk, (s) => s.repo)!;
   const [needle, setNeedle] = useState("");
   const wanted = needle.trim().toLowerCase();
   useEffect(() => {
@@ -82,7 +86,7 @@ function Branches({ sheet }: { sheet: Sheet }) {
   const shown = wanted ? others.filter((name) => name.toLowerCase().includes(wanted)) : others;
 
   const row = (name: string, here: boolean) => (
-    <button key={name} className="branch-row" aria-current={here} title={name} onClick={() => (here ? sheet.shut() : (sheet.shut(), switchTo(name)))}>
+    <button key={name} className="branch-row" aria-current={here} title={name} onClick={() => (here ? sheet.shut() : (sheet.shut(), switchTo(name, pane)))}>
       <span className="name">{name}</span>
       <span className="tip">
         <Icon svg={ICONS.tick} />
@@ -91,13 +95,13 @@ function Branches({ sheet }: { sheet: Sheet }) {
   );
 
   return (
-    <div className="sheet" id="branches" {...sheet.sheet}>
-      <div id="branch-here">{row(repo.branch, true)}</div>
+    <div className="sheet" id={id("branches")} {...sheet.sheet}>
+      <div id={id("branch-here")}>{row(repo.branch, true)}</div>
       <div className="seek">
         <Icon svg={ICONS.find} />
-        <input className="field" id="branch-filter" placeholder="Buscar ramas…" autoComplete="off" spellCheck={false} value={needle} onChange={(event) => setNeedle(event.target.value)} />
+        <input className="field" id={id("branch-filter")} placeholder="Buscar ramas…" autoComplete="off" spellCheck={false} value={needle} onChange={(event) => setNeedle(event.target.value)} />
       </div>
-      <div className="rows" id="branch-rows">
+      <div className="rows" id={id("branch-rows")}>
         {shown.map((name) => row(name, false))}
         {!shown.length && <p className="none">{wanted ? "Ninguna rama coincide." : "No hay más ramas."}</p>}
       </div>
@@ -106,16 +110,18 @@ function Branches({ sheet }: { sheet: Sheet }) {
 }
 
 function Clips() {
-  const attached = useStore(composer, (s) => s.attached);
-  const pasted = useStore(composer, (s) => s.pasted);
+  const pane = usePane();
+  const id = useIds();
+  const attached = useStore(pane.desk, (s) => s.attached);
+  const pasted = useStore(pane.desk, (s) => s.pasted);
   if (!attached.length && !pasted.length) return null;
   return (
-    <div className="clips" id="clips">
+    <div className="clips" id={id("clips")}>
       {pasted.map((picture) => (
-        <Clip key={picture.url} label={picture.name} weight={weigh(picture.bytes)} picture={picture.url} forget={() => dropPicture(picture)} />
+        <Clip key={picture.url} label={picture.name} weight={weigh(picture.bytes)} picture={picture.url} forget={() => dropPicture(picture, pane)} />
       ))}
       {attached.map((file) => (
-        <Clip key={file.path} label={fileLabel(file)} weight={weigh(file.bytes)} forget={() => dropFile(file.path)} />
+        <Clip key={file.path} label={fileLabel(file)} weight={weigh(file.bytes)} forget={() => dropFile(file.path, pane)} />
       ))}
     </div>
   );
@@ -138,12 +144,15 @@ function Clip({ label, weight, picture, forget }: { label: string; weight: strin
 const GROW_CAP = 260;
 
 function Box() {
-  const root = useStore(project, (s) => s.root);
-  const busy = useStore(chat, (s) => s.busy);
-  const stopping = useStore(chat, (s) => s.stopping);
-  const pasted = useStore(composer, (s) => s.pasted.length);
-  const provider = useStore(models, (s) => s.choice.provider);
-  const dropping = useStore(composer, (s) => s.dropping);
+  const pane = usePane();
+  const id = useIds();
+  const root = useStore(pane.desk, (s) => s.root);
+  const busy = useStore(pane.chat, (s) => s.busy);
+  const stopping = useStore(pane.chat, (s) => s.stopping);
+  const pasted = useStore(pane.desk, (s) => s.pasted.length);
+  const provider = useStore(pane.desk, (s) => s.choice.provider);
+  const here = useStore(panes, (s) => s.focus === pane.id);
+  const dropping = useStore(composer, (s) => s.dropping) && here;
   const [text, setText] = useState("");
   const field = useRef<HTMLTextAreaElement>(null);
   const grown = useRef(0);
@@ -169,30 +178,30 @@ function Box() {
   const label = busy ? (stopping ? "Parando…" : "Parar") : "Enviar";
 
   async function go() {
-    if (!canSend(text)) return;
+    if (!canSend(text, pane)) return;
     const said = text;
     setText("");
-    await send(said);
+    await send(said, pane);
   }
 
   return (
     <div className="box" data-busy={String(busy)} data-stopping={String(stopping)} data-drop={dropping ? "true" : undefined} style={lap.style} onAnimationIteration={lap.next}>
       <button
         className="round"
-        id="attach"
+        id={id("attach")}
         title="Adjuntar ficheros"
         aria-label="Adjuntar ficheros"
         disabled={!root || busy}
         onClick={async () => {
           const picked = await open({ multiple: true, title: "Adjuntar ficheros o imágenes", defaultPath: root });
-          if (picked) await attachPaths(Array.isArray(picked) ? picked : [picked]);
+          if (picked) await attachPaths(Array.isArray(picked) ? picked : [picked], pane);
         }}
       >
         <Icon svg={ICONS.paperclip} />
       </button>
       <button
         className="round"
-        id="dictate"
+        id={id("dictate")}
         title={dictation.able ? "Dictar" : "Este sistema no trae dictado en el WebView"}
         aria-label={dictation.able ? "Dictar" : "Este sistema no trae dictado en el WebView"}
         aria-pressed={dictation.listening}
@@ -203,7 +212,7 @@ function Box() {
       </button>
       <textarea
         ref={field}
-        id="task"
+        id={id("task")}
         rows={1}
         placeholder="Pide lo que necesites…"
         aria-label="Mensaje para Claude"
@@ -212,7 +221,7 @@ function Box() {
         value={text}
         onChange={(event) => {
           setText(event.target.value);
-          warm();
+          warm(pane);
         }}
         onKeyDown={(event) => {
           if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
@@ -223,10 +232,10 @@ function Box() {
           const pictures = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/"));
           if (!pictures.length) return;
           if (!event.clipboardData.getData("text/plain")) event.preventDefault();
-          takePictures(pictures);
+          takePictures(pictures, pane);
         }}
       />
-      <button className="round send" id="send" title={label} aria-label={label} disabled={busy ? stopping : !ready} onClick={() => (busy ? halt() : go())}>
+      <button className="round send" id={id("send")} title={label} aria-label={label} disabled={busy ? stopping : !ready} onClick={() => (busy ? halt(pane) : go())}>
         <span className="go">
           <Icon svg={ICONS.arrowUp} />
         </span>

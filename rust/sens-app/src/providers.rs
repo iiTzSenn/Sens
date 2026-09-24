@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::store;
 
 const FILE: &str = "providers.json";
-const KEY_VARIABLE: &str = "ANTHROPIC_API_KEY";
+pub const KEY_VARIABLE: &str = "ANTHROPIC_API_KEY";
 const KEY_PREFIX: &str = "sk-ant-";
 const KEY_FLOOR: usize = 24;
 const HINT_TAIL: usize = 4;

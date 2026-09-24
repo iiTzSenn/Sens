@@ -255,6 +255,7 @@ export interface Workspace {
   name: string;
   activeAt: number;
   sessions: SessionSummary[];
+  trusted: boolean;
 }
 
 /** browser::Frame, rust/sens-app/src/browser.rs: where the page goes, in window pixels */

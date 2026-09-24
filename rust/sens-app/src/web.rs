@@ -63,9 +63,19 @@ fn unread(site: &str, cap: u64, error: ureq::Error) -> String {
 }
 
 pub fn bytes(url: &str, query: &[(&str, &str)], cap: u64) -> Result<Vec<u8>, String> {
+    bytes_with(url, query, &[], cap, None)
+}
+
+fn bytes_with(url: &str, query: &[(&str, &str)], headers: &[(&str, &str)], cap: u64, wait: Option<Duration>) -> Result<Vec<u8>, String> {
     let mut asked = agent().get(url);
+    if let Some(wait) = wait {
+        asked = asked.config().timeout_global(Some(wait)).build();
+    }
     for (key, value) in query {
         asked = asked.query(*key, *value);
+    }
+    for (name, value) in headers {
+        asked = asked.header(*name, *value);
     }
     let mut answer = answered(asked, url)?;
     answer.body_mut().with_config().limit(cap).read_to_vec().map_err(|error| unread(host(url), cap, error))
@@ -102,7 +112,11 @@ pub fn text(url: &str, cap: u64) -> Result<String, String> {
 }
 
 pub fn json(url: &str, query: &[(&str, &str)]) -> Result<Value, String> {
-    serde_json::from_slice(&bytes(url, query, PAGE_CAP)?)
+    json_with(url, query, &[], None)
+}
+
+pub fn json_with(url: &str, query: &[(&str, &str)], headers: &[(&str, &str)], wait: Option<Duration>) -> Result<Value, String> {
+    serde_json::from_slice(&bytes_with(url, query, headers, PAGE_CAP, wait)?)
         .map_err(|error| format!("{} devolvió JSON ilegible: {error}", host(url)))
 }
 

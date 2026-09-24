@@ -4,10 +4,13 @@ import type { Card, Provider } from "../../ipc/types";
 import { showView } from "../../app/session";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
+import { PanelForm, openPanel } from "../../shared/Panel";
 import { useSheet, type Sheet } from "../../shared/useSheet";
 import { accountLine, chosenCard, chosenLabel, choose, models, modelsOf, offeredBy, readAccount, refreshModels, refreshWhenDue, saidOf, signInWanted, toggleHidden } from "../models/store";
+import { useIds, usePane } from "../panes/context";
+import type { Pane } from "../panes/store";
 import { settings, showSection } from "../settings/store";
-import { EFFORT_NAMES, MODES, chooseMode, composer, effortLevels, effortNow, pickEffort, toggleThinking } from "./store";
+import { BYPASS, EFFORT_NAMES, MODES, chooseMode, composer, effortLevels, effortNow, modeNow, pickEffort, toggleThinking, trustProject, trustedHere } from "./store";
 
 // A choice in a knob's menu: its name, what it means, and a tick when chosen.
 function KnobRow({ label, sub, checked, risky, onPick }: { label: string; sub?: string; checked: boolean; risky?: boolean; onPick: () => void }) {
@@ -36,11 +39,13 @@ function PickerButton({ sheet, id, title, risky, children }: { sheet: Sheet; id:
 // The models of each provider, newest first; the account under them; and, in
 // edit mode, which models the picker hides.
 export function ModelPicker() {
+  const pane = usePane();
+  const id = useIds();
   const sheet = useSheet();
   const catalog = useStore(models, (s) => s.catalog);
   useStore(models, (s) => s.known);
   useStore(models, (s) => s.hidden);
-  useStore(models, (s) => s.choice);
+  useStore(pane.desk, (s) => s.choice);
   const fetching = useStore(models, (s) => s.fetching);
   const note = useStore(models, (s) => s.note);
   useStore(models, (s) => s.account);
@@ -65,19 +70,19 @@ export function ModelPicker() {
   const account = accountLine();
   return (
     <div className="pick-anchor">
-      <PickerButton sheet={sheet} id="pick">
-        <span id="crew">{chosenLabel()}</span>
+      <PickerButton sheet={sheet} id={id("pick")}>
+        <span id={id("crew")}>{chosenLabel(pane)}</span>
       </PickerButton>
-      <div className="sheet menu models knob-sheet" id="picker" role="menu" aria-label="Modelos" {...sheet.sheet}>
-        <div id="model-rows">
+      <div className="sheet menu models knob-sheet model-sheet" id={id("picker")} role="menu" aria-label="Modelos" {...sheet.sheet}>
+        <div id={id("model-rows")}>
           {catalog.map((provider) => (
             <ProviderRows key={provider.id} provider={provider} editing={editing} fetching={fetching} picked={() => sheet.shut()} />
           ))}
         </div>
-        <div className={account.warn ? "model-quiet warn" : "model-quiet"} id="model-account" hidden={!account.text}>
+        <div className={account.warn ? "model-quiet warn" : "model-quiet"} id={id("model-account")} hidden={!account.text}>
           {account.text}
         </div>
-        <div className="model-quiet warn" id="model-note" hidden={!note}>
+        <div className="model-quiet warn" id={id("model-note")} hidden={!note}>
           {note}
         </div>
         <div className="model-rule" />
@@ -85,7 +90,7 @@ export function ModelPicker() {
           className="menu-item tool"
           role="menuitem"
           tabIndex={-1}
-          id="models-connect"
+          id={id("models-connect")}
           hidden={!(connecting || signInWanted())}
           disabled={connecting}
           onClick={toProviders}
@@ -93,15 +98,15 @@ export function ModelPicker() {
           <Icon svg={ICONS.logIn} />
           <span>{connecting ? "Esperando al inicio de sesión…" : "Conectar Claude Code…"}</span>
         </button>
-        <button className="menu-item tool" role="menuitem" tabIndex={-1} id="models-update" hidden={!behind} title={`Hay una versión nueva: v${behind}`} onClick={toProviders}>
+        <button className="menu-item tool" role="menuitem" tabIndex={-1} id={id("models-update")} hidden={!behind} title={`Hay una versión nueva: v${behind}`} onClick={toProviders}>
           <Icon svg={ICONS.update} />
           <span>Actualizar Claude Code…</span>
         </button>
-        <button className="menu-item tool" role="menuitem" tabIndex={-1} id="models-refresh" disabled={fetching} onClick={refreshModels}>
+        <button className="menu-item tool models-refresh" role="menuitem" tabIndex={-1} id={id("models-refresh")} disabled={fetching} aria-busy={fetching} onClick={refreshModels}>
           <Icon svg={ICONS.refresh} />
           <span>{fetching ? "Actualizando…" : "Actualizar modelos"}</span>
         </button>
-        <button className="menu-item tool" role="menuitem" tabIndex={-1} id="models-edit" onClick={() => setEditing(!editing)}>
+        <button className="menu-item tool" role="menuitem" tabIndex={-1} id={id("models-edit")} onClick={() => setEditing(!editing)}>
           <Icon svg={editing ? ICONS.check : ICONS.settings} />
           <span>{editing ? "Listo" : "Editar modelos…"}</span>
         </button>
@@ -135,8 +140,9 @@ function ProviderRows({ provider, editing, fetching, picked }: { provider: Provi
 }
 
 function ModelRow({ provider, card, editing, picked }: { provider: Provider; card: Card; editing: boolean; picked: () => void }) {
+  const pane = usePane();
   const hidden = useStore(models, (s) => s.hidden.has(card.id));
-  const chosen = useStore(models, (s) => s.choice.provider === provider.id && s.choice.model === card.id);
+  const chosen = useStore(pane.desk, (s) => s.choice.provider === provider.id && s.choice.model === card.id);
   if (editing) {
     return (
       <button className="menu-item" tabIndex={-1} data-id={card.id} role="menuitemcheckbox" aria-checked={!hidden} onClick={() => toggleHidden(card.id)}>
@@ -153,23 +159,40 @@ function ModelRow({ provider, card, editing, picked }: { provider: Provider; car
       sub={saidOf(card)}
       checked={chosen}
       onPick={() => {
-        choose(provider.id, card.id);
+        choose(provider.id, card.id, pane);
         picked();
       }}
     />
   );
 }
 
+function askTrust(pane: Pane, back: HTMLElement | null) {
+  openPanel(
+    "¿Confías en este proyecto?",
+    <PanelForm submit="Confiar y activar" danger act={() => trustProject(pane)}>
+      <p>Sin control, Claude edita ficheros, ejecuta comandos y usa la red sin pedirte permiso en esta carpeta:</p>
+      <p className="mono trust-root">{pane.desk.getState().root}</p>
+      <p>Sens recordará que confías en ella y no volverá a preguntarte aquí.</p>
+    </PanelForm>,
+    back ?? undefined,
+  );
+}
+
 export function ModePicker() {
+  const pane = usePane();
+  const id = useIds();
   const sheet = useSheet();
-  const mode = useStore(composer, (s) => s.mode);
+  useStore(composer, (s) => s.mode);
+  useStore(pane.desk, (s) => s.trusted);
+  useStore(pane.desk, (s) => s.root);
+  const mode = modeNow(pane);
   const now = MODES.find((one) => one.id === mode)!;
   return (
     <div className="pick-anchor">
-      <PickerButton sheet={sheet} id="mode-pick" title={now.said} risky={now.risky}>
-        <span id="mode-label">{now.label}</span>
+      <PickerButton sheet={sheet} id={id("mode-pick")} title={now.said} risky={now.risky}>
+        <span id={id("mode-label")}>{now.label}</span>
       </PickerButton>
-      <div className="sheet menu models knob-sheet" id="mode-sheet" role="menu" aria-label="Permisos" {...sheet.sheet}>
+      <div className="sheet menu models knob-sheet" id={id("mode-sheet")} role="menu" aria-label="Permisos" {...sheet.sheet}>
         <div className="menu-head">Permisos</div>
         {MODES.map((one) => (
           <KnobRow
@@ -179,8 +202,9 @@ export function ModePicker() {
             checked={one.id === mode}
             risky={one.risky}
             onPick={() => {
-              chooseMode(one.id);
               sheet.shut();
+              if (one.id === BYPASS && !trustedHere(pane)) return askTrust(pane, sheet.anchor.current);
+              chooseMode(one.id, pane);
               sheet.anchor.current?.focus();
             }}
           />
@@ -192,16 +216,18 @@ export function ModePicker() {
 
 // Thinking before answering, unless the model always does.
 export function Think() {
-  useStore(models, (s) => s.choice);
+  const pane = usePane();
+  const id = useIds();
+  useStore(pane.desk, (s) => s.choice);
   useStore(models, (s) => s.known);
-  const thinking = useStore(composer, (s) => s.thinking);
-  const card = chosenCard();
+  const thinking = useStore(pane.desk, (s) => s.thinking);
+  const card = chosenCard(pane);
   if (!card) return null;
   const always = card.thinking === "always";
   const on = always || thinking;
   const title = always ? "Este modelo razona siempre" : on ? "Razona antes de responder. Pulsa para desactivarlo." : "Responde sin razonar. Pulsa para activarlo.";
   return (
-    <button className="toggle" id="think" aria-pressed={on} aria-disabled={always} aria-label="Razonamiento" title={title} onClick={toggleThinking}>
+    <button className="toggle" id={id("think")} aria-pressed={on} aria-disabled={always} aria-label="Razonamiento" title={title} onClick={() => toggleThinking(pane)}>
       <span className="toggle-icon" aria-hidden="true">
         <Icon svg={ICONS.brain} />
       </span>
@@ -217,16 +243,18 @@ const EFFORT_HELP = "Cuánto razona el modelo antes de responder. Más esfuerzo 
 // How hard the model thinks, on a slider of the levels it offers. At the top,
 // the track fills with Signal pixels.
 export function Effort() {
-  useStore(models, (s) => s.choice);
+  const pane = usePane();
+  const id = useIds();
+  useStore(pane.desk, (s) => s.choice);
   useStore(models, (s) => s.known);
-  useStore(composer, (s) => s.effort);
+  useStore(pane.desk, (s) => s.effort);
   const sheet = useSheet();
   const track = useRef<HTMLDivElement>(null);
-  const card = chosenCard();
+  const card = chosenCard(pane);
   const levels = effortLevels(card);
   if (levels.length < 2) return null;
 
-  const at = Math.max(0, levels.indexOf(effortNow(card)));
+  const at = Math.max(0, levels.indexOf(effortNow(card, pane)));
   const last = levels.length - 1;
   const said = EFFORT_NAMES[levels[at]] || levels[at];
   const top = at === last;
@@ -236,16 +264,18 @@ export function Effort() {
   };
 
   return (
-    <div className="pick-anchor effort" id="effort" data-max={String(top)}>
-      <PickerButton sheet={sheet} id="effort-pick" title={`Esfuerzo ${said}`}>
-        <span id="effort-label">{said}</span>
+    <div className="pick-anchor effort" id={id("effort")} data-max={String(top)}>
+      <PickerButton sheet={sheet} id={id("effort-pick")} title={`Esfuerzo ${said}`}>
+        <span className="effort-label" id={id("effort-label")}>
+          {said}
+        </span>
       </PickerButton>
-      <div className="sheet effort-sheet" id="effort-sheet" aria-label="Esfuerzo" {...sheet.sheet}>
+      <div className="sheet effort-sheet" id={id("effort-sheet")} aria-label="Esfuerzo" {...sheet.sheet}>
         <div className="effort-head">
           <span className="effort-name">
-            Esfuerzo <b id="effort-now">{said}</b>
+            Esfuerzo <b id={id("effort-now")}>{said}</b>
           </span>
-          <span className="effort-help" id="effort-help" tabIndex={0} role="note" title={EFFORT_HELP} aria-label={EFFORT_HELP}>
+          <span className="effort-help" id={id("effort-help")} tabIndex={0} role="note" title={EFFORT_HELP} aria-label={EFFORT_HELP}>
             <Icon svg={ICONS.question} />
           </span>
         </div>
@@ -255,7 +285,7 @@ export function Effort() {
         </div>
         <div
           className="effort-track"
-          id="effort-track"
+          id={id("effort-track")}
           ref={track}
           role="slider"
           tabIndex={0}
@@ -268,7 +298,7 @@ export function Effort() {
           style={{ "--at": String(at / last) } as CSSProperties}
           onPointerDown={(event) => {
             if (event.button !== 0) return;
-            pickEffort(atPointer(event.clientX));
+            pickEffort(atPointer(event.clientX), pane);
             try {
               event.currentTarget.setPointerCapture(event.pointerId);
             } catch {}
@@ -276,17 +306,17 @@ export function Effort() {
           onPointerMove={(event) => {
             if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
             if (!(event.buttons & 1)) return event.currentTarget.releasePointerCapture(event.pointerId);
-            pickEffort(atPointer(event.clientX));
+            pickEffort(atPointer(event.clientX), pane);
           }}
           onKeyDown={(event) => {
             const to = { ArrowLeft: at - 1, ArrowDown: at - 1, ArrowRight: at + 1, ArrowUp: at + 1, Home: 0, End: last }[event.key];
             if (to === undefined) return;
             event.preventDefault();
-            pickEffort(to);
+            pickEffort(to, pane);
           }}
         >
           <Pixels running={top && sheet.open} />
-          <div className="effort-ticks" id="effort-ticks" aria-hidden="true">
+          <div className="effort-ticks" id={id("effort-ticks")} aria-hidden="true">
             {levels.map((level) => (
               <span key={level} />
             ))}
@@ -306,6 +336,7 @@ const ENTER = 1500;
 const FRONT_SOFT = 0.18;
 
 function Pixels({ running }: { running: boolean }) {
+  const id = useIds();
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -368,5 +399,5 @@ function Pixels({ running }: { running: boolean }) {
     return () => cancelAnimationFrame(frame);
   }, [running]);
 
-  return <canvas className="effort-fill" id="effort-pixels" ref={canvas} aria-hidden="true" />;
+  return <canvas className="effort-fill" id={id("effort-pixels")} ref={canvas} aria-hidden="true" />;
 }

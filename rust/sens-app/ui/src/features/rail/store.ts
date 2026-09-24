@@ -2,7 +2,7 @@ import { createStore } from "zustand/vanilla";
 import { commands } from "../../ipc/commands";
 import type { SessionSummary, Workspace } from "../../ipc/types";
 import { store, stored } from "../../shared/storage.js";
-import { project } from "../project/store";
+import { paneOf } from "../panes/store";
 
 const FOLDED = "sens.rail.folded";
 
@@ -49,6 +49,11 @@ export async function loadRail() {
   owed = "";
 }
 
+export function titleOf(root: string, session: string) {
+  const named = rail.getState().spaces?.find((space) => space.root === root)?.sessions.find((one) => one.id === session)?.title;
+  return named || "Sesión nueva";
+}
+
 export const oweRail = (reason: unknown) => void (owed = String(reason));
 export const failRail = (reason: unknown) => set({ fault: String(reason) });
 
@@ -64,8 +69,8 @@ export function fold(root: string, shut: boolean) {
 
 // The project a session belongs to: the open one, or whichever lists it.
 function homeOf(id: string) {
-  const { root, session } = project.getState();
-  if (id === session) return root;
+  const shown = paneOf(id);
+  if (shown) return shown.desk.getState().root;
   return rail.getState().spaces?.find((space) => space.sessions.some((one) => one.id === id))?.root;
 }
 
@@ -94,15 +99,13 @@ export const archiveSession = (home: string, summary: SessionSummary) =>
 // Whether the session deleted was the one on screen: then a new one of its
 // project takes its place.
 export async function deleteSession(home: string, id: string) {
-  const { root, session } = project.getState();
   try {
     await commands.deleteSession(home, id);
   } catch (reason) {
     oweRail(reason);
     await loadRail();
-    return false;
+    return null;
   }
-  if (home === root && id === session) return true;
   await loadRail();
-  return false;
+  return paneOf(id) ?? null;
 }

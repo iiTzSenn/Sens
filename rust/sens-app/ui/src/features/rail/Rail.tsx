@@ -2,11 +2,15 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "zustand";
 import type { SessionSummary, Workspace } from "../../ipc/types";
-import { chooseFolder, draft, fresh, resume, showView } from "../../app/session";
+import { chooseFolder, draft, dropShown, fresh, openBeside, resume, showView } from "../../app/session";
 import { anchorMenu } from "../../shared/anchorMenu";
 import { Icon } from "../../shared/Icon";
+import { stem } from "../../shared/format.js";
 import { ICONS } from "../../shared/icons.js";
-import { useSheet } from "../../shared/useSheet";
+import { useSheet, type Sheet } from "../../shared/useSheet";
+import { distrust } from "../composer/store";
+import { useShown } from "../panes/context";
+import { drag, lift } from "../panes/drag";
 import { project, type View } from "../project/store";
 import { Me } from "./Me";
 import { activityOf, archiveSession, deleteSession, fold, rail, renameSession, type Activity } from "./store";
@@ -81,24 +85,37 @@ function backToRow(id: string) {
   });
 }
 
+// One menu serves every row: it opens by the row's dots.
+function useRowMenu<T>() {
+  const menu = useSheet();
+  const [target, setTarget] = useState<T | null>(null);
+  function open(dots: HTMLButtonElement, one: T) {
+    if (menu.open && menu.anchor.current === dots) return menu.shut();
+    menu.anchor.current = dots;
+    setTarget(one);
+    if (!menu.open) menu.toggle();
+  }
+  return { menu, target, open };
+}
+
 function Sessions() {
   const spaces = useStore(rail, (s) => s.spaces);
   const folded = useStore(rail, (s) => s.folded);
   const fault = useStore(rail, (s) => s.fault);
-  const menu = useSheet();
-  const [managed, setManaged] = useState<Managed | null>(null);
+  const { menu, target: managed, open: manage } = useRowMenu<Managed>();
+  const folders = useRowMenu<string>();
+  const { sessions, beside } = useShown();
   const [renaming, setRenaming] = useState("");
 
-  // One menu serves every row: it opens by the row's dots.
-  function manage(dots: HTMLButtonElement, one: Managed) {
-    if (menu.open && menu.anchor.current === dots) return menu.shut();
-    menu.anchor.current = dots;
-    setManaged(one);
-    if (!menu.open) menu.toggle();
-  }
-
   return (
-    <div className="sessions" id="sessions" onScroll={menu.shut}>
+    <div
+      className="sessions"
+      id="sessions"
+      onScroll={() => {
+        menu.shut();
+        folders.menu.shut();
+      }}
+    >
       {fault && (
         <p className="none fault" role="alert">
           {fault}
@@ -112,6 +129,9 @@ function Sessions() {
           renaming={renaming}
           managing={menu.open ? managed?.summary.id : undefined}
           manage={manage}
+          beside={beside}
+          managingFolder={folders.menu.open && folders.target === space.root}
+          manageFolder={(dots) => folders.open(dots, space.root)}
           renamed={(id) => {
             setRenaming("");
             backToRow(id);
@@ -123,6 +143,7 @@ function Sessions() {
         <RowMenu
           menu={menu}
           managed={managed}
+          shown={sessions}
           rename={() => {
             menu.shut();
             if (managed) setRenaming(managed.summary.id);
@@ -130,6 +151,7 @@ function Sessions() {
         />,
         document.body,
       )}
+      {createPortal(<FolderMenu menu={folders.menu} root={folders.target} />, document.body)}
     </div>
   );
 }
@@ -153,16 +175,19 @@ interface ProjectProps {
   renaming: string;
   managing?: string;
   manage: (dots: HTMLButtonElement, one: Managed) => void;
+  beside: string;
+  managingFolder: boolean;
+  manageFolder: (dots: HTMLButtonElement) => void;
   renamed: (id: string) => void;
 }
 
 // Archived sessions go last; a folded project keeps its rows, out of reach.
-function Project({ space, shut, renaming, managing, manage, renamed }: ProjectProps) {
+function Project({ space, shut, renaming, managing, manage, beside, managingFolder, manageFolder, renamed }: ProjectProps) {
   const here = useStore(project, (s) => s.root === space.root);
   const busiest = useStore(rail, (s) => activityOf(space.sessions.map((one) => one.id), s.activity));
   const ordered = [...space.sessions].sort((one, two) => Number(one.archived) - Number(two.archived));
   return (
-    <div className="project">
+    <div className="project" data-root={space.root}>
       <div className="project-head">
         <button className="fold" title={space.root} aria-expanded={!shut} data-here={here ? "true" : undefined} onClick={() => fold(space.root, !shut)}>
           <span className="chev">
@@ -174,6 +199,18 @@ function Project({ space, shut, renaming, managing, manage, renamed }: ProjectPr
         <button className="add" title={`Sesión nueva en ${space.name}`} aria-label={`Sesión nueva en ${space.name}`} onClick={() => draft(space.root)}>
           <Icon svg={ICONS.plus} />
         </button>
+        {space.trusted && (
+          <button
+            className="dots"
+            title={`Gestionar ${space.name}`}
+            aria-label={`Gestionar ${space.name}`}
+            aria-haspopup="menu"
+            aria-expanded={managingFolder}
+            onClick={(event) => manageFolder(event.currentTarget)}
+          >
+            <Icon svg={ICONS.ellipsis} />
+          </button>
+        )}
       </div>
       <div className="runs" data-shut={String(shut)}>
         <div className="runs-inner" inert={shut}>
@@ -184,6 +221,7 @@ function Project({ space, shut, renaming, managing, manage, renamed }: ProjectPr
               summary={summary}
               renaming={renaming === summary.id}
               managed={managing === summary.id}
+              beside={beside === summary.id}
               manage={(dots) => manage(dots, { home: space.root, summary })}
               renamed={() => renamed(summary.id)}
             />
@@ -200,19 +238,34 @@ interface RowProps {
   summary: SessionSummary;
   renaming: boolean;
   managed: boolean;
+  beside: boolean;
   manage: (dots: HTMLButtonElement) => void;
   renamed: () => void;
 }
 
-function SessionRow({ home, summary, renaming, managed, manage, renamed }: RowProps) {
+function SessionRow({ home, summary, renaming, managed, beside, manage, renamed }: RowProps) {
   const current = useStore(project, (s) => !s.view && s.root === home && s.session === summary.id);
   const activity = useStore(rail, (s) => s.activity.get(summary.id));
+  const lifted = useStore(drag, (s) => s.phase === "dragging" && s.dragged?.id === summary.id);
   const doing = activity ? ACTIVITY_SAID[activity] : "";
   const said = [summary.title, doing, `${summary.tasks} ${summary.tasks === 1 ? "mensaje" : "mensajes"}`, summary.archived ? "archivada" : ""];
   return (
-    <div className="session-row" data-session={summary.id} data-current={String(current)} data-renaming={renaming ? "true" : undefined}>
+    <div
+      className="session-row"
+      data-session={summary.id}
+      data-current={String(current)}
+      data-beside={beside ? "true" : undefined}
+      data-lifted={lifted ? "true" : undefined}
+      data-renaming={renaming ? "true" : undefined}
+    >
       {renaming && <Rename home={home} summary={summary} done={renamed} />}
-      <button className="session" aria-current={current} title={said.filter(Boolean).join(" · ")} onClick={() => resume(home, summary.id)}>
+      <button
+        className="session"
+        aria-current={current}
+        title={said.filter(Boolean).join(" · ")}
+        onPointerDown={(event) => lift(event, { home, id: summary.id, title: summary.title, folder: stem(home) })}
+        onClick={() => resume(home, summary.id)}
+      >
         {activity && <ActivityMark activity={activity} />}
         <span className="name">{summary.title}</span>
         {summary.archived && (
@@ -276,8 +329,32 @@ function Rename({ home, summary, done }: { home: string; summary: SessionSummary
   );
 }
 
+function FolderMenu({ menu, root }: { menu: Sheet; root: string | null }) {
+  useLayoutEffect(() => {
+    if (menu.open && menu.sheet.ref.current && menu.anchor.current) anchorMenu(menu.sheet.ref.current, menu.anchor.current);
+  }, [menu.open, root]);
+
+  async function untrust() {
+    if (!root) return;
+    menu.shut();
+    await distrust(root);
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`.project[data-root="${CSS.escape(root)}"] .fold`)?.focus());
+  }
+
+  return (
+    <div className="sheet menu float-menu" id="folder-menu" role="menu" aria-label="Gestionar carpeta" {...menu.sheet}>
+      <button className="menu-item" role="menuitem" tabIndex={-1} onClick={untrust}>
+        <span className="act-icon">
+          <Icon svg={ICONS.shieldOff} />
+        </span>
+        <span className="act-text">Dejar de confiar</span>
+      </button>
+    </div>
+  );
+}
+
 // Deleting asks twice: the first click turns the item into "Confirmar".
-function RowMenu({ menu, managed, rename }: { menu: ReturnType<typeof useSheet>; managed: Managed | null; rename: () => void }) {
+function RowMenu({ menu, managed, shown, rename }: { menu: Sheet; managed: Managed | null; shown: string[]; rename: () => void }) {
   const [armed, setArmed] = useState(false);
 
   useLayoutEffect(() => {
@@ -295,6 +372,22 @@ function RowMenu({ menu, managed, rename }: { menu: ReturnType<typeof useSheet>;
 
   return (
     <div className="sheet menu float-menu" id="session-menu" role="menu" aria-label="Gestionar sesión" {...menu.sheet}>
+      {managed && !shown.includes(managed.summary.id) && (
+        <button
+          className="menu-item"
+          role="menuitem"
+          tabIndex={-1}
+          onClick={() => {
+            menu.shut();
+            openBeside(managed.home, managed.summary.id);
+          }}
+        >
+          <span className="act-icon">
+            <Icon svg={ICONS.splitView} />
+          </span>
+          <span className="act-text">Abrir al lado</span>
+        </button>
+      )}
       <button className="menu-item" role="menuitem" tabIndex={-1} onClick={rename}>
         <span className="act-icon">
           <Icon svg={ICONS.pencil} />
@@ -312,7 +405,14 @@ function RowMenu({ menu, managed, rename }: { menu: ReturnType<typeof useSheet>;
         role="menuitem"
         tabIndex={-1}
         data-armed={String(armed)}
-        onClick={armed ? act(async (one) => (await deleteSession(one.home, one.summary.id)) && draft(one.home)) : () => setArmed(true)}
+        onClick={
+          armed
+            ? act(async (one) => {
+                const shown = await deleteSession(one.home, one.summary.id);
+                if (shown) await dropShown(shown, one.home);
+              })
+            : () => setArmed(true)
+        }
       >
         <span className="act-icon">
           <Icon svg={ICONS.trash} />

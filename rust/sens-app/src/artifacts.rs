@@ -485,7 +485,7 @@ mod tests {
             last: None,
             projects: roots
                 .iter()
-                .map(|root| Known { root: root.to_string_lossy().into_owned(), opened: 1 })
+                .map(|root| Known { root: root.to_string_lossy().into_owned(), opened: 1, trusted: false })
                 .collect(),
         }
     }

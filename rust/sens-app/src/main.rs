@@ -12,6 +12,7 @@ mod preview;
 mod profile;
 mod projects;
 mod providers;
+mod served;
 mod snapshot;
 mod store;
 mod update;
@@ -104,7 +105,9 @@ fn providers() -> &'static [catalog::Provider] {
 
 #[tauri::command(async)]
 fn models(provider: String) -> Result<Vec<catalog::Card>, String> {
-    catalog::discover(&provider)
+    let served = std::thread::spawn(served::models);
+    let offered = catalog::discover(&provider)?;
+    Ok(catalog::with_served(offered, &served.join().unwrap_or_default()))
 }
 
 #[tauri::command(async)]
@@ -221,6 +224,7 @@ fn chat_warm(app: AppHandle, engine: State<Arc<Engine>>, root: String, session_i
 
 fn equip(app: &AppHandle, root: &str, settings: &mut Settings) -> Result<(), String> {
     let base = data_dir(app)?;
+    projects::allows(&projects::load(&base), root, &settings.mode)?;
     let launch = capabilities::launch(&base, root)?;
     settings.extra = launch.args;
     settings.env = launch.env;
@@ -361,6 +365,16 @@ fn workspaces(app: AppHandle) -> Result<Vec<projects::Workspace>, String> {
 #[tauri::command]
 fn remember(app: AppHandle, root: String) -> Result<(), String> {
     projects::remember(&data_dir(&app)?, &root)
+}
+
+#[tauri::command]
+fn trust_project(app: AppHandle, root: String, trusted: bool) -> Result<(), String> {
+    projects::trust(&data_dir(&app)?, &root, trusted)
+}
+
+#[tauri::command]
+fn project_trusted(app: AppHandle, root: String) -> Result<bool, String> {
+    Ok(projects::trusted(&registry(&app)?, &root))
 }
 
 #[tauri::command]
@@ -573,6 +587,8 @@ fn main() {
             changes,
             workspaces,
             remember,
+            trust_project,
+            project_trusted,
             last_project,
             profile,
             save_profile,
