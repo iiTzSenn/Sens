@@ -351,7 +351,6 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   },
   preview_url: ({ path }) => `http://127.0.0.1:4321/demo/${String(path).split("/").pop()}`,
   artifact_text: ({ path }) => `# ${String(path).split("/").pop()}\n\nTexto de prueba.`,
-  tree: () => [],
   capabilities: () => structuredClone(caps),
   set_skill: setCapability("skills"),
   set_server: setCapability("servers"),

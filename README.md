@@ -52,15 +52,6 @@ Every entry has a page with its readme, every file it ships and **what it runs**
   <img src="docs/app-models.png" alt="Picking the model" width="900">
 </p>
 
-## The index underneath
-
-Sens walks your source respecting `.gitignore`, extracts top-level symbols with compact signatures, resolves references and imports, and caches the result in `.sens/`. Only what changed gets rebuilt.
-
-- **Go, Python, Rust, Java, C#, C, C++, PHP, Ruby, Kotlin** — indexed natively, in Rust, via [tree-sitter](https://tree-sitter.github.io/). References resolve by name, which over-counts rather than misses.
-- **JavaScript / TypeScript** — resolved semantically with [ts-morph](https://ts-morph.com), which follows your imports properly. This path still runs through Node, so a JS/TS project needs Node 18+ on your machine.
-
-A mixed repo is one project: a TypeScript frontend and a Go backend land in the same index.
-
 ## Install
 
 There is no signed installer to download yet. To build it:
@@ -84,8 +75,7 @@ It will refuse to build an unsigned one by accident. Give it a certificate from 
 
 ```bash
 npm install
-npm test                 # vitest, the indexer side
-npm run test:native      # cargo test, the index engine and the gates
+npm test                 # vitest: the interface and the brand
 cargo test --manifest-path rust/sens-agent/Cargo.toml   # the chat engine
 cargo test --manifest-path rust/sens-app/Cargo.toml     # the app: capabilities, market, sessions
 npm run typecheck

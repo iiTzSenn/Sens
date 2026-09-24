@@ -9,7 +9,6 @@ import { project } from "../project/store";
 export const files = createStore(() => ({
   unfolded: new Set<string>(),
   folders: new Map<string, Entry[]>(),
-  symbols: new Map<string, number>(),
   fault: "",
   loads: 0,
 }));
@@ -48,10 +47,8 @@ export async function loadFiles() {
   const mine = ++generation;
   pending.clear();
   const root = home();
-  if (!root) return set({ folders: new Map(), symbols: new Map(), fault: "" });
-  const indexed = await commands.tree(root);
-  if (mine !== generation) return;
-  set(({ loads }) => ({ symbols: new Map(indexed.map((file) => [file.path, file.symbols])), loads: loads + 1 }));
+  if (!root) return set({ folders: new Map(), fault: "" });
+  set(({ loads }) => ({ loads: loads + 1 }));
   const folders = new Map<string, Entry[]>();
   try {
     await readShown(root, "", folders);

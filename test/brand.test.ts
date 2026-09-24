@@ -79,7 +79,6 @@ describe("the cut", () => {
 describe("surfaces", () => {
   const surfaces = [
     ...appSources,
-    "src/cli/ui.ts",
     "assets/sens-mark.svg",
     "docs/banner.svg",
   ];
@@ -234,12 +233,6 @@ describe("restraint", () => {
   it("signs every surface with the lowercase wordmark", () => {
     expect(shell).toContain("<b>sens</b>");
     expect(shell).not.toContain('Sens<span class="dot">');
-  });
-
-  it("runs the terminal spinner on the signal scan, not a generic green", () => {
-    const cli = read("src/cli/ui.ts");
-    expect(cli).toContain("scan.frames");
-    expect(cli).not.toContain('color: "green"');
   });
 });
 

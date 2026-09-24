@@ -17,7 +17,6 @@ import type {
   Frame,
   Heard,
   Imported,
-  IndexedFile,
   Listing,
   Market,
   Message,
@@ -116,7 +115,6 @@ export const commands = {
   browserShow: (shown: boolean) => invoke<void>("browser_show", { shown }),
   browserAct: (act: "back" | "forward" | "reload" | "close") => invoke<void>("browser_act", { act }),
 
-  tree: (root: string) => invoke<IndexedFile[]>("tree", { root }),
   folder: (root: string, path: string) => invoke<Entry[]>("folder", { root, path }),
   findFiles: (root: string, needle: string) => invoke<Entry[]>("find_files", { root, needle }),
   changes: (root: string) => invoke<Changes | null>("changes", { root }),

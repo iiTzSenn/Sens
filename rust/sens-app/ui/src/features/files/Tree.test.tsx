@@ -7,7 +7,7 @@ import { files, forgetTree, loadFiles, revealFile } from "./store";
 import { Tree } from "./Tree";
 import { present, viewer } from "./view";
 
-const ipc = vi.hoisted(() => ({ commands: { tree: vi.fn(), folder: vi.fn(), findFiles: vi.fn(), openFile: vi.fn() } }));
+const ipc = vi.hoisted(() => ({ commands: { folder: vi.fn(), findFiles: vi.fn(), openFile: vi.fn() } }));
 
 vi.mock("../../ipc/commands", () => ({ commands: ipc.commands }));
 
@@ -24,7 +24,6 @@ beforeEach(() => {
   project.setState({ root: "C:/demo", touched: new Map() });
   viewer.setState(viewer.getInitialState(), true);
   forgetTree();
-  ipc.commands.tree.mockReset().mockResolvedValue([{ path: "main.py", symbols: 7 }]);
   ipc.commands.folder.mockReset().mockImplementation(async (_root: string, path: string) => TREE[path] ?? []);
   ipc.commands.findFiles.mockReset().mockResolvedValue([entry("src/ui/Button.tsx")]);
   ipc.commands.openFile.mockReset().mockResolvedValue({ kind: "text", text: "export const app = 1;" });
@@ -41,10 +40,9 @@ async function open() {
 }
 
 describe("file tree", () => {
-  it("lists the project folded, with the symbols Sens indexed", async () => {
+  it("lists the project folded", async () => {
     await open();
     expect(names()).toEqual(["src", "main.py", "README.md"]);
-    expect(row("main.py").querySelector(".n")?.textContent).toBe("7");
     expect(row("main.py").querySelector("img")?.getAttribute("src")).toBe("/file-icons/python.svg");
   });
 

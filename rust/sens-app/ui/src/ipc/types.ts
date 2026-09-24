@@ -198,12 +198,6 @@ export type Opened =
   | { kind: "tooBig"; bytes: number; cap: number }
   | { kind: "binary"; bytes: number };
 
-/** FileRow, rust/sens-app/src/main.rs: how many symbols Sens indexed in a file */
-export interface IndexedFile {
-  path: string;
-  symbols: number;
-}
-
 /** git::Changes, rust/sens-app/src/git.rs: null outside a repository */
 export interface Changes {
   diff: string;

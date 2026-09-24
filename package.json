@@ -1,69 +1,25 @@
 {
-  "name": "sens-mcp",
-  "version": "0.9.0",
-  "description": "A project index for Claude Code — let the model query your codebase instead of reading it all. Saves subscription usage and keeps code clean.",
+  "name": "sens",
+  "private": true,
   "type": "module",
-  "bin": {
-    "sens": "dist/cli.js",
-    "sens-mcp": "dist/cli.js",
-    "sens-hook": "dist/hook.js"
-  },
-  "files": [
-    "dist"
-  ],
   "workspaces": [
     "rust/sens-app/ui"
   ],
-  "engines": {
-    "node": ">=18"
-  },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
     "typecheck": "tsc --noEmit && npm run typecheck -w sens-app-ui",
     "test": "vitest run",
     "test:watch": "vitest",
-    "bench": "tsx bench/run.ts",
-    "start": "node dist/cli.js",
-    "build:native": "cargo build --release --manifest-path rust/sens-hook/Cargo.toml",
     "app:dev": "cd rust/sens-app && tauri dev",
     "setup:dev": "cd rust/sens-setup && tauri dev",
     "app:installer": "node scripts/app-installer.mjs",
-    "test:native": "cargo test --manifest-path rust/sens-hook/Cargo.toml",
-    "package:native": "node scripts/package-native.mjs",
-    "diff:hook": "node rust/diff-hook.mjs",
-    "diff:query": "tsx rust/diff-query.mjs",
-    "diff:index": "tsx rust/diff-index.mjs",
     "brand": "tsx scripts/brand.ts"
   },
-  "keywords": [
-    "claude",
-    "claude-code",
-    "mcp",
-    "code-index",
-    "dead-code",
-    "ai",
-    "tokens"
-  ],
   "author": "Sofia",
   "license": "MIT",
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "boxen": "^8.0.1",
-    "chalk": "^5.6.2",
-    "commander": "^15.0.0",
-    "globby": "^16.2.1",
-    "ora": "^8.2.0",
-    "ts-morph": "^28.0.0",
-    "web-tree-sitter": "^0.24.3",
-    "zod": "^4.4.3"
-  },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.5",
     "@types/node": "^26.1.0",
     "sharp": "^0.35.4",
-    "tree-sitter-wasms": "^0.1.13",
-    "tsup": "^8.5.1",
     "tsx": "^4.23.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"

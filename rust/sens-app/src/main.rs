@@ -29,40 +29,9 @@ use sens_agent::catalog;
 use sens_agent::chat::{self, Decision, Engine, Event, Message, Settings, Sink};
 use sens_agent::session;
 use sens_agent::title;
-use sens_hook::engine;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_opener::OpenerExt;
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct FileRow {
-    path: String,
-    symbols: usize,
-}
-
-#[tauri::command]
-fn tree(root: String) -> Vec<FileRow> {
-    let Some((index, _)) = engine::load(&PathBuf::from(&root)) else {
-        return Vec::new();
-    };
-
-    let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    for symbol in &index.symbols {
-        *counts.entry(symbol.file.as_str()).or_default() += 1;
-    }
-
-    let mut rows: Vec<FileRow> = index
-        .files
-        .iter()
-        .map(|file| FileRow {
-            symbols: counts.get(file.path.as_str()).copied().unwrap_or_default(),
-            path: file.path.clone(),
-        })
-        .collect();
-    rows.sort_by(|a, b| a.path.cmp(&b.path));
-    rows
-}
 
 #[tauri::command]
 fn repo(root: String) -> Option<git::Repo> {
@@ -608,7 +577,6 @@ fn main() {
             title_session,
             rename_session,
             replay,
-            tree,
             folder,
             find_files,
             open_file,

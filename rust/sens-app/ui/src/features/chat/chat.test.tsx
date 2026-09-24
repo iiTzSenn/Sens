@@ -24,7 +24,6 @@ const ipc = vi.hoisted(() => ({
     workspaces: vi.fn(),
     titleSession: vi.fn(),
     repo: vi.fn(),
-    tree: vi.fn(),
     folder: vi.fn(),
     openFile: vi.fn(),
   },
@@ -54,7 +53,6 @@ beforeEach(() => {
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.workspaces.mockResolvedValue([]);
   ipc.commands.openSession.mockResolvedValue("s1");
-  ipc.commands.tree.mockResolvedValue([]);
   ipc.commands.folder.mockResolvedValue([]);
   ipc.commands.openFile.mockResolvedValue({ kind: "text", text: "" });
   shell.setState(shell.getInitialState(), true);

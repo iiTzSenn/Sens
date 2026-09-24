@@ -25,7 +25,6 @@ const ipc = vi.hoisted(() => ({
     chatWarm: vi.fn(),
     newSessionId: vi.fn(),
     workspaces: vi.fn(),
-    tree: vi.fn(),
     folder: vi.fn(),
     trustProject: vi.fn(),
     projectTrusted: vi.fn(),
@@ -58,7 +57,6 @@ beforeEach(async () => {
   ipc.commands.claudeAccount.mockResolvedValue({ billing: "subscription", plan: "max", source: "claude.ai", email: "ada@example.com" });
   ipc.commands.openSession.mockResolvedValue("s1");
   ipc.commands.workspaces.mockResolvedValue([]);
-  ipc.commands.tree.mockResolvedValue([]);
   ipc.commands.folder.mockResolvedValue([]);
   models.setState(models.getInitialState(), true);
   models.setState({ known: {}, hidden: new Set() });

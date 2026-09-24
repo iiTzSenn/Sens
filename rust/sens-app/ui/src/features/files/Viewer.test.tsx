@@ -9,7 +9,7 @@ import { showSite } from "../web/store";
 import { forgetViewer, openFile, present, viewer } from "./view";
 import { Viewer, ViewerHead, ViewerModes } from "./Viewer";
 
-const ipc = vi.hoisted(() => ({ commands: { openFile: vi.fn(), folder: vi.fn(), tree: vi.fn(), findFiles: vi.fn() } }));
+const ipc = vi.hoisted(() => ({ commands: { openFile: vi.fn(), folder: vi.fn(), findFiles: vi.fn() } }));
 
 vi.mock("../../ipc/commands", () => ({ commands: ipc.commands }));
 vi.mock(import("../web/store"), async (original) => ({ ...(await original()), showSite: vi.fn(async () => {}) }));

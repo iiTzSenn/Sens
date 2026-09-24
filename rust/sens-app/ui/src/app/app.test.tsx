@@ -41,7 +41,6 @@ beforeEach(() => {
   ipc.commands.replay.mockResolvedValue([{ kind: "task", at: 1, text: "Hola", files: [], images: [] }]);
   ipc.commands.chatTasks.mockResolvedValue([]);
   ipc.commands.chatBusy.mockResolvedValue(false);
-  ipc.commands.tree.mockResolvedValue([]);
   ipc.commands.folder.mockResolvedValue([]);
 });
 

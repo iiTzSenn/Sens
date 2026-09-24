@@ -1343,7 +1343,6 @@
     min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     direction: rtl; text-align: left; font-size: 12px; color: var(--ghost);
   }
-  .filerow .n { margin-left: auto; flex: none; font-family: var(--mono); font-size: 11px; color: var(--ghost); }
   .filerow[data-ignored="true"] { color: var(--ghost); }
   .filerow[data-touched="true"] .name { color: var(--green); }
 

@@ -114,7 +114,6 @@ function Fault({ reason }: { reason: string }) {
 function FileRow({ entry, depth, found = false }: { entry: Entry; depth: number; found?: boolean }) {
   const open = useStore(files, (s) => entry.dir && s.unfolded.has(entry.path));
   const opened = useStore(viewer, (s) => s.opened === entry.path);
-  const count = useStore(files, (s) => s.symbols.get(entry.path));
   const touched = useStore(project, (s) =>
     entry.dir ? [...s.touched.keys()].some((path) => path.startsWith(`${entry.path}/`)) : s.touched.has(entry.path),
   );
@@ -141,7 +140,6 @@ function FileRow({ entry, depth, found = false }: { entry: Entry; depth: number;
       )}
       <span className="name">{entry.name}</span>
       {found && <span className="dirname">{parentOf(entry.path)}</span>}
-      {count ? <span className="n">{String(count)}</span> : null}
     </button>
   );
 }
