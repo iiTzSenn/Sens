@@ -318,7 +318,7 @@
   .me-name { flex: 1; min-width: 0; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .me-name[data-empty="true"] { color: var(--ghost); }
 
-  .chat { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; min-width: 0; }
+  .chat { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; min-height: 0; min-width: 0; }
   .chat[hidden], .view[hidden] { display: none; }
 
   .view { overflow: auto; min-height: 0; min-width: 0; }
@@ -366,7 +366,7 @@
   }
   .thumb:hover .name { color: var(--text); }
 
-  .view-top { display: flex; align-items: center; gap: 12px; padding-top: 24px; }
+  .view-top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-top: 24px; }
   .view-top h1 { margin: 0; }
   .view-top p { margin: 4px 0 0; font-size: 13px; line-height: 19px; color: var(--faint); }
   .view-focus {
@@ -386,7 +386,7 @@
   }
   .view-foot svg { flex: none; color: var(--ghost); }
 
-  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 12px; }
   .card {
     position: relative; min-width: 0; padding: 16px; display: flex; flex-direction: column; gap: 12px;
     border: 1px solid var(--hair-strong); border-radius: var(--r-card); background: var(--card);
@@ -1058,7 +1058,7 @@
   .composer textarea::placeholder { color: var(--ghost); }
   .composer textarea:disabled { color: var(--ghost); }
   .composer .under {
-    margin-top: 10px; padding: 0; display: flex; align-items: center; gap: 12px;
+    margin-top: 10px; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
     font-family: var(--ui); font-size: 11px; line-height: 16px; font-weight: 600;
     color: var(--ghost); text-transform: uppercase; letter-spacing: .08em;
   }
