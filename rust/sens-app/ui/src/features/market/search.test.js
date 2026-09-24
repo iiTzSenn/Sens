@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createDebouncedSearch, createMarketRanker } from "../rust/sens-app/ui/market-search.js";
+import { createDebouncedSearch, createMarketRanker } from "./search.js";
 
 afterEach(() => vi.useRealTimers());
 

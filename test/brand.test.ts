@@ -12,7 +12,15 @@ import { markSvg, markMonoSvg, cutPath, cutWidth } from "../src/brand/mark.js";
 const root = path.join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(path.join(root, p), "utf8");
 
-const appShell = () => ["index.html", "styles.css", "app.js"].map((file) => read(`rust/sens-app/ui/${file}`)).join("\n");
+// Everything that ships in the desktop shell: not tests, not the dev-only src/dev.
+const appSources = [
+  "rust/sens-app/ui/index.html",
+  ...readdirSync(path.join(root, "rust/sens-app/ui/src"), { recursive: true, encoding: "utf8" })
+    .map((file) => file.replaceAll("\\", "/"))
+    .filter((file) => /\.(css|js|ts|tsx)$/.test(file) && !/\.test\./.test(file) && !file.startsWith("dev/"))
+    .map((file) => `rust/sens-app/ui/src/${file}`),
+];
+const appShell = () => appSources.map(read).join("\n");
 
 const forbidden = [
   "#4f7cff",
@@ -36,9 +44,9 @@ describe("brand tokens", () => {
     }
   });
 
-  it("ships the stylesheet referenced by the desktop shell", () => {
-    expect(read("rust/sens-app/ui/index.html")).toContain('href="./styles.css"');
-    expect(existsSync(path.join(root, "rust/sens-app/ui/styles.css"))).toBe(true);
+  it("loads the stylesheet from the desktop shell's entry", () => {
+    expect(read("rust/sens-app/ui/index.html")).toContain('src="/src/main.ts"');
+    expect(read("rust/sens-app/ui/src/main.ts")).toContain('import "./styles.css";');
   });
 });
 
@@ -69,9 +77,6 @@ describe("the cut", () => {
 });
 
 describe("surfaces", () => {
-  const appSources = readdirSync(path.join(root, "rust/sens-app/ui"))
-    .filter((file) => /\.(html|css|js)$/.test(file))
-    .map((file) => `rust/sens-app/ui/${file}`);
   const surfaces = [
     ...appSources,
     "src/cli/ui.ts",

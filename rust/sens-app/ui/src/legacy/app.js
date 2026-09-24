@@ -1,9 +1,11 @@
-import { createDebouncedSearch, createMarketRanker, plain } from "./market-search.js";
+import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import * as dialog from "@tauri-apps/plugin-dialog";
+import { createDebouncedSearch, createMarketRanker, plain } from "../features/market/search.js";
 
-const invoke = window.__TAURI__.core.invoke;
-const listen = window.__TAURI__.event.listen;
-const dialog = window.__TAURI__.dialog;
-const frame = window.__TAURI__.window.getCurrentWindow();
+const frame = getCurrentWindow();
 
 const DIFF_PREVIEW = 14;
 
@@ -5265,7 +5267,7 @@ function scheduleUpdates() {
 
 async function startUpdates() {
   try {
-    updates.current = await window.__TAURI__.app.getVersion();
+    updates.current = await getVersion();
   } catch (ignored) {}
   scheduleUpdates();
   if (person.checkUpdates === false) paintUpdates();
@@ -5640,7 +5642,7 @@ async function openAbout() {
   name.append(el("b", null, "sens"), version);
   showPanel("Acerca de Sens", name, el("p", "mono selectable", "github.com/iiTzSenn/Sens"));
   try {
-    version.textContent = await window.__TAURI__.app.getVersion();
+    version.textContent = await getVersion();
   } catch (reason) {
     version.className = "fault";
     version.textContent = String(reason);

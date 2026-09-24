@@ -15,7 +15,14 @@ That produces `rust/sens-app/target/release/bundle/nsis/Sens_<version>_x64-setup
 — about 3 MB, roughly 90 seconds from a cold `target/`. The Tauri CLI downloads
 NSIS on the first run and checks its hash.
 
-`npm run app:dev` opens the window with the UI reloading from disk.
+The UI is its own npm workspace, `ui/`, built by Vite into `ui/dist`, which is
+what the installer embeds. `tauri build` and `tauri dev` run it themselves.
+
+`npm run app:dev` opens the window over the Vite dev server, so edits under
+`ui/src` show up without a rebuild. `npm run dev -w sens-app-ui` serves the
+same UI to any browser with a simulated Tauri (`ui/src/dev/mock-tauri.ts`):
+no Rust toolchain needed, and commands without a fixture there resolve to
+`null` and are logged in the console.
 
 ## Signing it
 

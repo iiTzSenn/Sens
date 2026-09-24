@@ -4,10 +4,13 @@
   "version": "0.13.0",
   "identifier": "dev.sens.desktop",
   "build": {
-    "frontendDist": "./ui"
+    "beforeDevCommand": "npm run dev -w sens-app-ui",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build -w sens-app-ui",
+    "frontendDist": "./ui/dist"
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "windows": [
       {
         "title": "Sens",

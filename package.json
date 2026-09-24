@@ -11,13 +11,16 @@
   "files": [
     "dist"
   ],
+  "workspaces": [
+    "rust/sens-app/ui"
+  ],
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && npm run typecheck -w sens-app-ui",
     "test": "vitest run",
     "test:watch": "vitest",
     "bench": "tsx bench/run.ts",

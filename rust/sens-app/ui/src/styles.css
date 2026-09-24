@@ -59,7 +59,7 @@
 
   @font-face {
     font-family: "Space Grotesk";
-    src: url("fonts/space-grotesk.woff2") format("woff2");
+    src: url("/fonts/space-grotesk.woff2") format("woff2");
     font-weight: 300 700;
     font-style: normal;
     font-display: block;
