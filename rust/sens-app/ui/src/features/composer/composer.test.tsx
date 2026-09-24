@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Card } from "../../ipc/types";
-import { chooseFolder } from "../../app/session";
+import { chooseFolder, showView } from "../../app/session";
 import { blank, chat } from "../chat/store";
 import { accountLine, loadCatalog, models, noteLimits } from "../models/store";
 import { project } from "../project/store";
@@ -14,6 +14,7 @@ const ipc = vi.hoisted(() => ({
     providers: vi.fn(),
     models: vi.fn(),
     claudeAccount: vi.fn(),
+    claudeCodeNewer: vi.fn(),
     repo: vi.fn(),
     checkout: vi.fn(),
     openSession: vi.fn(),
@@ -119,6 +120,20 @@ describe("the composer", () => {
     fireEvent.click(within(picker).getByRole("menuitemcheckbox", { name: "Opus" }));
     expect(models.getState().hidden.has("claude-opus")).toBe(true);
     expect(document.getElementById("crew")?.textContent).toBe("Sonnet");
+  });
+
+  it("points to the newer Claude Code from the picker only when there is one", async () => {
+    render(<Composer />);
+    fireEvent.click(button(/Sonnet/));
+    const picker = document.getElementById("picker")!;
+    expect(document.getElementById("models-update")?.hidden).toBe(true);
+
+    ipc.commands.claudeCodeNewer.mockResolvedValue("2.1.281");
+    await act(async () => loadCatalog());
+    const update = within(picker).getByRole("menuitem", { name: "Actualizar Claude Code…" });
+    expect(update.title).toBe("Hay una versión nueva: v2.1.281");
+    fireEvent.click(update);
+    expect(showView).toHaveBeenCalledWith("settings");
   });
 
   it("sets the permission mode, thinking and effort for the next turn", () => {

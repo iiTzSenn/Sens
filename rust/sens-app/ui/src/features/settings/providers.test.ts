@@ -52,5 +52,6 @@ describe("Claude Code install status", () => {
       "Descargando Claude Code… 25 % de 240 MB",
     );
     expect(claudeCodeStatus({ stage: "installing", done: 1, total: 1 })).toBe("Instalando Claude Code…");
+    expect(claudeCodeStatus({ stage: "updating", done: 0, total: 0 })).toBe("Actualizando Claude Code…");
   });
 });

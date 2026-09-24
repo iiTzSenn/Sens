@@ -1,7 +1,7 @@
 import { createStore } from "zustand/vanilla";
 import { commands, events } from "../../ipc/commands";
 import type { ClaudeCodeProgress, Method, ProviderState } from "../../ipc/types";
-import { readAccount, refreshModels } from "../models/store";
+import { checkClaudeCode, readAccount, refreshModels } from "../models/store";
 import { store, stored } from "../../shared/storage.js";
 
 export type Section = "general" | "providers";
@@ -53,6 +53,7 @@ async function afterProviderChange() {
   await loadProviders();
   await readAccount();
   refreshModels();
+  checkClaudeCode();
 }
 
 async function act(state: ProviderState, work: () => Promise<unknown>) {
@@ -67,16 +68,17 @@ async function act(state: ProviderState, work: () => Promise<unknown>) {
   return !settings.getState().faults[state.id];
 }
 
-async function installClaudeCode() {
-  settings.setState({ progress: { stage: "downloading", done: 0, total: 0 } });
+async function tracked(stage: ClaudeCodeProgress["stage"], work: () => Promise<unknown>) {
+  settings.setState({ progress: { stage, done: 0, total: 0 } });
   try {
-    await commands.claudeCodeInstall();
+    await work();
   } finally {
     settings.setState({ progress: null });
   }
 }
 
-export const install = (state: ProviderState) => act(state, installClaudeCode);
+export const install = (state: ProviderState) => act(state, () => tracked("downloading", commands.claudeCodeInstall));
+export const updateClaudeCode = (state: ProviderState) => act(state, () => tracked("updating", commands.claudeCodeUpdate));
 export const recheck = (state: ProviderState) => act(state, async () => {});
 export const signOut = (state: ProviderState) => act(state, commands.providerSignOut);
 export const forgetKey = (state: ProviderState) => act(state, () => commands.forgetApiKey(state.id));

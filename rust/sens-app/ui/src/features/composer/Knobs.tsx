@@ -46,8 +46,14 @@ export function ModelPicker() {
   useStore(models, (s) => s.account);
   useStore(models, (s) => s.accountFault);
   useStore(models, (s) => s.usage);
+  const behind = useStore(models, (s) => s.behind);
   const connecting = useStore(settings, (s) => s.connecting);
   const [editing, setEditing] = useState(false);
+  const toProviders = () => {
+    sheet.shut();
+    showSection("providers");
+    showView("settings");
+  };
 
   useEffect(() => {
     if (!sheet.open) return;
@@ -82,14 +88,14 @@ export function ModelPicker() {
           id="models-connect"
           hidden={!(connecting || signInWanted())}
           disabled={connecting}
-          onClick={() => {
-            sheet.shut();
-            showSection("providers");
-            showView("settings");
-          }}
+          onClick={toProviders}
         >
           <Icon svg={ICONS.logIn} />
           <span>{connecting ? "Esperando al inicio de sesión…" : "Conectar Claude Code…"}</span>
+        </button>
+        <button className="menu-item tool" role="menuitem" tabIndex={-1} id="models-update" hidden={!behind} title={`Hay una versión nueva: v${behind}`} onClick={toProviders}>
+          <Icon svg={ICONS.update} />
+          <span>Actualizar Claude Code…</span>
         </button>
         <button className="menu-item tool" role="menuitem" tabIndex={-1} id="models-refresh" disabled={fetching} onClick={refreshModels}>
           <Icon svg={ICONS.refresh} />

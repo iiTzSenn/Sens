@@ -235,7 +235,7 @@ export interface AgentEvent {
 
 /** claude_code::Progress, the payload of the "claude-code" event */
 export interface ClaudeCodeProgress {
-  stage: "downloading" | "verifying" | "installing";
+  stage: "downloading" | "verifying" | "installing" | "updating";
   done: number;
   total: number;
 }

@@ -128,7 +128,7 @@ fn installer_name(version: &str) -> String {
     format!("Sens_{version}_x64-setup.exe")
 }
 
-fn number(version: &str) -> Option<Number> {
+pub fn number(version: &str) -> Option<Number> {
     let mut parts = version.split('.').map(|part| {
         let digits = !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
         digits.then(|| part.parse::<u64>().ok()).flatten()

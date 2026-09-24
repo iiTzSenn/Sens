@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 import type { Method, ProviderState } from "../../ipc/types";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
+import { models } from "../models/store";
 import {
   CLAUDE_CODE_WEIGHT,
   PROVIDER_METHODS,
@@ -21,6 +22,7 @@ import {
   settings,
   signIn,
   signOut,
+  updateClaudeCode,
 } from "./store";
 
 type Card = { state: ProviderState; busy: boolean };
@@ -50,6 +52,7 @@ function ProviderCard({ state }: { state: ProviderState }) {
   const progress = useStore(settings, (s) => s.progress);
   const method = useStore(settings, (s) => s.choosing[state.id]) ?? state.method;
   const failed = useStore(settings, (s) => s.faults[state.id]);
+  const behind = useStore(models, (s) => s.behind);
   const busy = Boolean(progress);
   const [line, mood] = providerLine(state);
   return (
@@ -63,6 +66,7 @@ function ProviderCard({ state }: { state: ProviderState }) {
         {line}
       </p>
       {!state.installed && <ClaudeCodeMissing state={state} busy={busy} />}
+      {state.installed && behind && <ClaudeCodeBehind state={state} busy={busy} behind={behind} />}
       {progress && (
         <p className="note" id="claude-code-status" role="status">
           {claudeCodeStatus(progress)}
@@ -91,6 +95,21 @@ function ClaudeCodeMissing({ state, busy }: Card) {
         </button>
         <button className="quiet" disabled={busy} onClick={() => loadProviders()}>
           Comprobar otra vez
+        </button>
+      </div>
+    </>
+  );
+}
+
+function ClaudeCodeBehind({ state, busy, behind }: Card & { behind: string }) {
+  return (
+    <>
+      <p className="note">
+        {`Hay una versión nueva de Claude Code: v${behind}. Los modelos más recientes solo aparecen con ella.`}
+      </p>
+      <div className="settings-row">
+        <button className="quiet" disabled={busy} onClick={() => updateClaudeCode(state)}>
+          Actualizar Claude Code
         </button>
       </div>
     </>

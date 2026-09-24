@@ -166,6 +166,18 @@ fn claude_code_install(app: AppHandle) -> Result<String, String> {
     })
 }
 
+#[tauri::command(async)]
+fn claude_code_newer() -> Result<Option<String>, String> {
+    claude_code::newer()
+}
+
+#[tauri::command(async)]
+fn claude_code_update(app: AppHandle) -> Result<String, String> {
+    claude_code::update(|progress| {
+        let _ = app.emit("claude-code", progress);
+    })
+}
+
 #[derive(Serialize, Clone)]
 struct Heard<'a> {
     session: &'a str,
@@ -543,6 +555,8 @@ fn main() {
             provider_sign_in,
             provider_sign_out,
             claude_code_install,
+            claude_code_newer,
+            claude_code_update,
             attach,
             open_session,
             archive_session,

@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Output};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -9,7 +9,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::web;
+use crate::{update, web};
 
 const RELEASES: &str = "https://downloads.claude.ai/claude-code-releases";
 const CHANNEL: &str = "latest";
@@ -30,6 +30,7 @@ pub enum Stage {
     Downloading,
     Verifying,
     Installing,
+    Updating,
 }
 
 #[derive(Serialize, Clone, Copy, PartialEq, Debug)]
@@ -87,18 +88,44 @@ pub fn install(base: &Path, report: impl Fn(Progress)) -> Result<String, String>
     })
 }
 
+pub fn newer() -> Result<Option<String>, String> {
+    let installed = account::version()?;
+    let latest = latest()?;
+    Ok(ahead(&installed, &latest).then_some(latest))
+}
+
+pub fn update(report: impl Fn(Progress)) -> Result<String, String> {
+    let _claim = Claim::take()?;
+    report(Progress::at(Stage::Updating));
+    let finished = process::claude().arg("update").output().map_err(process::unlaunched)?;
+    succeeded(finished, "Claude Code no se pudo actualizar")?;
+    account::version()
+}
+
 pub fn sweep(base: &Path) {
     let _ = fs::remove_dir_all(base.join(FOLDER));
 }
 
-fn newest() -> Result<Build, String> {
+fn latest() -> Result<String, String> {
     let said = web::text(&format!("{RELEASES}/{CHANNEL}"), VERSION_CAP)?;
     let version = said.trim();
-    if !plausible(version) {
-        return Err("Anthropic no dijo cuál es la última versión de Claude Code; puede que la descarga no esté disponible en tu país".into());
+    match plausible(version) {
+        true => Ok(version.to_string()),
+        false => Err("Anthropic no dijo cuál es la última versión de Claude Code; puede que la descarga no esté disponible en tu país".into()),
     }
+}
+
+fn ahead(installed: &str, latest: &str) -> bool {
+    match (update::number(installed), update::number(latest)) {
+        (Some(installed), Some(latest)) => latest > installed,
+        _ => false,
+    }
+}
+
+fn newest() -> Result<Build, String> {
+    let version = latest()?;
     let manifest = web::json(&format!("{RELEASES}/{version}/manifest.json"), &[])?;
-    build(version, &manifest).ok_or_else(|| format!("Anthropic no publica Claude Code {version} para este Windows"))
+    build(&version, &manifest).ok_or_else(|| format!("Anthropic no publica Claude Code {version} para este Windows"))
 }
 
 fn plausible(version: &str) -> bool {
@@ -150,6 +177,10 @@ fn set_up(downloaded: &Path) -> Result<(), String> {
         .args(["install", CHANNEL])
         .output()
         .map_err(|error| format!("no pude abrir el instalador de Claude Code: {error}"))?;
+    succeeded(finished, "el instalador de Claude Code falló")
+}
+
+fn succeeded(finished: Output, failure: &str) -> Result<(), String> {
     if finished.status.success() {
         return Ok(());
     }
@@ -158,8 +189,8 @@ fn set_up(downloaded: &Path) -> Result<(), String> {
         .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
         .find_map(|text| last_line(&text));
     Err(match said {
-        Some(line) => format!("el instalador de Claude Code falló: {line}"),
-        None => format!("el instalador de Claude Code falló ({})", finished.status),
+        Some(line) => format!("{failure}: {line}"),
+        None => format!("{failure} ({})", finished.status),
     })
 }
 
@@ -222,6 +253,17 @@ mod tests {
     }
 
     #[test]
+    fn only_a_higher_published_version_is_an_update() {
+        assert!(ahead("2.1.156", "2.1.281"));
+        assert!(ahead("2.1.281", "2.2.0"));
+        assert!(ahead("2.9.9", "10.0.0"));
+        assert!(!ahead("2.1.281", "2.1.281"));
+        assert!(!ahead("2.1.282", "2.1.281"));
+        assert!(!ahead("2.1.281", "2.1.282-beta.1"));
+        assert!(!ahead("", "2.1.281"));
+    }
+
+    #[test]
     fn the_manifest_gives_this_windows_its_checksum_and_size() {
         let found = build("2.1.281", &manifest(CHECKSUM)).unwrap();
         assert_eq!(found.checksum, CHECKSUM.to_ascii_lowercase());
@@ -257,6 +299,7 @@ mod tests {
         assert_eq!(serde_json::to_value(downloading).unwrap(), json!({ "stage": "downloading", "done": 5, "total": 10 }));
         assert_eq!(serde_json::to_value(Progress::at(Stage::Verifying)).unwrap()["stage"], "verifying");
         assert_eq!(serde_json::to_value(Progress::at(Stage::Installing)).unwrap()["stage"], "installing");
+        assert_eq!(serde_json::to_value(Progress::at(Stage::Updating)).unwrap()["stage"], "updating");
     }
 
     #[test]
@@ -273,6 +316,15 @@ mod tests {
         let found = newest().unwrap();
         assert!(found.size > 100 * web::MEGABYTE, "{found:?}");
         println!("{found:?}");
+    }
+
+    #[test]
+    #[ignore]
+    fn the_real_claude_code_says_whether_it_is_behind() {
+        let installed = account::version().unwrap();
+        let newer = newer().unwrap();
+        assert_eq!(newer.is_some(), ahead(&installed, &latest().unwrap()));
+        println!("Claude Code {installed}, más nuevo: {newer:?}");
     }
 
     #[test]

@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClaudeCodeProgress, ProviderState } from "../../ipc/types";
 import { dialog } from "../../app/modal";
-import { readAccount, refreshModels } from "../models/store";
+import { models, readAccount, refreshModels } from "../models/store";
 import { profile } from "../profile/store";
 import { updates } from "../updates/store";
 import { Settings } from "./Settings";
@@ -22,6 +22,8 @@ const ipc = vi.hoisted(() => ({
     providerSignIn: vi.fn(),
     providerSignOut: vi.fn(),
     claudeCodeInstall: vi.fn(),
+    claudeCodeNewer: vi.fn(),
+    claudeCodeUpdate: vi.fn(),
   },
   heard: { claudeCode: (_: ClaudeCodeProgress) => {} },
 }));
@@ -69,6 +71,7 @@ beforeEach(() => {
   settings.setState(settings.getInitialState(), true);
   profile.setState(profile.getInitialState(), true);
   updates.setState(updates.getInitialState(), true);
+  models.setState({ behind: "" });
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.providersState.mockResolvedValue([claude()]);
   dialog.setState(dialog.getInitialState(), true);
@@ -164,5 +167,23 @@ describe("providers settings", () => {
 
     await act(async () => installing.settle("2.1.0"));
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("offers a newer Claude Code, updates it, and asks again for its models", async () => {
+    const updating = later<string>();
+    ipc.commands.claudeCodeUpdate.mockReturnValue(updating.promise);
+    models.setState({ behind: "2.1.281" });
+    await open("providers");
+
+    expect(screen.getByText(/Hay una versión nueva de Claude Code: v2\.1\.281\./)).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByText("Actualizar Claude Code")));
+    expect(screen.getByRole("status").textContent).toBe("Actualizando Claude Code…");
+    expect(screen.getByText("Actualizar Claude Code")).toHaveProperty("disabled", true);
+
+    await act(async () => updating.settle("2.1.281"));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(ipc.commands.claudeCodeNewer).toHaveBeenCalled();
+    expect(refreshModels).toHaveBeenCalled();
+    expect(screen.queryByText("Actualizar Claude Code")).toBeNull();
   });
 });

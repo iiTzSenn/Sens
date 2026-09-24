@@ -7,6 +7,7 @@ const CLAUDE_CODE_STAGES: Record<ClaudeCodeProgress["stage"], string> = {
   downloading: "Descargando Claude Code…",
   verifying: "Comprobando la descarga…",
   installing: "Instalando Claude Code…",
+  updating: "Actualizando Claude Code…",
 };
 
 export const SIGN_IN_DOORS: Record<Exclude<Method, "apiKey">, { button: string; site: string }> = {

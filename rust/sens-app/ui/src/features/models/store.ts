@@ -23,6 +23,7 @@ export const models = createStore(() => ({
   account: null as Account | null,
   accountFault: "",
   usage: null as Record<string, { utilization?: number }> | null,
+  behind: "",
 }));
 
 const set = models.setState;
@@ -130,6 +131,15 @@ export async function loadCatalog() {
   settle({ ...models.getState().choice, ...stored(RECALL, {}) });
   refreshWhenDue();
   readAccount();
+  checkClaudeCode();
+}
+
+export async function checkClaudeCode() {
+  try {
+    set({ behind: (await commands.claudeCodeNewer()) || "" });
+  } catch {
+    set({ behind: "" });
+  }
 }
 
 export async function readAccount() {

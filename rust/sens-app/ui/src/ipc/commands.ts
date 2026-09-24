@@ -55,6 +55,8 @@ export const commands = {
   providerSignIn: (method: Method) => invoke<void>("provider_sign_in", { method }),
   providerSignOut: () => invoke<void>("provider_sign_out"),
   claudeCodeInstall: () => invoke<string>("claude_code_install"),
+  claudeCodeNewer: () => invoke<string | null>("claude_code_newer"),
+  claudeCodeUpdate: () => invoke<string>("claude_code_update"),
 
   capabilities: (root: string) => invoke<Capabilities>("capabilities", { root }),
   setCapability: (kind: CapabilityKind, root: string, name: string, enabled: boolean) =>
