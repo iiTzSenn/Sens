@@ -79,7 +79,7 @@ function Totals({ files }: { files: DiffFile[] }) {
 // file may have changed. A new file's lines are counted once they are read.
 function ChangeRow({ file }: { file: DiffFile }) {
   const open = useStore(changes, (s) => s.unfolded.has(file.path));
-  const touched = useStore(changes, (s) => s.touched.has(file.path));
+  const touched = useStore(project, (s) => s.touched.has(file.path));
   const [counted, setCounted] = useState<number | null>(null);
   const plus = file.fresh ? (counted ?? file.plus) : file.plus;
 

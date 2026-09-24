@@ -5,10 +5,11 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as dialog from "@tauri-apps/plugin-dialog";
 import { loadShelf } from "../features/artifacts/store";
 import { enterCapabilities } from "../features/capabilities/store";
-import { forgetChanges, loadChanges, noteTouched, soonChanges } from "../features/changes/store";
+import { forgetChanges, loadChanges, soonChanges } from "../features/changes/store";
 import { plain } from "../features/market/search.js";
 import { loadProfile, profile } from "../features/profile/store";
-import { project } from "../features/project/store";
+import { forgetTree, loadFiles, revealFile, showOpened } from "../features/files/store";
+import { noteTouched, project } from "../features/project/store";
 import { enterSettings, settings, showSection } from "../features/settings/store";
 import { forgetTasks, noteTask, runningTasks, settleTasks, tasks, tickTasks } from "../features/tasks/store";
 import { TASK_EVENTS } from "../features/tasks/tasks";
@@ -33,7 +34,6 @@ const taskInput = document.getElementById("task");
 const rootLabel = document.getElementById("root");
 const folderBtn = document.getElementById("folder");
 const sessionList = document.getElementById("sessions");
-const fileList = document.getElementById("filelist");
 const where = document.getElementById("where");
 const marks = document.getElementById("marks");
 const sourcePane = document.getElementById("source");
@@ -57,7 +57,6 @@ const modeSource = document.getElementById("mode-source");
 const modeView = document.getElementById("mode-view");
 const readingPane = document.getElementById("reading");
 const codeBody = document.getElementById("code-body");
-const filterInput = document.getElementById("filter");
 const crewLabel = document.getElementById("crew");
 const effortBox = document.getElementById("effort");
 const effortBtn = document.getElementById("effort-pick");
@@ -1305,115 +1304,6 @@ function sessionRow(home, summary) {
   return row;
 }
 
-const unfolded = new Set();
-const listings = new Map();
-let symbolsOf = new Map();
-let drawing = 0;
-
-function listing(path) {
-  if (!listings.has(path)) {
-    const asked = invoke("folder", { root, path }).catch((reason) => {
-      listings.delete(path);
-      throw reason;
-    });
-    listings.set(path, asked);
-  }
-  return listings.get(path);
-}
-
-async function drawFiles() {
-  const turn = ++drawing;
-  const needle = filterInput.value.trim();
-  let rows;
-  try {
-    rows = !root ? [] : needle ? await foundRows(needle) : await folderRows("", 0);
-  } catch (reason) {
-    if (turn !== drawing) return;
-    fileList.replaceChildren();
-    fault(fileList, reason);
-    return;
-  }
-  if (turn !== drawing) return;
-  if (!rows.length) rows = [el("p", "none", !root ? "Sin carpeta." : needle ? "Nada coincide." : "Carpeta vacía.")];
-  fileList.replaceChildren(...rows);
-  paintFiles();
-}
-
-async function folderRows(path, depth) {
-  const rows = [];
-  for (const entry of await listing(path)) {
-    rows.push(fileRow(entry, depth));
-    if (entry.dir && unfolded.has(entry.path)) rows.push(...(await folderRows(entry.path, depth + 1)));
-  }
-  return rows;
-}
-
-async function foundRows(needle) {
-  const found = await invoke("find_files", { root, needle });
-  return found.map((entry) => fileRow(entry, 0, true));
-}
-
-// A file's type icon, in its own colours (identity.md §6.5).
-function fileGlyph(name) {
-  const glyph = el("span", "glyph");
-  const img = el("img");
-  img.src = fileIcon(name);
-  img.alt = "";
-  img.draggable = false;
-  glyph.append(img);
-  return glyph;
-}
-
-function fileRow(entry, depth, found = false) {
-  const open = entry.dir && unfolded.has(entry.path);
-  const row = el("button", entry.dir ? "filerow folder" : "filerow");
-  row.type = "button";
-  row.title = entry.path;
-  row.dataset.path = entry.path;
-  row.style.setProperty("--depth", String(depth));
-  if (entry.ignored) row.dataset.ignored = "true";
-  if (entry.dir) row.setAttribute("aria-expanded", String(open));
-
-  const glyph = entry.dir ? el("span", "glyph") : fileGlyph(entry.name);
-  if (entry.dir) glyph.innerHTML = open ? ICONS.open : ICONS.shut;
-  row.append(glyph, el("span", "name", entry.name));
-  if (found) row.append(el("span", "dirname", parentOf(entry.path)));
-  const count = symbolsOf.get(entry.path);
-  if (count) row.append(el("span", "n", String(count)));
-
-  row.addEventListener("click", () => (entry.dir ? fold(entry.path) : view(entry.path)));
-  return row;
-}
-
-function fold(path) {
-  if (unfolded.has(path)) unfolded.delete(path);
-  else unfolded.add(path);
-  drawFiles();
-}
-
-function revealFile(path) {
-  const parts = path.split("/");
-  let grew = false;
-  for (let at = 1; at < parts.length; at++) {
-    const folder = parts.slice(0, at).join("/");
-    if (unfolded.has(folder)) continue;
-    unfolded.add(folder);
-    grew = true;
-  }
-  if (grew) drawFiles();
-}
-
-function paintFiles() {
-  const hot = [...touched.keys()];
-  for (const row of fileList.querySelectorAll(".filerow")) {
-    const path = row.dataset.path;
-    if (path === opened) row.setAttribute("aria-current", "true");
-    else row.removeAttribute("aria-current");
-    const folder = row.classList.contains("folder");
-    row.dataset.touched = String(folder ? hot.some((one) => one.startsWith(`${path}/`)) : touched.has(path));
-  }
-}
-
 const KEYWORDS = new Set(["abstract","as","async","await","break","case","catch","class","const","continue","crate","def","default","delete","do","elif","else","enum","export","extends","extern","false","fn","for","from","func","function","go","if","impl","implements","import","in","instanceof","interface","lambda","let","loop","match","mod","mut","new","nil","null","of","package","pass","pub","raise","return","self","static","struct","super","switch","this","throw","trait","true","try","type","typeof","undefined","use","var","void","where","while","with","yield"]);
 
 const TOKENS = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(\/\/.*$)|(\b\d[\w.]*\b)|([A-Za-z_$][\w$]*)(?=\s*\()|([A-Za-z_$][\w$]*)/gm;
@@ -1465,7 +1355,7 @@ function showSource(label, drawn, path = "", change = null) {
   }
   sourcePane.replaceChildren(drawn);
   sourcePane.scrollTop = 0;
-  paintFiles();
+  showOpened(path);
 }
 
 const panelShows = (name) => body.dataset.code === "open" && codePanel.dataset.tool === name;
@@ -1701,7 +1591,6 @@ function markTouched({ path, lines, plus, minus }) {
   known.minus += minus;
   touched.set(path, known);
   noteTouched(touched.keys());
-  paintFiles();
   if (opened === path && panelShows("files")) view(path);
   if (onProject() && panelShows("web")) reloadSite();
   if (panelShows("changes")) soonChanges();
@@ -1744,13 +1633,6 @@ function toolRow(name, tool) {
 function paintToolMenu() {
   toolMenu.replaceChildren(...Object.entries(TOOLS).map(([name, tool]) => toolRow(name, tool)));
   anchorMenu(toolMenu, toolBtn);
-}
-
-async function loadFiles() {
-  listings.clear();
-  const indexed = await invoke("tree", { root });
-  symbolsOf = new Map(indexed.map((file) => [file.path, file.symbols]));
-  await drawFiles();
 }
 
 const CLOSING = new Set(["finished", "failed"]);
@@ -2015,7 +1897,7 @@ async function enter(picked) {
   attached = [];
   paintClips();
   forgetView();
-  unfolded.clear();
+  forgetTree();
   showSource("Ningún fichero abierto", el("p", "empty", "Elige un fichero."));
   idle(true);
   if (showing) VIEWS[showing].load();
@@ -3138,12 +3020,6 @@ document.getElementById("toggle-tree").addEventListener("click", (event) => {
   event.currentTarget.setAttribute("aria-pressed", String(!shown));
 });
 
-let seeking = 0;
-filterInput.addEventListener("input", () => {
-  clearTimeout(seeking);
-  seeking = setTimeout(drawFiles, 120);
-});
-
 function popover(sheet, anchor, before) {
   const one = {
     sheet,
@@ -3796,6 +3672,7 @@ Object.assign(legacy, {
   session: () => current,
   panelShows,
   openTouched,
+  view,
   diffView: (hunks, preview) => patchView(hunks, preview).node,
   addedView(text, preview) {
     const rows = addedRows(text);

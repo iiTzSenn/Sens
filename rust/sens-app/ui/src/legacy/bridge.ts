@@ -26,8 +26,10 @@ export const legacy = {
   // The session open in the chat, and whether a tool panel is on screen.
   session: (): string => "",
   panelShows: (_tool: string): boolean => false,
-  // Opens a file of the project in the file panel, with the agent's edits marked.
+  // Opens a file of the project in the file panel, with the agent's edits
+  // marked: `openTouched` also brings the panel to Ficheros.
   openTouched: (_path: string): void => {},
+  view: async (_path: string): Promise<void> => {},
   // The chat's renderers: a diff, a new file's lines, folded text.
   diffView: (_hunks: unknown[], _preview: number): Node => document.createElement("div"),
   addedView: (_text: string, _preview: number) => ({ node: document.createElement("div") as Node, lines: 0 }),

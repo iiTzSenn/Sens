@@ -179,6 +179,21 @@ export interface Artifact {
   bytes: number | null;
 }
 
+/** files::Entry, rust/sens-app/src/files.rs: one row of a folder */
+export interface Entry {
+  name: string;
+  path: string;
+  dir: boolean;
+  // Matched by .gitignore: shown, but dimmed.
+  ignored: boolean;
+}
+
+/** FileRow, rust/sens-app/src/main.rs: how many symbols Sens indexed in a file */
+export interface IndexedFile {
+  path: string;
+  symbols: number;
+}
+
 /** git::Changes, rust/sens-app/src/git.rs: null outside a repository */
 export interface Changes {
   diff: string;

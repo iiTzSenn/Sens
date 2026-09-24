@@ -6,6 +6,8 @@ import type {
   Changes,
   ClaudeCodeProgress,
   Detail,
+  Entry,
+  IndexedFile,
   Listing,
   Market,
   Method,
@@ -56,6 +58,9 @@ export const commands = {
   artifactText: (path: string) => invoke<string>("artifact_text", { path }),
   openExternal: (target: string) => invoke<void>("open_external", { target }),
 
+  tree: (root: string) => invoke<IndexedFile[]>("tree", { root }),
+  folder: (root: string, path: string) => invoke<Entry[]>("folder", { root, path }),
+  findFiles: (root: string, needle: string) => invoke<Entry[]>("find_files", { root, needle }),
   changes: (root: string) => invoke<Changes | null>("changes", { root }),
   openFile: (root: string, path: string) => invoke<string>("open_file", { root, path }),
   taskOutput: (path: string) => invoke<string>("task_output", { path }),

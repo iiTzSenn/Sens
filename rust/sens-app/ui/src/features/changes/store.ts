@@ -4,14 +4,12 @@ import { legacy } from "../../legacy/bridge";
 import { project } from "../project/store";
 import { diffedFiles, freshFile, type DiffFile } from "./diff";
 
-// `changed` is null until git answers. `touched` mirrors the files the agent
-// edited in this session, which app.js keeps for the file panel too.
+// `changed` is null until git answers.
 export const changes = createStore(() => ({
   changed: null as DiffFile[] | null,
   versioned: true,
   fault: "",
   unfolded: new Set<string>(),
-  touched: new Set<string>(),
 }));
 
 const set = changes.setState;
@@ -51,8 +49,6 @@ export function forgetChanges() {
   set({ changed: null, versioned: true, fault: "", unfolded: new Set() });
   if (legacy.panelShows("changes")) loadChanges();
 }
-
-export const noteTouched = (paths: Iterable<string>) => set({ touched: new Set(paths) });
 
 export function unfold(path: string, open: boolean) {
   set(({ unfolded }) => {

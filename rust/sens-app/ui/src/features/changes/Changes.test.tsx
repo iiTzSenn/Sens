@@ -2,11 +2,11 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { legacy } from "../../legacy/bridge";
-import { project } from "../project/store";
+import { noteTouched, project } from "../project/store";
 import { forgetTasks, noteTask, settleTasks } from "../tasks/store";
 import { TasksPanel } from "../tasks/TasksPanel";
 import { ChangesPanel } from "./Changes";
-import { changes, loadChanges, noteTouched } from "./store";
+import { changes, loadChanges } from "./store";
 
 const ipc = vi.hoisted(() => ({
   commands: { changes: vi.fn(), openFile: vi.fn(), taskOutput: vi.fn(), stopTask: vi.fn() },
