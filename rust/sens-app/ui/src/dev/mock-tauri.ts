@@ -57,8 +57,32 @@ const removeCapability = (list: List) => ({ name }: Record<string, unknown>) => 
   if (at >= 0) caps[list].splice(at, 1);
 };
 
+const artifact = (kind: string, name: string, hoursAgo: number, session: string | null = "demo-1") => ({
+  kind,
+  root: ROOT,
+  project: "demo",
+  name,
+  target: kind === "link" ? `https://example.com/${name}` : `${ROOT}/.sens/artifacts/${name}`,
+  session,
+  sessionTitle: session ? "Migrar la interfaz a React" : null,
+  at: now - hoursAgo * HOUR,
+  bytes: 2048,
+});
+
+const SQUARE = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect width="4" height="4" fill="#c7ff4a"/></svg>')}`;
+
 const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   last_project: () => ROOT,
+  artifacts: () => [
+    artifact("image", "captura.png", 1),
+    artifact("file", "plan.md", 3),
+    artifact("file", "informe.html", 30, null),
+    artifact("link", "docs", 50),
+    artifact("file", "datos.xlsx", 80, null),
+  ],
+  artifact_data: () => SQUARE,
+  preview_url: ({ path }) => `http://127.0.0.1:4321/demo/${String(path).split("/").pop()}`,
+  artifact_text: ({ path }) => `# ${String(path).split("/").pop()}\n\nTexto de prueba.`,
   tree: () => [],
   folder: () => [],
   capabilities: () => structuredClone(caps),

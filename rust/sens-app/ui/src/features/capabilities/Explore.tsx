@@ -3,6 +3,7 @@ import type { Listing } from "../../ipc/types";
 import { compact, when } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
+import { ViewSeek } from "../../shared/ViewParts";
 import { BADGES, KIND_CHIPS, KIND_ICONS, KIND_NAMES, SOURCE_CHIPS, exploreList, originFor } from "./kinds";
 import { capabilities, loadMarket, openDetail, pickKind, pickSource, rank, seek, showMore } from "./store";
 
@@ -20,19 +21,14 @@ export function Explore({ hidden }: { hidden: boolean }) {
 
   return (
     <div id="caps-explore" role="tabpanel" aria-labelledby="caps-mode-explore" hidden={hidden}>
-      <div className="seek view-seek" id="market-seek" role="search">
-        <Icon svg={ICONS.search} />
-        <input
-          className="field"
-          id="market-search"
-          placeholder="Busca plugins, skills o conectores…"
-          aria-label="Buscar en el mercado"
-          autoComplete="off"
-          spellCheck={false}
-          value={query}
-          onChange={(event) => seek(event.target.value)}
-        />
-      </div>
+      <ViewSeek
+        id="market-seek"
+        input="market-search"
+        label="Buscar en el mercado"
+        placeholder="Busca plugins, skills o conectores…"
+        value={query}
+        change={seek}
+      />
       <div className="chips" id="market-kinds" role="group" aria-label="Tipo">
         <span className="chips-label">Tipo</span>
         {KIND_CHIPS.map(([id, label]) => (

@@ -170,32 +170,7 @@
     </section>
 
     <section class="view" id="shelf" aria-label="Artefactos" hidden>
-      <div class="view-inner">
-        <header class="view-top">
-          <div>
-            <h1 class="label">Artefactos</h1>
-            <p>Imágenes, ficheros y enlaces que dejan tus sesiones.</p>
-          </div>
-        </header>
-        <div class="view-focus">
-          <span class="label" id="shelf-project">Sin proyecto</span>
-          <p class="tally" id="shelf-tally" aria-live="polite">Abre un proyecto para ver los suyos.</p>
-          <p class="note">La lista de abajo incluye los de todos tus proyectos.</p>
-        </div>
-        <div class="view-head">
-          <div class="tabs" id="shelf-tabs" role="tablist" aria-label="Tipos de artefacto">
-            <button class="tab" role="tab" id="shelf-tab-all" data-tab="all" aria-controls="shelf-list">Todo <span class="count"></span></button>
-            <button class="tab" role="tab" id="shelf-tab-image" data-tab="image" aria-controls="shelf-list">Imágenes <span class="count"></span></button>
-            <button class="tab" role="tab" id="shelf-tab-file" data-tab="file" aria-controls="shelf-list">Ficheros <span class="count"></span></button>
-            <button class="tab" role="tab" id="shelf-tab-link" data-tab="link" aria-controls="shelf-list">Enlaces <span class="count"></span></button>
-          </div>
-        </div>
-        <div class="seek view-seek" id="shelf-seek" role="search">
-          <input class="field" id="shelf-search" placeholder="Buscar un artefacto…" aria-label="Buscar un artefacto" autocomplete="off" spellcheck="false">
-        </div>
-        <div class="view-list" id="shelf-list" role="tabpanel"></div>
-        <p class="view-foot" id="shelf-foot">Los artefactos se guardan en .sens/artifacts, dentro de tu proyecto.</p>
-      </div>
+      <div class="view-inner" id="shelf-body"></div>
     </section>
 
     <section class="view" id="capabilities-view" aria-label="Capacidades" hidden>

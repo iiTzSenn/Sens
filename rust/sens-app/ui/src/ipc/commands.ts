@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  Artifact,
   Capabilities,
   ClaudeCodeProgress,
   Detail,
@@ -47,6 +48,12 @@ export const commands = {
   marketInstall: (root: string, id: string, values: Record<string, string>) =>
     invoke<string>("market_install", { root, id, values }),
   marketUpdate: (id: string, name: string) => invoke<void>("market_update", { id, name }),
+
+  artifacts: () => invoke<Artifact[]>("artifacts"),
+  // A data: URL, ready for an <img>.
+  artifactData: (path: string) => invoke<string>("artifact_data", { path }),
+  artifactText: (path: string) => invoke<string>("artifact_text", { path }),
+  openExternal: (target: string) => invoke<void>("open_external", { target }),
 };
 
 // One listener per channel, registered by the store that owns it, never by a

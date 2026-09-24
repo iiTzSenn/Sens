@@ -166,6 +166,19 @@ export interface Detail {
   needs: Need[];
 }
 
+/** artifacts::Artifact, rust/sens-app/src/artifacts.rs: something a session left */
+export interface Artifact {
+  kind: "image" | "file" | "link";
+  root: string;
+  project: string;
+  name: string;
+  target: string;
+  session: string | null;
+  sessionTitle: string | null;
+  at: number;
+  bytes: number | null;
+}
+
 /** claude_code::Progress, the payload of the "claude-code" event */
 export interface ClaudeCodeProgress {
   stage: "downloading" | "verifying" | "installing";

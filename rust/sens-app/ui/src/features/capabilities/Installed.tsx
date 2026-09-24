@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { Capabilities } from "../../ipc/types";
 import { EmptyView } from "../../shared/EmptyView";
@@ -6,10 +6,11 @@ import { stem } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { useSheet } from "../../shared/useSheet";
+import { CountTabs, ProjectFocus, ViewSeek } from "../../shared/ViewParts";
 import { plain } from "../market/search.js";
 import { project } from "../project/store";
 import { confirmRemoval } from "./forms";
-import { CAP_TABS, CAP_TAB_IDS, entriesOf, matching, tallyOf, type CapTab, type Entry, type Item, type Spec } from "./kinds";
+import { CAP_TABS, CAP_TAB_LIST, entriesOf, matching, tallyOf, type CapTab, type Entry, type Item, type Spec } from "./kinds";
 import { capabilities, openDetail, openSkill, pickTab, toggle } from "./store";
 
 export function Installed({ hidden }: { hidden: boolean }) {
@@ -17,37 +18,36 @@ export function Installed({ hidden }: { hidden: boolean }) {
   const tab = useStore(capabilities, (s) => s.tab);
   const loadFault = useStore(capabilities, (s) => s.loadFault);
   const listFault = useStore(capabilities, (s) => s.listFault);
-  const root = useStore(project, (s) => s.root);
   const [search, setSearch] = useState("");
   const entries = entriesOf(caps);
 
   return (
     <div id="caps-installed" role="tabpanel" aria-labelledby="caps-mode-installed" hidden={hidden}>
-      <div className="view-focus">
-        <span className="label" id="caps-project" title={root}>
-          {root ? stem(root) : "Sin proyecto"}
-        </span>
-        <p className="tally" id="caps-tally" aria-live="polite">
-          {root ? tallyOf(caps) : "Abre un proyecto para activar capacidades."}
-        </p>
-        <p className="note">El agente las carga a partir de tu próximo mensaje en este proyecto.</p>
-      </div>
+      <ProjectFocus
+        prefix="caps"
+        tally={() => tallyOf(caps)}
+        unopened="Abre un proyecto para activar capacidades."
+        note="El agente las carga a partir de tu próximo mensaje en este proyecto."
+      />
       <div className="view-head">
-        <Tabs at={tab} count={(id) => entries.filter(CAP_TABS[id].keeps).length} />
-      </div>
-      <div className="seek view-seek" id="caps-seek" role="search" hidden={!entries.length}>
-        <Icon svg={ICONS.search} />
-        <input
-          className="field"
-          id="caps-search"
-          placeholder="Buscar una skill, plugin o servidor…"
-          aria-label="Buscar una skill, plugin o servidor"
-          autoComplete="off"
-          spellCheck={false}
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
+        <CountTabs
+          prefix="caps"
+          label="Tipos de capacidad"
+          tabs={CAP_TAB_LIST}
+          at={tab}
+          count={(id) => entries.filter(CAP_TABS[id].keeps).length}
+          pick={pickTab}
         />
       </div>
+      <ViewSeek
+        id="caps-seek"
+        input="caps-search"
+        label="Buscar una skill, plugin o servidor"
+        placeholder="Buscar una skill, plugin o servidor…"
+        value={search}
+        change={setSearch}
+        hidden={!entries.length}
+      />
       <div className="view-list" id="caps-list" role="tabpanel" aria-labelledby={`caps-tab-${tab}`}>
         {loadFault ? (
           <p className="none fault" role="alert">
@@ -68,39 +68,6 @@ export function Installed({ hidden }: { hidden: boolean }) {
         <Icon svg={ICONS.shieldCheck} />
         Tú decides qué se activa en cada proyecto.
       </p>
-    </div>
-  );
-}
-
-function Tabs({ at, count }: { at: CapTab; count: (id: CapTab) => number }) {
-  const bar = useRef<HTMLDivElement>(null);
-
-  function onKeyDown(event: KeyboardEvent) {
-    const step = ({ ArrowRight: 1, ArrowLeft: -1 } as Record<string, number>)[event.key];
-    if (!step) return;
-    event.preventDefault();
-    const next = CAP_TAB_IDS[(CAP_TAB_IDS.indexOf(at) + step + CAP_TAB_IDS.length) % CAP_TAB_IDS.length];
-    pickTab(next);
-    bar.current?.querySelector<HTMLElement>(`[data-tab="${next}"]`)?.focus();
-  }
-
-  return (
-    <div className="tabs" id="caps-tabs" role="tablist" aria-label="Tipos de capacidad" ref={bar} onKeyDown={onKeyDown}>
-      {CAP_TAB_IDS.map((id) => (
-        <button
-          key={id}
-          className="tab"
-          role="tab"
-          id={`caps-tab-${id}`}
-          data-tab={id}
-          aria-controls="caps-list"
-          aria-selected={id === at}
-          tabIndex={id === at ? 0 : -1}
-          onClick={() => pickTab(id)}
-        >
-          {CAP_TABS[id].label} <span className="count">{count(id)}</span>
-        </button>
-      ))}
     </div>
   );
 }

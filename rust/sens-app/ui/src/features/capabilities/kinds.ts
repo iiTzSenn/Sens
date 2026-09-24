@@ -110,6 +110,7 @@ export const CAP_TABS: Record<CapTab, { label: string; keeps: (entry: Entry) => 
 };
 
 export const CAP_TAB_IDS = Object.keys(CAP_TABS) as CapTab[];
+export const CAP_TAB_LIST = CAP_TAB_IDS.map((id): [CapTab, string] => [id, CAP_TABS[id].label]);
 
 export const NO_CAPS: Capabilities = { skills: [], servers: [], plugins: [], origins: {} };
 

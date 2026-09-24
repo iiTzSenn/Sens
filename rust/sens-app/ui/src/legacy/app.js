@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as dialog from "@tauri-apps/plugin-dialog";
+import { loadShelf } from "../features/artifacts/store";
 import { enterCapabilities } from "../features/capabilities/store";
 import { plain } from "../features/market/search.js";
 import { loadProfile, profile } from "../features/profile/store";
@@ -10,7 +11,7 @@ import { project } from "../features/project/store";
 import { enterSettings, settings, showSection } from "../features/settings/store";
 import { startUpdates, updates } from "../features/updates/store";
 import { API_KEY_SOURCE, PLANS, keyed } from "../shared/account";
-import { MARKDOWN, compact, stem, weigh, when } from "../shared/format.js";
+import { MARKDOWN, PAGE, PICTURE, TEXTUAL, compact, stem, weigh } from "../shared/format.js";
 import { ICONS } from "../shared/icons.js";
 import { sheets } from "../shared/sheets.js";
 import { store, stored } from "../shared/storage.js";
@@ -89,13 +90,6 @@ const newBtn = document.getElementById("new-session");
 const shelfBtn = document.getElementById("artifacts");
 const chat = document.querySelector("section.chat");
 const shelf = document.getElementById("shelf");
-const shelfBar = document.getElementById("shelf-tabs");
-const shelfList = document.getElementById("shelf-list");
-const shelfProject = document.getElementById("shelf-project");
-const shelfTally = document.getElementById("shelf-tally");
-const shelfSeek = document.getElementById("shelf-seek");
-const shelfSearch = document.getElementById("shelf-search");
-const shelfFoot = document.getElementById("shelf-foot");
 const capsBtn = document.getElementById("capabilities");
 const capsView = document.getElementById("capabilities-view");
 const settingsView = document.getElementById("settings-view");
@@ -1160,19 +1154,6 @@ function asked(text, files = [], pictures = []) {
   return place(node);
 }
 
-const dayOf = (offset) => {
-  const day = new Date();
-  day.setDate(day.getDate() - offset);
-  return day.toDateString();
-};
-
-function ago(millis) {
-  const at = new Date(millis);
-  if (at.toDateString() === dayOf(0)) return at.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
-  if (at.toDateString() === dayOf(1)) return "ayer";
-  return at.toLocaleDateString("es", { day: "numeric", month: "short" }).replace(/\./g, "");
-}
-
 const FOLDED = "sens.rail.folded";
 const folded = () => new Set([].concat(stored(FOLDED, [])));
 
@@ -1197,47 +1178,6 @@ async function attempt(host, work) {
   } catch (reason) {
     fault(host, reason);
   }
-}
-
-function tabStrip(bar, list, key, fallback, picked) {
-  const tabs = [...bar.querySelectorAll('[role="tab"]')];
-  const ids = tabs.map((tab) => tab.dataset.tab);
-  const kept = stored(key, fallback);
-  const strip = {
-    at: ids.includes(kept) ? kept : fallback,
-    paint(count) {
-      for (const tab of tabs) {
-        const id = tab.dataset.tab;
-        tab.setAttribute("aria-selected", String(id === strip.at));
-        tab.tabIndex = id === strip.at ? 0 : -1;
-        tab.querySelector(".count").textContent = String(count(id));
-      }
-      list.setAttribute("aria-labelledby", tabs[ids.indexOf(strip.at)].id);
-    },
-    pick(id) {
-      strip.at = id;
-      store(key, id);
-      picked();
-    },
-  };
-
-  for (const tab of tabs) tab.addEventListener("click", () => strip.pick(tab.dataset.tab));
-  bar.addEventListener("keydown", (event) => {
-    const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
-    if (!step) return;
-    event.preventDefault();
-    const next = tabs[(ids.indexOf(strip.at) + step + tabs.length) % tabs.length];
-    strip.pick(next.dataset.tab);
-    next.focus();
-  });
-  return strip;
-}
-
-function emptyView(art, lead, said) {
-  const box = el("div", "rail-empty view-empty");
-  box.innerHTML = art;
-  box.append(el("p", "lead", lead), el("p", null, said));
-  return box;
 }
 
 let spaces = [];
@@ -2598,205 +2538,6 @@ function toChat() {
   if (showing) showView("");
 }
 
-const SHELF_TAB = "sens.artifacts.tab";
-const TEXTUAL = /\.(md|markdown|txt|json|csv|log|js|mjs|cjs|ts|tsx|jsx|rs|py|rb|go|java|kt|swift|c|h|cc|cpp|hpp|cs|php|sh|ps1|bat|toml|ya?ml|xml|css|scss|sql|lua|vue|svelte|ini|diff|patch)$/i;
-const PAGE = /\.html?$/i;
-const PICTURE = /\.(png|jpe?g|gif|webp|avif|svg|ico|bmp)$/i;
-const KIND_ICON = { image: ICONS.image, file: ICONS.fileText, link: ICONS.link };
-const KIND_LABEL = { image: "Imagen", file: "Fichero", link: "Enlace" };
-
-const shelfStrip = tabStrip(shelfBar, shelfList, SHELF_TAB, "all", paintShelf);
-let shelfItems = [];
-const pictures = new Map();
-const framed = new WeakMap();
-
-const keeps = (tab, item) => tab === "all" || item.kind === tab;
-const here = (item) => item.root === root;
-const saying = (needle) => (item) =>
-  plain([item.name, item.project, sessionOf(item)].filter(Boolean).join("\n")).includes(needle);
-const pictureKey = (item) => `${item.at}:${item.target}`;
-const sessionOf = (item) => (item.session ? item.sessionTitle || "Sesión sin título" : "");
-const originOf = (item) => [item.project, sessionOf(item)].filter(Boolean).join(" · ");
-
-async function loadShelf() {
-  try {
-    shelfItems = await invoke("artifacts");
-  } catch (reason) {
-    shelfItems = [];
-    paintShelfSummary();
-    shelfList.replaceChildren();
-    fault(shelfList, reason);
-    return;
-  }
-  const live = new Set(shelfItems.map(pictureKey));
-  for (const key of pictures.keys()) if (!live.has(key)) pictures.delete(key);
-  paintShelf();
-}
-
-function paintShelfTabs() {
-  shelfStrip.paint((id) => shelfItems.filter((item) => keeps(id, item)).length);
-}
-
-function paintShelfSummary() {
-  paintShelfTabs();
-  shelfSeek.hidden = !shelfItems.length;
-  shelfProject.textContent = root ? stem(root) : "Sin proyecto";
-  shelfProject.title = root;
-  shelfTally.textContent = root ? keptTally(shelfItems.filter(here).length) : "Abre un proyecto para ver los suyos.";
-}
-
-const keptTally = (kept) => (kept
-  ? `${kept} ${kept === 1 ? "artefacto" : "artefactos"} de este proyecto`
-  : "Todavía no hay artefactos en este proyecto");
-
-function paintShelf() {
-  paintShelfSummary();
-  sight.disconnect();
-  const kept = shelfItems.filter((item) => keeps(shelfStrip.at, item));
-  if (!kept.length) {
-    shelfList.replaceChildren(shelfEmpty());
-    return;
-  }
-  const needle = plain(shelfSearch.value.trim());
-  const shown = needle ? kept.filter(saying(needle)) : kept;
-  if (!shown.length) {
-    shelfList.replaceChildren(el("p", "none", "Nada coincide."));
-    return;
-  }
-  shelfList.replaceChildren(shelfStrip.at === "image" ? thumbGrid(shown) : artifactCards(shown));
-}
-
-const shelfEmpty = () => emptyView(
-  ICONS.shelf,
-  "No hay artefactos",
-  "Las imágenes, ficheros y enlaces aparecerán aquí según los produzcan las sesiones.",
-);
-
-function artifactCards(items) {
-  const grid = el("div", "card-grid");
-  grid.setAttribute("role", "list");
-  grid.append(...items.map(artifactCard));
-  return grid;
-}
-
-function artifactCard(item) {
-  const art = el("span", "card-art");
-  art.innerHTML = KIND_ICON[item.kind] || ICONS.fileText;
-  const top = el("div", "card-top");
-  top.append(art, el("span", "label", KIND_LABEL[item.kind] || "Fichero"));
-
-  const main = el("button", "card-main");
-  main.title = item.target;
-  main.append(
-    el("span", item.kind === "link" ? "name url" : "name", item.name),
-    el("span", "sub", item.project),
-  );
-  main.addEventListener("click", () => openArtifact(item, main));
-
-  const at = el("span", "at", ago(item.at));
-  at.title = when(item.at);
-
-  const controls = el("div", "card-controls");
-  controls.append(origin(item), at);
-
-  const card = el("div", "card opens");
-  card.setAttribute("role", "listitem");
-  card.append(top, main, controls);
-  return card;
-}
-
-function origin(item) {
-  const said = sessionOf(item);
-  if (!item.session) {
-    const none = el("span", "from", "sin sesión");
-    none.dataset.empty = "true";
-    return none;
-  }
-  const link = el("button", "from", said);
-  link.title = `Abrir la sesión · ${said}`;
-  link.addEventListener("click", () => resume(item.root, item.session));
-  return link;
-}
-
-function thumbGrid(items) {
-  const grid = el("div", "thumbs");
-  grid.append(...items.map(thumb));
-  return grid;
-}
-
-function thumb(item) {
-  const frame = el("span", "frame");
-  frame.innerHTML = ICONS.image;
-  framed.set(frame, item);
-  sight.observe(frame);
-
-  const node = el("button", "thumb");
-  node.setAttribute("aria-label", item.name);
-  node.title = [item.name, originOf(item)].filter(Boolean).join(" · ");
-  node.append(frame, el("span", "name", item.name));
-  node.addEventListener("click", () => openArtifact(item, node));
-  return node;
-}
-
-function picture(item) {
-  const key = pictureKey(item);
-  if (!pictures.has(key)) {
-    pictures.set(key, invoke("artifact_data", { path: item.target }).catch((reason) => {
-      pictures.delete(key);
-      throw reason;
-    }));
-  }
-  return pictures.get(key);
-}
-
-async function fill(frame) {
-  const item = framed.get(frame);
-  try {
-    const img = el("img");
-    img.alt = item.name;
-    img.decoding = "async";
-    img.src = await picture(item);
-    frame.replaceChildren(img);
-  } catch (reason) {
-    frame.title = String(reason);
-  }
-}
-
-const sight = new IntersectionObserver((entries) => {
-  for (const entry of entries) {
-    if (!entry.isIntersecting) continue;
-    sight.unobserve(entry.target);
-    fill(entry.target);
-  }
-}, { root: shelf, rootMargin: "200px" });
-
-const readText = (item) => invoke("artifact_text", { path: item.target });
-const launch = (item) => invoke("open_external", { target: item.target });
-
-async function showPicture(item, back) {
-  const img = el("img", "sight");
-  img.alt = item.name;
-  img.src = await picture(item);
-  preview(item.name, back, img);
-}
-
-async function showText(item) {
-  present(item.target, await readText(item), null, item.root);
-  if (PAGE.test(item.name)) return showSite(item.target, item.root);
-  showTool("files");
-}
-
-function opener(item) {
-  if (item.kind === "image") return showPicture;
-  if (item.kind === "link") return launch;
-  if (PAGE.test(item.name) || TEXTUAL.test(item.name)) return showText;
-  return launch;
-}
-
-function openArtifact(item, back) {
-  return attempt(shelfList, () => opener(item)(item, back));
-}
-
 const MD_FENCE = /^\s*(`{3,}|~{3,})\s*([\w#+.-]*)/;
 const MD_HEAD = /^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const MD_ITEM = /^(\s*)(?:([-*+])|(\d+)[.)])\s+(.*)$/;
@@ -3835,9 +3576,6 @@ listen("browser", ({ payload }) => hearBrowser(payload));
 new ResizeObserver(syncBrowser).observe(siteFrame);
 addEventListener("resize", syncBrowser);
 panel.addEventListener("close", syncBrowser);
-shelfSeek.insertAdjacentHTML("afterbegin", ICONS.search);
-shelfSearch.addEventListener("input", paintShelf);
-shelfFoot.insertAdjacentHTML("afterbegin", ICONS.shieldCheck);
 
 for (const shut of codePanel.querySelectorAll(".shut-tool")) {
   shut.innerHTML = ICONS.close;
@@ -4509,7 +4247,11 @@ Object.assign(legacy, {
   prose,
   showSource,
   showTool,
+  present,
+  showSite,
   outward,
+  preview,
+  resume,
 });
 
 hello();

@@ -15,5 +15,12 @@ export const legacy = {
   // The file panel on the right.
   showSource: (_title: string, _node: Node): void => {},
   showTool: (_tool: string): void => {},
+  // A file's text in that panel, as if opened from `home`.
+  present: (_path: string, _text: string, _change: null, _home: string): void => {},
+  showSite: async (_path: string, _home: string): Promise<void> => {},
   outward: (_target: string): void => {},
+  // The shared dialog, wide, for a picture.
+  preview: (_title: string, _back: HTMLElement, _node: Node): void => {},
+  // Opens a session of a project in the chat.
+  resume: (_home: string, _id: string): void => {},
 };
