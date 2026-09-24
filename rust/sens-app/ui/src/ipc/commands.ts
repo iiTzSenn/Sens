@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   Artifact,
   Capabilities,
+  Changes,
   ClaudeCodeProgress,
   Detail,
   Listing,
@@ -54,6 +55,11 @@ export const commands = {
   artifactData: (path: string) => invoke<string>("artifact_data", { path }),
   artifactText: (path: string) => invoke<string>("artifact_text", { path }),
   openExternal: (target: string) => invoke<void>("open_external", { target }),
+
+  changes: (root: string) => invoke<Changes | null>("changes", { root }),
+  openFile: (root: string, path: string) => invoke<string>("open_file", { root, path }),
+  taskOutput: (path: string) => invoke<string>("task_output", { path }),
+  stopTask: (sessionId: string, taskId: string) => invoke<void>("chat_stop_task", { sessionId, taskId }),
 };
 
 // One listener per channel, registered by the store that owns it, never by a

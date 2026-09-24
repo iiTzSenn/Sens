@@ -23,4 +23,15 @@ export const legacy = {
   preview: (_title: string, _back: HTMLElement, _node: Node): void => {},
   // Opens a session of a project in the chat.
   resume: (_home: string, _id: string): void => {},
+  // The session open in the chat, and whether a tool panel is on screen.
+  session: (): string => "",
+  panelShows: (_tool: string): boolean => false,
+  // Opens a file of the project in the file panel, with the agent's edits marked.
+  openTouched: (_path: string): void => {},
+  // The chat's renderers: a file's icon and colour, a diff, a new file's lines,
+  // folded text.
+  glyphOf: (_name: string) => ({ icon: "", tongue: "" }),
+  diffView: (_hunks: unknown[], _preview: number): Node => document.createElement("div"),
+  addedView: (_text: string, _preview: number) => ({ node: document.createElement("div") as Node, lines: 0 }),
+  folded: (_text: string): Node => document.createElement("div"),
 };

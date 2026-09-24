@@ -179,6 +179,36 @@ export interface Artifact {
   bytes: number | null;
 }
 
+/** git::Changes, rust/sens-app/src/git.rs: null outside a repository */
+export interface Changes {
+  diff: string;
+  fresh: string[];
+}
+
+/**
+ * The fields of an agent event (rust/sens-agent) that the tasks panel reads.
+ * The chat gets the whole event; `kind` says which fields are there.
+ */
+export interface AgentEvent {
+  kind: string;
+  id?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+  output?: string;
+  detail?: { backgroundTaskId?: string };
+  runner?: string;
+  description?: string;
+  prompt?: string;
+  tool?: string;
+  status?: string;
+  summary?: string;
+  doing?: string;
+  last?: string;
+  tools?: number;
+  tokens?: number;
+  millis?: number;
+}
+
 /** claude_code::Progress, the payload of the "claude-code" event */
 export interface ClaudeCodeProgress {
   stage: "downloading" | "verifying" | "installing";

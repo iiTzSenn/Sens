@@ -71,8 +71,26 @@ const artifact = (kind: string, name: string, hoursAgo: number, session: string 
 
 const SQUARE = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect width="4" height="4" fill="#c7ff4a"/></svg>')}`;
 
+const DIFF = [
+  "diff --git a/src/app.js b/src/app.js",
+  "--- a/src/app.js",
+  "+++ b/src/app.js",
+  "@@ -1,3 +1,4 @@",
+  " const a = 1;",
+  "-const b = 2;",
+  "+const b = 3;",
+  "+const c = 4;",
+  " export { a };",
+  "diff --git a/old.txt b/new.txt",
+  "rename from old.txt",
+  "rename to new.txt",
+].join("\n");
+
 const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   last_project: () => ROOT,
+  changes: () => ({ diff: DIFF, fresh: ["notas/idea.md"] }),
+  open_file: ({ path }) => `# ${path}\n\nUna idea.\nOtra línea.`,
+  task_output: () => "compilando…\nlisto en 3 s",
   artifacts: () => [
     artifact("image", "captura.png", 1),
     artifact("file", "plan.md", 3),

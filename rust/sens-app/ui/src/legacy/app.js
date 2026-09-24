@@ -5,13 +5,16 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as dialog from "@tauri-apps/plugin-dialog";
 import { loadShelf } from "../features/artifacts/store";
 import { enterCapabilities } from "../features/capabilities/store";
+import { forgetChanges, loadChanges, noteTouched, soonChanges } from "../features/changes/store";
 import { plain } from "../features/market/search.js";
 import { loadProfile, profile } from "../features/profile/store";
 import { project } from "../features/project/store";
 import { enterSettings, settings, showSection } from "../features/settings/store";
+import { forgetTasks, noteTask, runningTasks, settleTasks, tasks, tickTasks } from "../features/tasks/store";
+import { TASK_EVENTS } from "../features/tasks/tasks";
 import { startUpdates, updates } from "../features/updates/store";
 import { API_KEY_SOURCE, PLANS, keyed } from "../shared/account";
-import { MARKDOWN, PAGE, PICTURE, TEXTUAL, compact, stem, weigh } from "../shared/format.js";
+import { MARKDOWN, PAGE, TEXTUAL, compact, parentOf, seconds, stem, weigh, whole } from "../shared/format.js";
 import { ICONS } from "../shared/icons.js";
 import { sheets } from "../shared/sheets.js";
 import { store, stored } from "../shared/storage.js";
@@ -36,11 +39,7 @@ const sourcePane = document.getElementById("source");
 const codePanel = document.getElementById("code");
 const toolBtn = document.getElementById("tools");
 const toolMenu = document.getElementById("tool-menu");
-const changeList = document.getElementById("changes");
-const changeMarks = document.getElementById("change-marks");
 const changesReload = document.getElementById("changes-reload");
-const taskList = document.getElementById("tasks");
-const taskTally = document.getElementById("task-tally");
 const siteAddress = document.getElementById("site-address");
 const siteUrlInput = document.getElementById("site-url");
 const siteOut = document.getElementById("site-out");
@@ -918,14 +917,6 @@ function flushText(one) {
   follow(() => finalDraw(one));
 }
 
-const whole = (millis) => Math.floor(millis / 1000) * 1000;
-
-function seconds(millis) {
-  const total = millis / 1000;
-  if (total < 60) return `${total.toLocaleString("es", { maximumFractionDigits: 1 })} s`;
-  return `${Math.floor(total / 60)} min ${Math.round(total % 60)} s`;
-}
-
 function footOf(event) {
   return [
     event.millis ? seconds(event.millis) : "",
@@ -1361,8 +1352,6 @@ async function foundRows(needle) {
   return found.map((entry) => fileRow(entry, 0, true));
 }
 
-const parentOf = (path) => path.split("/").slice(0, -1).join("/");
-
 const FILE_KINDS = new Map(
   Object.entries({
     fileJson: "json jsonc json5",
@@ -1529,7 +1518,6 @@ function showTool(name) {
 
 function closeTools() {
   body.dataset.code = "closed";
-  pace();
   syncBrowser();
 }
 
@@ -1750,6 +1738,7 @@ function markTouched({ path, lines, plus, minus }) {
   known.plus += plus;
   known.minus += minus;
   touched.set(path, known);
+  noteTouched(touched.keys());
   paintFiles();
   if (opened === path && panelShows("files")) view(path);
   if (onProject() && panelShows("web")) reloadSite();
@@ -1761,428 +1750,16 @@ function openTouched(path) {
   view(path);
 }
 
-const CHANGE_PREVIEW = 400;
-const CHANGE_CAP = 300;
-const CHANGE_WORD = { A: "Nuevo", M: "Modificado", D: "Borrado", R: "Renombrado" };
-
-let changed = null;
-let versioned = true;
-let changeLap = 0;
-let changeSoon = 0;
-const unfoldedChanges = new Set();
-
-function diffPath(text) {
-  const clean = text.replace(/\t.*$/, "");
-  return clean === "/dev/null" ? "" : clean.replace(/^[ab]\//, "");
-}
-
-function diffedFile(pair) {
-  return { path: pair.slice(2, 2 + Math.floor((pair.length - 5) / 2)), from: "", state: "M", hunks: [], plus: 0, minus: 0, binary: false, fresh: false };
-}
-
-const freshFile = (path) => ({ path, from: "", state: "A", hunks: [], plus: 0, minus: 0, binary: false, fresh: true });
-
-function readHeader(file, line) {
-  if (line.startsWith("new file")) file.state = "A";
-  else if (line.startsWith("deleted file")) file.state = "D";
-  else if (line.startsWith("rename from ")) [file.state, file.from] = ["R", line.slice(12)];
-  else if (line.startsWith("rename to ")) file.path = line.slice(10);
-  else if (line.startsWith("+++ ")) file.path = diffPath(line.slice(4)) || file.path;
-  else if (line.startsWith("Binary files")) file.binary = true;
-}
-
-function diffedFiles(diff) {
-  const found = [];
-  let file = null;
-  let hunk = null;
-  for (const line of diff.split("\n").map((raw) => raw.replace(/\r$/, ""))) {
-    if (line.startsWith("diff --git ")) {
-      file = diffedFile(line.slice(11));
-      found.push(file);
-      hunk = null;
-      continue;
-    }
-    if (!file) continue;
-    const head = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-    if (head) {
-      hunk = { oldStart: Number(head[1]), newStart: Number(head[2]), lines: [] };
-      file.hunks.push(hunk);
-    } else if (!hunk) {
-      readHeader(file, line);
-    } else if (/^[ +-]/.test(line)) {
-      hunk.lines.push(line);
-      if (line[0] === "+") file.plus++;
-      if (line[0] === "-") file.minus++;
-    }
-  }
-  return found;
-}
-
-async function loadChanges() {
-  clearTimeout(changeSoon);
-  const lap = ++changeLap;
-  const home = root;
-  if (!home) return paintChanges();
-  let found;
-  try {
-    found = await invoke("changes", { root: home });
-  } catch (reason) {
-    if (lap === changeLap) changeList.replaceChildren(el("p", "none fault", String(reason)));
-    return;
-  }
-  if (lap !== changeLap || home !== root) return;
-  versioned = Boolean(found);
-  changed = found ? [...diffedFiles(found.diff), ...found.fresh.map(freshFile)] : [];
-  paintChanges();
-}
-
-function soonChanges() {
-  clearTimeout(changeSoon);
-  changeSoon = setTimeout(loadChanges, 400);
-}
-
-function forgetChanges() {
-  changed = null;
-  versioned = true;
-  unfoldedChanges.clear();
-  paintChanges();
-  if (panelShows("changes")) loadChanges();
-}
-
-const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
-
-function paintChanges() {
-  const files = changed || [];
-  changeMarks.replaceChildren();
-  if (files.length) {
-    const sum = (key) => files.reduce((total, file) => total + file[key], 0);
-    changeMarks.append(
-      el("span", "files", plural(files.length, "fichero", "ficheros")),
-      el("span", "plus", `+${sum("plus")}`),
-      el("span", "minus", `−${sum("minus")}`),
-    );
-  }
-  const quiet = !root ? "Sin carpeta." : changed === null ? "Leyendo cambios…" : !versioned ? "Esta carpeta no está en un repositorio git." : !files.length ? "Sin cambios desde el último commit." : "";
-  if (quiet) return changeList.replaceChildren(el("p", "none", quiet));
-  const rows = files.slice(0, CHANGE_CAP).map(changeRow);
-  if (files.length > CHANGE_CAP) rows.push(el("p", "none", `Y ${plural(files.length - CHANGE_CAP, "fichero más", "ficheros más")}.`));
-  changeList.replaceChildren(...rows);
-}
-
-function countsOf(file) {
-  const counts = el("span", "marks");
-  if (file.binary) counts.append(el("span", "files", "binario"));
-  else if (file.fresh && !file.plus) counts.append(el("span", "plus", "nuevo"));
-  else counts.append(el("span", "plus", `+${file.plus}`), el("span", "minus", `−${file.minus}`));
-  return counts;
-}
-
-function jumpTo(path) {
-  const jump = el("button", "jump");
-  jump.type = "button";
-  jump.title = "Abrir en Ficheros";
-  jump.setAttribute("aria-label", jump.title);
-  jump.innerHTML = ICONS.fileCode;
-  jump.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    openTouched(path);
-  });
-  return jump;
-}
-
-function changeRow(file) {
-  const node = el("details", "change");
-  node.dataset.touched = String(touched.has(file.path));
-  const chev = el("span", "chev");
-  chev.innerHTML = ICONS.shut;
-  const state = el("span", "state", file.state);
-  state.dataset.state = file.state;
-  state.title = CHANGE_WORD[file.state] || file.state;
-  const summary = el("summary");
-  summary.title = file.from ? `${file.from} → ${file.path}` : file.path;
-  summary.append(chev, state, fileGlyph(file.path), el("span", "name", stem(file.path)), el("span", "dirname", parentOf(file.path)), countsOf(file));
-  if (file.state !== "D") summary.append(jumpTo(file.path));
-  const inside = el("div", "change-body");
-  node.append(summary, inside);
-  node.addEventListener("toggle", () => {
-    if (node.open) unfoldedChanges.add(file.path);
-    else unfoldedChanges.delete(file.path);
-    if (node.open && !inside.childElementCount) fillChange(file, inside, summary);
-  });
-  node.open = unfoldedChanges.has(file.path);
-  return node;
-}
-
-async function fillChange(file, inside, summary) {
-  if (file.binary || (file.fresh && PICTURE.test(file.path))) return inside.replaceChildren(el("p", "none", "Fichero binario."));
-  if (file.fresh) {
-    let text;
-    try {
-      text = await invoke("open_file", { root, path: file.path });
-    } catch (reason) {
-      return inside.replaceChildren(el("p", "none fault", String(reason)));
-    }
-    const rows = addedRows(text);
-    file.plus = rows.length;
-    summary.querySelector(".marks").replaceWith(countsOf(file));
-    return inside.replaceChildren(linesCard(rows, CHANGE_PREVIEW));
-  }
-  if (!file.hunks.length) {
-    return inside.replaceChildren(el("p", "none", file.state === "R" ? "Renombrado, sin cambios de contenido." : "Sin cambios de contenido."));
-  }
-  inside.replaceChildren(patchView(file.hunks, CHANGE_PREVIEW).node);
-}
-
-const TASK_EVENTS = new Set(["taskStarted", "taskProgress", "taskEnded"]);
-const TASK_TOOLS = new Set(["Bash", "PowerShell", "Agent", "Task"]);
-const OUTPUT_AT = /written to: (.+?\.output)\b/;
-const TASK_STATE = { running: "running", completed: "done", failed: "failed", stopped: "stopped" };
-
-const tasks = new Map();
-const taskCalls = new Map();
-const taskCards = new Map();
-const openTasks = new Set();
-let taskClock = 0;
-
-const isShell = (task) => task.runner === "local_bash";
-const isAgent = (task) => task.runner.includes("agent");
-const isRunning = (task) => task.status === "running";
-const runningTasks = () => [...tasks.values()].filter(isRunning).length;
-
-function forgetTasks() {
-  tasks.clear();
-  taskCalls.clear();
-  taskCards.clear();
-  openTasks.clear();
-  taskList.replaceChildren();
-  paintTasks();
-}
-
-function startTask(event, at) {
-  tasks.set(event.id, {
-    id: event.id,
-    runner: event.runner,
-    description: event.description,
-    prompt: event.prompt,
-    input: taskCalls.get(event.tool) || {},
-    status: "running",
-    began: at,
-    ended: 0,
-    doing: "",
-    last: "",
-    tools: 0,
-    tokens: 0,
-    millis: 0,
-    summary: "",
-    output: "",
-  });
-}
-
-function endTask(task, event, at) {
-  Object.assign(task, {
-    status: event.status,
-    ended: at,
-    summary: event.summary || task.summary,
-    output: event.output || task.output,
-  });
-  if (event.millis) Object.assign(task, { tools: event.tools, tokens: event.tokens, millis: event.millis });
-}
-
-function noteTask(event, at = Date.now()) {
-  switch (event.kind) {
-    case "tool":
-      if (TASK_TOOLS.has(event.name)) taskCalls.set(event.id, event.input || {});
-      break;
-    case "toolDone": {
-      const task = tasks.get(event.detail?.backgroundTaskId);
-      const path = String(event.output || "").match(OUTPUT_AT)?.[1];
-      if (task && path) task.output ||= path;
-      break;
-    }
-    case "taskStarted":
-      startTask(event, at);
-      break;
-    case "taskProgress": {
-      const task = tasks.get(event.id);
-      if (task) Object.assign(task, { doing: event.doing, last: event.last, tools: event.tools, tokens: event.tokens, millis: event.millis });
-      break;
-    }
-    case "taskEnded": {
-      const task = tasks.get(event.id);
-      if (task) endTask(task, event, at);
-      break;
-    }
-  }
-}
-
-function taskTime(task) {
-  if (isRunning(task)) return seconds(whole(Date.now() - task.began));
-  if (task.millis) return seconds(task.millis);
-  return task.ended > task.began ? seconds(task.ended - task.began) : "";
-}
-
-function taskUsage(task) {
-  return [
-    isRunning(task) && (task.doing || "Trabajando…"),
-    task.tools && plural(task.tools, "herramienta", "herramientas"),
-    task.tokens && `${compact(task.tokens)} tokens`,
-  ].filter(Boolean).join(" · ");
-}
-
-function shellEnding(task) {
-  if (isRunning(task)) return "";
-  if (task.status === "stopped") return "Detenido";
-  const code = task.summary.match(/exit code (-?\d+)/)?.[1];
-  if (task.status === "failed") return code ? `Terminó con error · código ${code}` : "Terminó con error";
-  return code ? `Código de salida ${code}` : "Terminado";
-}
-
-function taskCard(task) {
-  const node = el("details", "step task");
-  const glyph = el("span", "step-icon");
-  glyph.innerHTML = isShell(task) ? ICONS.terminal : isAgent(task) ? ICONS.split : ICONS.wrench;
-  const title = el("span", "step-target", task.description || task.id);
-  title.title = task.description || "";
-  const meta = el("span", "step-meta");
-  const summary = el("summary");
-  summary.append(glyph, el("span", "step-verb", isShell(task) ? "Comando" : isAgent(task) ? "Subagente" : "Tarea"), title, meta, el("span", "step-state"));
-
-  const doing = el("p", "task-doing");
-  const said = el("div", "task-said");
-  const out = el("pre", "terminal-output");
-  const foot = el("div", "terminal-foot");
-  const box = terminalView(task.input.command || task.description);
-  out.hidden = true;
-  box.append(out, foot);
-  const told = task.prompt ? [foldedBox(prose(task.prompt), lengthy(task.prompt))] : [];
-
-  const actions = el("div", "task-actions");
-  const stop = el("button", "quiet", "Detener");
-  stop.type = "button";
-  const trouble = el("span", "fault");
-  actions.append(stop, trouble);
-
-  const body = el("div", "step-body");
-  body.append(...(isShell(task) ? [box] : [...told, doing, said]), actions);
-  node.append(summary, body);
-
-  let shownSummary = null;
-  let settled = false;
-  let reading = false;
-  let again = false;
-
-  async function readOutput(path) {
-    if (!path) return;
-    if (reading) {
-      again = true;
-      return;
-    }
-    reading = true;
-    try {
-      const text = (await invoke("task_output", { path })).replace(/\s+$/, "");
-      const stick = out.scrollHeight - out.scrollTop - out.clientHeight < 24;
-      out.textContent = text;
-      if (stick) out.scrollTop = out.scrollHeight;
-    } catch (reason) {
-      out.textContent = String(reason);
-    } finally {
-      reading = false;
-      out.hidden = !out.textContent;
-    }
-    if (again) {
-      again = false;
-      readOutput(path);
-    }
-  }
-
-  const card = {
-    node,
-    update(now) {
-      node.dataset.state = TASK_STATE[now.status] || "done";
-      meta.textContent = taskTime(now);
-      actions.hidden = !isRunning(now);
-      if (isShell(now)) {
-        box.dataset.state = now.status === "failed" ? "failed" : "done";
-        foot.textContent = shellEnding(now);
-        foot.hidden = !foot.textContent;
-        if (node.open && !settled) {
-          settled = !isRunning(now) && Boolean(now.output);
-          readOutput(now.output);
-        }
-        return;
-      }
-      doing.textContent = taskUsage(now);
-      doing.hidden = !doing.textContent;
-      if (now.summary === shownSummary) return;
-      shownSummary = now.summary;
-      said.replaceChildren(...(now.summary ? [prose(now.summary)] : []));
-    },
-  };
-
-  stop.addEventListener("click", async () => {
-    stop.disabled = true;
-    trouble.textContent = "";
-    try {
-      await invoke("chat_stop_task", { sessionId: current, taskId: task.id });
-    } catch (reason) {
-      trouble.textContent = String(reason);
-      stop.disabled = false;
-    }
-  });
-  node.addEventListener("toggle", () => {
-    if (node.open) openTasks.add(task.id);
-    else openTasks.delete(task.id);
-    if (node.open) card.update(tasks.get(task.id));
-  });
-  node.open = openTasks.has(task.id);
-  return card;
-}
-
-function paintTasks() {
-  const all = [...tasks.values()];
-  const running = runningTasks();
-  toolBtn.dataset.running = String(running > 0);
-  taskTally.textContent = running ? `${running} en marcha` : all.length ? plural(all.length, "tarea", "tareas") : "";
-  pace();
-  if (!panelShows("tasks")) return;
-  if (!all.length) {
-    taskList.replaceChildren(el("p", "none", "Aquí verás los subagentes y los comandos que el modelo lance en segundo plano."));
-    return;
-  }
-  taskList.querySelector(":scope > .none")?.remove();
-  all.sort((a, b) => Number(isRunning(b)) - Number(isRunning(a)) || b.began - a.began);
-  all.forEach((task, at) => {
-    if (!taskCards.has(task.id)) taskCards.set(task.id, taskCard(task));
-    const card = taskCards.get(task.id);
-    card.update(task);
-    if (taskList.children[at] !== card.node) taskList.insertBefore(card.node, taskList.children[at] || null);
-  });
-}
-
-function pace() {
-  const needed = panelShows("tasks") && runningTasks() > 0;
-  if (needed && !taskClock) taskClock = setInterval(paintTasks, 1000);
-  if (!needed && taskClock) {
-    clearInterval(taskClock);
-    taskClock = 0;
-  }
-}
-
-function settleTasks(alive) {
-  const live = new Set(alive);
-  for (const task of tasks.values()) {
-    if (isRunning(task) && !live.has(task.id)) task.status = "stopped";
-  }
-  paintTasks();
-}
-
 const TOOLS = {
   files: { label: "Ficheros", said: "El árbol y el código del proyecto", icon: ICONS.files },
   changes: { label: "Cambios", said: "Lo que difiere del último commit", icon: ICONS.compare, enter: loadChanges, count: () => (repo?.dirty ? String(repo.dirty) : "") },
   web: { label: "Web", said: "Páginas y servidores locales", icon: ICONS.globe, enter: enterSite },
-  tasks: { label: "Segundo plano", said: "Subagentes y comandos del modelo", icon: ICONS.activity, enter: paintTasks, count: () => (runningTasks() ? String(runningTasks()) : "") },
+  tasks: { label: "Segundo plano", said: "Subagentes y comandos del modelo", icon: ICONS.activity, enter: tickTasks, count: () => (runningTasks() ? String(runningTasks()) : "") },
 };
+
+tasks.subscribe(() => {
+  toolBtn.dataset.running = String(runningTasks() > 0);
+});
 
 function toolRow(name, tool) {
   const item = el("button", "menu-item");
@@ -2472,6 +2049,7 @@ async function enter(picked) {
   rootLabel.textContent = stem(picked);
   folderBtn.title = picked;
   touched.clear();
+  noteTouched([]);
   attached = [];
   paintClips();
   forgetView();
@@ -3401,6 +2979,7 @@ async function switchTo(name) {
   paintChip();
   tick(["rama · ", bold(repo.branch)]);
   touched.clear();
+  noteTouched([]);
   forgetChanges();
   await loadFiles();
   if (opened) await view(opened);
@@ -4198,7 +3777,7 @@ listen("chat", ({ payload }) => {
     return;
   }
   noteTask(event);
-  if (TASK_EVENTS.has(event.kind)) return paintTasks();
+  if (TASK_EVENTS.has(event.kind)) return;
   hear(event);
 });
 
@@ -4252,6 +3831,16 @@ Object.assign(legacy, {
   outward,
   preview,
   resume,
+  session: () => current,
+  panelShows,
+  openTouched,
+  glyphOf,
+  diffView: (hunks, preview) => patchView(hunks, preview).node,
+  addedView(text, preview) {
+    const rows = addedRows(text);
+    return { node: linesCard(rows, preview), lines: rows.length };
+  },
+  folded: (text) => foldedBox(prose(text), lengthy(text)),
 });
 
 hello();

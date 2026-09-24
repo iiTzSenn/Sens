@@ -1,0 +1,177 @@
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { createRoot } from "react-dom/client";
+import { useStore } from "zustand";
+import { commands } from "../../ipc/commands";
+import { legacy } from "../../legacy/bridge";
+import { Borrowed } from "../../shared/Borrowed";
+import { Icon } from "../../shared/Icon";
+import { ICONS } from "../../shared/icons.js";
+import { Prose } from "../../shared/Prose";
+import { tasks, tickTasks } from "./store";
+import { TASK_STATE, inOrder, isAgent, isRunning, isShell, shellEnding, tally, taskTime, taskUsage, type Task } from "./tasks";
+
+// The cards go in the panel body; the tally, in the header app.js owns.
+export function mountTasks(host: Element, count: Element) {
+  createRoot(host).render(
+    <StrictMode>
+      <TasksPanel count={count} />
+    </StrictMode>,
+  );
+}
+
+export function TasksPanel({ count }: { count: Element }) {
+  const all = useStore(tasks, (s) => s.tasks);
+  const now = useStore(tasks, (s) => s.now);
+  const list = inOrder(all);
+  const running = list.some(isRunning);
+
+  useEffect(() => {
+    if (!running) return;
+    const clock = setInterval(() => {
+      if (legacy.panelShows("tasks")) tickTasks();
+    }, 1000);
+    return () => clearInterval(clock);
+  }, [running]);
+
+  return (
+    <>
+      {createPortal(tally(all), count)}
+      {list.length ? (
+        list.map((task) => <TaskCard key={task.id} task={task} now={now} />)
+      ) : (
+        <p className="none">Aquí verás los subagentes y los comandos que el modelo lance en segundo plano.</p>
+      )}
+    </>
+  );
+}
+
+function TaskCard({ task, now }: { task: Task; now: number }) {
+  const [open, setOpen] = useState(false);
+  const shell = isShell(task);
+  const agent = isAgent(task);
+  return (
+    <details
+      className="step task"
+      data-state={TASK_STATE[task.status] || "done"}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>
+        <span className="step-icon">
+          <Icon svg={shell ? ICONS.terminal : agent ? ICONS.split : ICONS.wrench} />
+        </span>
+        <span className="step-verb">{shell ? "Comando" : agent ? "Subagente" : "Tarea"}</span>
+        <span className="step-target" title={task.description || ""}>
+          {task.description || task.id}
+        </span>
+        <span className="step-meta">{taskTime(task, now)}</span>
+        <span className="step-state" />
+      </summary>
+      <div className="step-body">
+        {shell ? <ShellBody task={task} open={open} now={now} /> : <AgentBody task={task} />}
+        <StopTask task={task} />
+      </div>
+    </details>
+  );
+}
+
+// While the card is open, what the command prints is read again with every
+// update, until it has ended and its output was read once more. The output
+// keeps to the bottom unless scrolled up.
+function ShellBody({ task, open, now }: { task: Task; open: boolean; now: number }) {
+  const [output, setOutput] = useState("");
+  const out = useRef<HTMLPreElement>(null);
+  const settled = useRef(false);
+  const reading = useRef(false);
+  const again = useRef(false);
+  const stick = useRef(true);
+
+  async function read(path: string) {
+    if (!path) return;
+    if (reading.current) {
+      again.current = true;
+      return;
+    }
+    reading.current = true;
+    let text: string;
+    try {
+      text = (await commands.taskOutput(path)).replace(/\s+$/, "");
+    } catch (reason) {
+      text = String(reason);
+    }
+    const pre = out.current;
+    stick.current = !pre || pre.scrollHeight - pre.scrollTop - pre.clientHeight < 24;
+    setOutput(text);
+    reading.current = false;
+    if (again.current) {
+      again.current = false;
+      read(path);
+    }
+  }
+
+  useEffect(() => {
+    if (!open || settled.current) return;
+    settled.current = !isRunning(task) && Boolean(task.output);
+    read(task.output);
+  }, [open, task, now]);
+
+  useLayoutEffect(() => {
+    if (stick.current && out.current) out.current.scrollTop = out.current.scrollHeight;
+  }, [output]);
+
+  const ending = shellEnding(task);
+  return (
+    <div className="terminal" data-state={task.status === "failed" ? "failed" : "done"}>
+      <div className="terminal-command">
+        <span className="prompt">$</span>
+        <span>{String(task.input.command || task.description || "")}</span>
+      </div>
+      <pre className="terminal-output" ref={out} hidden={!output}>
+        {output}
+      </pre>
+      <div className="terminal-foot" hidden={!ending}>
+        {ending}
+      </div>
+    </div>
+  );
+}
+
+function AgentBody({ task }: { task: Task }) {
+  const usage = taskUsage(task);
+  return (
+    <>
+      {task.prompt && <Borrowed make={() => legacy.folded(task.prompt)} made={task.prompt} />}
+      <p className="task-doing" hidden={!usage}>
+        {usage}
+      </p>
+      <div className="task-said">{task.summary && <Prose text={task.summary} />}</div>
+    </>
+  );
+}
+
+// Once asked, the button stays off: the task ends and the card says so.
+function StopTask({ task }: { task: Task }) {
+  const [asked, setAsked] = useState(false);
+  const [trouble, setTrouble] = useState("");
+
+  async function stop() {
+    setAsked(true);
+    setTrouble("");
+    try {
+      await commands.stopTask(legacy.session(), task.id);
+    } catch (reason) {
+      setTrouble(String(reason));
+      setAsked(false);
+    }
+  }
+
+  return (
+    <div className="task-actions" hidden={!isRunning(task)}>
+      <button className="quiet" type="button" disabled={asked} onClick={stop}>
+        Detener
+      </button>
+      <span className="fault">{trouble}</span>
+    </div>
+  );
+}

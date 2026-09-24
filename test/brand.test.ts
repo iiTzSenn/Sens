@@ -199,7 +199,7 @@ describe("the desktop shell", () => {
       ['run.failed ? "Terminó con error"', "a failed command says so"],
       ['answersText(answers) || "Permitido" : "Rechazado"', "a settled permission names its outcome"],
       ['note.textContent = "Sin respuesta";', "an expired question says it went unanswered"],
-      ['el("span", "state", file.state)', "a changed file carries its status letter"],
+      ['<span className="state" data-state={file.state}', "a changed file carries its status letter"],
     ];
     for (const [snippet, why] of paired) expect(shell, why).toContain(snippet);
   });

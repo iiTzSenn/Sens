@@ -1,8 +1,11 @@
 import { iconShape } from "./icons.js";
 
 // One of ICONS as the same <svg> the legacy script writes with innerHTML.
+// Anything else draws nothing rather than breaking the zone.
 export function Icon({ svg }: { svg: string }) {
-  const { paths, size, stroke } = iconShape(svg);
+  const shape = iconShape(svg);
+  if (!shape) return null;
+  const { paths, size, stroke } = shape;
   return (
     <svg
       width={size}

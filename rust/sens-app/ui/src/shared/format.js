@@ -1,11 +1,22 @@
 // How the shell writes names, sizes, counts and dates, in Spanish.
 
 export const stem = (path) => path.split(/[/\\]/).filter(Boolean).pop() || path;
+export const parentOf = (path) => path.split("/").slice(0, -1).join("/");
 
 export const MARKDOWN = /\.(md|markdown)$/i;
 export const TEXTUAL = /\.(md|markdown|txt|json|csv|log|js|mjs|cjs|ts|tsx|jsx|rs|py|rb|go|java|kt|swift|c|h|cc|cpp|hpp|cs|php|sh|ps1|bat|toml|ya?ml|xml|css|scss|sql|lua|vue|svelte|ini|diff|patch)$/i;
 export const PAGE = /\.html?$/i;
 export const PICTURE = /\.(png|jpe?g|gif|webp|avif|svg|ico|bmp)$/i;
+
+export const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+
+export const whole = (millis) => Math.floor(millis / 1000) * 1000;
+
+export function seconds(millis) {
+  const total = millis / 1000;
+  if (total < 60) return `${total.toLocaleString("es", { maximumFractionDigits: 1 })} s`;
+  return `${Math.floor(total / 60)} min ${Math.round(total % 60)} s`;
+}
 
 export function compact(count) {
   if (count < 1000) return String(count);
