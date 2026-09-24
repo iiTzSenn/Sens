@@ -199,77 +199,7 @@
     </section>
 
     <section class="view" id="capabilities-view" aria-label="Capacidades" hidden>
-      <div class="view-inner">
-        <header class="view-top">
-          <div>
-            <h1 class="label">Capacidades</h1>
-            <p>Skills, plugins y servidores MCP que Sens puede usar en tus sesiones.</p>
-          </div>
-          <div class="segmented" id="caps-mode" role="tablist" aria-label="Qué ver">
-            <button role="tab" id="caps-mode-installed" data-mode="installed" aria-controls="caps-installed">Instaladas</button>
-            <button role="tab" id="caps-mode-explore" data-mode="explore" aria-controls="caps-explore">Explorar</button>
-          </div>
-          <div class="view-add" id="caps-add-box">
-            <button class="quiet" id="caps-add">Añadir</button>
-            <div class="sheet menu drop" id="caps-menu" role="menu" aria-label="Añadir capacidad" hidden>
-              <button class="menu-item" role="menuitem" tabindex="-1" data-add="create">Crear skill</button>
-              <button class="menu-item" role="menuitem" tabindex="-1" data-add="import">Importar carpeta</button>
-              <button class="menu-item" role="menuitem" tabindex="-1" data-add="server">Añadir servidor MCP</button>
-            </div>
-          </div>
-        </header>
-        <div id="caps-installed" role="tabpanel" aria-labelledby="caps-mode-installed">
-          <div class="view-focus">
-            <span class="label" id="caps-project">Sin proyecto</span>
-            <p class="tally" id="caps-tally" aria-live="polite">Abre un proyecto para activar capacidades.</p>
-            <p class="note">El agente las carga a partir de tu próximo mensaje en este proyecto.</p>
-          </div>
-          <div class="view-head">
-            <div class="tabs" id="caps-tabs" role="tablist" aria-label="Tipos de capacidad">
-              <button class="tab" role="tab" id="caps-tab-all" data-tab="all" aria-controls="caps-list">Todas <span class="count"></span></button>
-              <button class="tab" role="tab" id="caps-tab-plugins" data-tab="plugins" aria-controls="caps-list">Plugins <span class="count"></span></button>
-              <button class="tab" role="tab" id="caps-tab-skills" data-tab="skills" aria-controls="caps-list">Skills <span class="count"></span></button>
-              <button class="tab" role="tab" id="caps-tab-servers" data-tab="servers" aria-controls="caps-list">MCP <span class="count"></span></button>
-              <button class="tab" role="tab" id="caps-tab-active" data-tab="active" aria-controls="caps-list">Activas <span class="count"></span></button>
-            </div>
-          </div>
-          <div class="seek view-seek" id="caps-seek" role="search">
-            <input class="field" id="caps-search" placeholder="Buscar una skill, plugin o servidor…" aria-label="Buscar una skill, plugin o servidor" autocomplete="off" spellcheck="false">
-          </div>
-          <div class="view-list" id="caps-list" role="tabpanel"></div>
-          <p class="view-foot" id="caps-foot">Tú decides qué se activa en cada proyecto.</p>
-        </div>
-        <div id="caps-explore" role="tabpanel" aria-labelledby="caps-mode-explore" hidden>
-          <div class="seek view-seek" id="market-seek" role="search">
-            <input class="field" id="market-search" placeholder="Busca plugins, skills o conectores…" aria-label="Buscar en el mercado" autocomplete="off" spellcheck="false">
-          </div>
-          <div class="chips" id="market-kinds" role="group" aria-label="Tipo">
-            <span class="chips-label">Tipo</span>
-            <button class="chip" data-kind="all">Todo</button>
-            <button class="chip" data-kind="plugin">Plugins</button>
-            <button class="chip" data-kind="skill">Skills</button>
-            <button class="chip" data-kind="connector">Conectores</button>
-          </div>
-          <div class="chips" id="market-sources" role="group" aria-label="Fuente">
-            <span class="chips-label">Fuente</span>
-            <button class="chip" data-source="all">Todas</button>
-            <button class="chip" data-source="anthropic">Anthropic</button>
-            <button class="chip" data-source="community">Comunidad</button>
-            <button class="chip" data-source="skillsSh">skills.sh</button>
-          </div>
-          <p class="none" id="market-note" hidden></p>
-          <div class="view-list" id="market-list" aria-live="polite"></div>
-          <div class="market-more"><button class="quiet" id="market-more" hidden>Ver más</button></div>
-          <p class="view-foot" id="market-foot"><span id="market-when"></span><button class="link-btn" id="market-refresh">Actualizar catálogo</button></p>
-        </div>
-        <div id="caps-detail" hidden>
-          <button class="quiet detail-back" id="detail-back">Capacidades</button>
-          <div id="detail-body"></div>
-        </div>
-        <div class="sheet menu drop" id="cap-actions" role="menu" hidden>
-          <button class="menu-item" role="menuitem" tabindex="-1" id="cap-remove">Quitar</button>
-        </div>
-      </div>
+      <div class="view-inner" id="capabilities-body"></div>
     </section>
 
     <section class="view" id="settings-view" aria-label="Ajustes" hidden>

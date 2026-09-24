@@ -45,6 +45,127 @@ export interface ProviderState {
   installed: boolean;
 }
 
+/** capabilities::Skill, rust/sens-app/src/capabilities.rs */
+export interface Skill {
+  name: string;
+  description: string;
+  enabled: boolean;
+}
+
+/** capabilities::Plugin */
+export interface Plugin {
+  name: string;
+  description: string;
+  version: string;
+  enabled: boolean;
+}
+
+/** capabilities::Server: `url` is set for remote servers, `command` for local ones */
+export interface Server {
+  name: string;
+  command: string;
+  args: string[];
+  envKeys: string[];
+  kind: string;
+  url: string;
+  enabled: boolean;
+}
+
+/** capabilities::Provenance: where an installed capability came from */
+export interface Provenance {
+  listing: string;
+  revision: string;
+  version: string;
+  installedAt: number;
+}
+
+/** capabilities::Capabilities, keyed `kind:name` in `origins` */
+export interface Capabilities {
+  skills: Skill[];
+  servers: Server[];
+  plugins: Plugin[];
+  origins: Record<string, Provenance>;
+}
+
+/** capabilities::NewServer */
+export interface NewServer {
+  name: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+/** market::Listing, rust/sens-app/src/market.rs */
+export interface Listing {
+  id: string;
+  kind: "plugin" | "skill" | "connector";
+  name: string;
+  title: string;
+  description: string;
+  author: string;
+  badge: "anthropic" | "partner" | "community" | "skillsSh";
+  source: string;
+  category: string;
+  version: string;
+  homepage: string;
+  installs: number | null;
+  login: boolean;
+  tools: string[];
+  installable: boolean;
+  revision: string;
+}
+
+/** market::SourceState */
+export interface SourceState {
+  id: string;
+  label: string;
+  fetchedAt: number;
+  error: string;
+}
+
+/** market::Market */
+export interface Market {
+  listings: Listing[];
+  sources: SourceState[];
+}
+
+/** market::Part */
+export interface Part {
+  name: string;
+  path: string;
+  description: string;
+}
+
+/** market::Parts: what a listing brings and what it runs */
+export interface Parts {
+  skills: Part[];
+  commands: Part[];
+  agents: Part[];
+  hooks: { event: string; command: string }[];
+  servers: { name: string; launch: string }[];
+  lsp: string[];
+  bin: string[];
+}
+
+/** market::Need: a value the install asks for */
+export interface Need {
+  name: string;
+  description: string;
+  secret: boolean;
+  required: boolean;
+  default: string;
+}
+
+/** market::Detail */
+export interface Detail {
+  listing: Listing;
+  readme: string;
+  license: string;
+  files: { path: string; size: number }[];
+  parts: Parts;
+  needs: Need[];
+}
+
 /** claude_code::Progress, the payload of the "claude-code" event */
 export interface ClaudeCodeProgress {
   stage: "downloading" | "verifying" | "installing";

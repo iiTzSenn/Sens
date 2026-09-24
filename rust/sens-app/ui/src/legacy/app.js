@@ -3,12 +3,16 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as dialog from "@tauri-apps/plugin-dialog";
-import { createDebouncedSearch, createMarketRanker, plain } from "../features/market/search.js";
+import { enterCapabilities } from "../features/capabilities/store";
+import { plain } from "../features/market/search.js";
 import { loadProfile, profile } from "../features/profile/store";
+import { project } from "../features/project/store";
 import { enterSettings, settings, showSection } from "../features/settings/store";
 import { startUpdates, updates } from "../features/updates/store";
 import { API_KEY_SOURCE, PLANS, keyed } from "../shared/account";
+import { MARKDOWN, compact, stem, weigh, when } from "../shared/format.js";
 import { ICONS } from "../shared/icons.js";
+import { sheets } from "../shared/sheets.js";
 import { store, stored } from "../shared/storage.js";
 import { legacy } from "./bridge";
 
@@ -95,33 +99,6 @@ const shelfFoot = document.getElementById("shelf-foot");
 const capsBtn = document.getElementById("capabilities");
 const capsView = document.getElementById("capabilities-view");
 const settingsView = document.getElementById("settings-view");
-const capsBar = document.getElementById("caps-tabs");
-const capsList = document.getElementById("caps-list");
-const capsProject = document.getElementById("caps-project");
-const capsTally = document.getElementById("caps-tally");
-const capsSeek = document.getElementById("caps-seek");
-const capsSearch = document.getElementById("caps-search");
-const capsFoot = document.getElementById("caps-foot");
-const addBtn = document.getElementById("caps-add");
-const addMenu = document.getElementById("caps-menu");
-const capActions = document.getElementById("cap-actions");
-const capsModeBar = document.getElementById("caps-mode");
-const capsInstalled = document.getElementById("caps-installed");
-const capsExplore = document.getElementById("caps-explore");
-const capsDetail = document.getElementById("caps-detail");
-const addBox = document.getElementById("caps-add-box");
-const marketSeek = document.getElementById("market-seek");
-const marketSearch = document.getElementById("market-search");
-const marketKinds = document.getElementById("market-kinds");
-const marketSources = document.getElementById("market-sources");
-const marketNote = document.getElementById("market-note");
-const marketList = document.getElementById("market-list");
-const marketMore = document.getElementById("market-more");
-const marketWhen = document.getElementById("market-when");
-const marketRefresh = document.getElementById("market-refresh");
-const detailBack = document.getElementById("detail-back");
-const detailBody = document.getElementById("detail-body");
-const removeItem = document.getElementById("cap-remove");
 const foot = document.getElementById("rail-foot");
 const profileBtn = document.getElementById("profile");
 const avatar = document.getElementById("avatar");
@@ -146,8 +123,6 @@ const el = (tag, className, value) => {
   if (value !== undefined) node.textContent = value;
   return node;
 };
-
-const stem = (path) => path.split(/[/\\]/).filter(Boolean).pop() || path;
 
 function place(node) {
   if (!node.classList.contains("hello")) inner.querySelector(".hello")?.remove();
@@ -957,13 +932,6 @@ function seconds(millis) {
   return `${Math.floor(total / 60)} min ${Math.round(total % 60)} s`;
 }
 
-function compact(count) {
-  if (count < 1000) return String(count);
-  const kilo = count / 1000;
-  const [value, unit] = Math.round(kilo * 10) / 10 >= 1000 ? [kilo / 1000, "M"] : [kilo, "k"];
-  return `${value.toLocaleString("es", { maximumFractionDigits: 1 })}${unit}`;
-}
-
 function footOf(event) {
   return [
     event.millis ? seconds(event.millis) : "",
@@ -1191,10 +1159,6 @@ function asked(text, files = [], pictures = []) {
   }
   return place(node);
 }
-
-const when = (millis) => new Date(millis).toLocaleString("es", {
-  day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
-});
 
 const dayOf = (offset) => {
   const day = new Date();
@@ -2563,6 +2527,7 @@ function idle(on) {
 
 async function enter(picked) {
   root = picked;
+  project.setState({ root: picked });
   current = "";
   rootLabel.textContent = stem(picked);
   folderBtn.title = picked;
@@ -2629,22 +2594,12 @@ function showView(name) {
   if (name) VIEWS[name].load();
 }
 
-function enterCapabilities() {
-  paintCapsMode();
-  loadCapabilities();
-  if (capsMode === "explore") {
-    loadMarket(false);
-    paintExplore();
-  }
-}
-
 function toChat() {
   if (showing) showView("");
 }
 
 const SHELF_TAB = "sens.artifacts.tab";
 const TEXTUAL = /\.(md|markdown|txt|json|csv|log|js|mjs|cjs|ts|tsx|jsx|rs|py|rb|go|java|kt|swift|c|h|cc|cpp|hpp|cs|php|sh|ps1|bat|toml|ya?ml|xml|css|scss|sql|lua|vue|svelte|ini|diff|patch)$/i;
-const MARKDOWN = /\.(md|markdown)$/i;
 const PAGE = /\.html?$/i;
 const PICTURE = /\.(png|jpe?g|gif|webp|avif|svg|ico|bmp)$/i;
 const KIND_ICON = { image: ICONS.image, file: ICONS.fileText, link: ICONS.link };
@@ -3088,809 +3043,6 @@ function prose(text) {
   return page;
 }
 
-const CAPS_TAB = "sens.capabilities.tab";
-const FRONT_MATTER = /^﻿?---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
-const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-const commandLine = (server) => [server.command, ...server.args].join(" ");
-
-const launchLine = (server) => server.url || commandLine(server);
-
-const CAP_KINDS = {
-  plugins: {
-    label: "Plugin",
-    icon: ICONS.package,
-    origin: "plugin",
-    words: (plugin) => [plugin.name, plugin.description],
-    detail: (plugin) => [plugin.description, plugin.version && `v${plugin.version}`].filter(Boolean).join(" · "),
-    gone: "Se borra su carpeta y las variables que guardaste para él.",
-    set: "set_plugin",
-    remove: "remove_plugin",
-  },
-  skills: {
-    label: "Skill",
-    icon: ICONS.book,
-    origin: "skill",
-    words: (skill) => [skill.name, skill.description],
-    detail: (skill) => skill.description,
-    gone: "Se borra su carpeta con todo lo que contiene.",
-    set: "set_skill",
-    remove: "remove_skill",
-    open: openSkill,
-  },
-  servers: {
-    label: "MCP",
-    icon: ICONS.plug,
-    origin: "server",
-    words: (server) => [server.name, launchLine(server)],
-    detail: (server) => [launchLine(server), server.envKeys.join(", ")].filter(Boolean).join(" · "),
-    mono: true,
-    gone: "Se borra su configuración, variables de entorno incluidas.",
-    set: "set_server",
-    remove: "remove_server",
-  },
-};
-
-const KIND_SPEC = Object.fromEntries(Object.values(CAP_KINDS).map((spec) => [spec.origin, spec]));
-
-const openAddMenu = () => addSheet.toggle(addBtn);
-
-const CAP_TABS = {
-  all: {
-    keeps: () => true,
-    empty: ["No hay capacidades", "Explora el mercado, o crea o importa una skill, o añade un servidor MCP."],
-    add: openAddMenu,
-  },
-  plugins: {
-    keeps: ({ spec }) => spec === CAP_KINDS.plugins,
-    empty: ["No hay plugins", "Explora el mercado para instalar uno."],
-    add: () => showCapsMode("explore"),
-  },
-  skills: {
-    keeps: ({ spec }) => spec === CAP_KINDS.skills,
-    empty: ["No hay skills", "Añade una skill para darle instrucciones reutilizables al agente."],
-    add: openAddMenu,
-  },
-  servers: {
-    keeps: ({ spec }) => spec === CAP_KINDS.servers,
-    empty: ["No hay servidores MCP", "Añade un servidor MCP para darle herramientas nuevas al agente."],
-    add: serverForm,
-  },
-  active: {
-    keeps: ({ item }) => item.enabled,
-    empty: ["Nada activo en este proyecto", "Activa una skill, un plugin o un servidor desde su tarjeta."],
-    add: openAddMenu,
-  },
-};
-
-const capsStrip = tabStrip(capsBar, capsList, CAPS_TAB, "all", paintCaps);
-const NO_CAPS = { skills: [], servers: [], plugins: [], origins: {} };
-let caps = NO_CAPS;
-let capTarget = null;
-
-const capEntries = () =>
-  Object.entries(CAP_KINDS).flatMap(([kind, spec]) => caps[kind].map((item) => ({ spec, item })));
-
-const matching = (needle) => ({ spec, item }) =>
-  plain(spec.words(item).filter(Boolean).join("\n")).includes(needle);
-
-const activeCount = (list) => list.filter((item) => item.enabled).length;
-
-function tallyOf(skills, servers, plugins) {
-  const parts = [
-    plugins && `${plugins} ${plugins === 1 ? "plugin" : "plugins"}`,
-    skills && `${skills} ${skills === 1 ? "skill" : "skills"}`,
-    servers && `${servers} MCP`,
-  ].filter(Boolean);
-  if (!parts.length) return "Nada activo en este proyecto";
-  const one = skills + servers + plugins === 1;
-  const said = servers || plugins ? (one ? "activo" : "activos") : (one ? "activa" : "activas");
-  const listed = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} y ${parts.at(-1)}` : parts[0];
-  return `${listed} ${said} en este proyecto`;
-}
-
-async function loadCapabilities() {
-  const asked = root;
-  let found;
-  try {
-    found = await invoke("capabilities", { root: asked });
-  } catch (reason) {
-    if (asked !== root) return;
-    caps = NO_CAPS;
-    paintCapSummary();
-    capsList.replaceChildren();
-    fault(capsList, reason);
-    return;
-  }
-  if (asked !== root) return;
-  caps = found;
-  paintCaps();
-  if (detailing) paintDetail();
-  if (capsMode === "explore") paintExplore();
-}
-
-function paintCapSummary() {
-  const entries = capEntries();
-  capsStrip.paint((id) => entries.filter(CAP_TABS[id].keeps).length);
-  capsSeek.hidden = !entries.length;
-  capsProject.textContent = root ? stem(root) : "Sin proyecto";
-  capsProject.title = root;
-  capsTally.textContent = root
-    ? tallyOf(activeCount(caps.skills), activeCount(caps.servers), activeCount(caps.plugins))
-    : "Abre un proyecto para activar capacidades.";
-}
-
-function paintAddButton() {
-  if (CAP_TABS[capsStrip.at].add === openAddMenu) {
-    addBtn.setAttribute("aria-haspopup", "menu");
-    addBtn.setAttribute("aria-expanded", "false");
-  } else {
-    addBtn.removeAttribute("aria-haspopup");
-    addBtn.removeAttribute("aria-expanded");
-  }
-}
-
-function paintCaps() {
-  rowSheet.shut();
-  addSheet.shut();
-  paintCapSummary();
-  paintAddButton();
-  const tab = CAP_TABS[capsStrip.at];
-  const kept = capEntries().filter(tab.keeps);
-  if (!kept.length) {
-    capsList.replaceChildren(emptyView(ICONS.capabilities, ...tab.empty));
-    return;
-  }
-  const needle = plain(capsSearch.value.trim());
-  const shown = needle ? kept.filter(matching(needle)) : kept;
-  if (!shown.length) {
-    capsList.replaceChildren(el("p", "none", "Nada coincide."));
-    return;
-  }
-  const grid = el("div", "card-grid");
-  grid.setAttribute("role", "list");
-  grid.append(...shown.map(capCard));
-  capsList.replaceChildren(grid);
-}
-
-function capCard({ spec, item }) {
-  const art = el("span", "card-art");
-  art.innerHTML = spec.icon;
-  const top = el("div", "card-top");
-  top.append(art, el("span", "label", spec.label));
-
-  const detail = spec.detail(item);
-  const origin = caps.origins[`${spec.origin}:${item.name}`];
-  const opens = origin ? () => openDetail(origin.listing) : spec.open && (() => spec.open(item));
-  const main = el(opens ? "button" : "div", "card-main");
-  main.title = detail;
-  main.append(el("span", "name", item.name), el("span", spec.mono ? "sub mono" : "sub", detail));
-  if (opens) main.addEventListener("click", opens);
-
-  const controls = el("div", "card-controls");
-  controls.append(capMore(spec, item), capSwitch(spec, item));
-
-  const card = el("div", opens ? "card opens" : "card");
-  card.setAttribute("role", "listitem");
-  card.append(top, main, controls);
-  return card;
-}
-
-function capSwitch(spec, item) {
-  const home = root;
-  const toggle = el("button", "switch");
-  toggle.setAttribute("role", "switch");
-  toggle.setAttribute("aria-label", home ? `Activar ${item.name} en ${stem(home)}` : `Activar ${item.name}`);
-  toggle.disabled = !home;
-  toggle.setAttribute("aria-disabled", String(!home));
-  const paint = () => toggle.setAttribute("aria-checked", String(item.enabled));
-  paint();
-
-  const flip = () => {
-    item.enabled = !item.enabled;
-    paint();
-    paintCapSummary();
-  };
-
-  let waiting = false;
-  toggle.addEventListener("click", async () => {
-    if (waiting || !home) return;
-    waiting = true;
-    flip();
-    await attempt(capsList, () =>
-      invoke(spec.set, { root: home, name: item.name, enabled: item.enabled }).catch((reason) => {
-        flip();
-        throw reason;
-      }),
-    );
-    waiting = false;
-  });
-  return toggle;
-}
-
-function capMore(spec, item) {
-  const more = el("button", "round");
-  more.innerHTML = ICONS.ellipsis;
-  more.title = `Acciones de ${item.name}`;
-  more.setAttribute("aria-label", more.title);
-  more.setAttribute("aria-haspopup", "menu");
-  more.setAttribute("aria-expanded", "false");
-  more.addEventListener("click", () => {
-    if (capActions.hidden || rowSheet.anchor !== more) {
-      capTarget = { spec, item };
-      capActions.setAttribute("aria-label", more.title);
-      more.after(capActions);
-    }
-    rowSheet.toggle(more);
-  });
-
-  const box = el("span", "card-more");
-  box.append(more);
-  return box;
-}
-
-function openSkill(skill) {
-  return attempt(capsList, async () => {
-    const text = await invoke("skill_text", { name: skill.name });
-    showSource(`skills/${skill.name}/SKILL.md`, prose(text.replace(FRONT_MATTER, "")));
-    showTool("files");
-  });
-}
-
-function importSkill() {
-  return attempt(capsList, async () => {
-    const picked = await dialog.open({ directory: true, title: "Elige la carpeta de la skill" });
-    if (!picked) return;
-    await invoke("import_skill", { root, path: picked });
-    await loadCapabilities();
-  });
-}
-
-const listed = (text) => text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-
-function envOf(text) {
-  const env = new Map();
-  text.split(/\r?\n/).forEach((line, at) => {
-    if (!line.trim()) return;
-    const cut = line.indexOf("=");
-    const key = line.slice(0, Math.max(cut, 0)).trim();
-    if (!ENV_KEY.test(key)) throw `Variables de entorno, línea ${at + 1}: escribe CLAVE=valor.`;
-    if (env.has(key)) throw `Variables de entorno: ${key} está repetida.`;
-    env.set(key, line.slice(cut + 1).trim());
-  });
-  return Object.fromEntries(env);
-}
-
-function skillForm() {
-  const name = el("input", "field verbatim");
-  name.maxLength = 64;
-  name.autofocus = true;
-  const about = el("input", "field");
-  about.maxLength = 1024;
-  const steps = el("textarea", "field");
-  steps.rows = 8;
-
-  panelForm({
-    title: "Crear skill",
-    fields: [
-      pair("skill-name", "Nombre", name, "Minúsculas, números y guiones, sin empezar por guion. Hasta 64 caracteres."),
-      pair("skill-description", "Descripción", about),
-      pair("skill-body", "Instrucciones", steps),
-    ],
-    submit: el("button", "primary", "Crear"),
-    act: () => invoke("create_skill", {
-      root,
-      name: name.value.trim(),
-      description: about.value.trim(),
-      body: steps.value,
-    }),
-    after: loadCapabilities,
-    back: addBtn,
-  });
-}
-
-function serverForm() {
-  const name = el("input", "field verbatim");
-  name.maxLength = 64;
-  name.autofocus = true;
-  const command = el("input", "field verbatim");
-  const args = el("textarea", "field verbatim");
-  args.rows = 3;
-  const env = el("textarea", "field verbatim");
-  env.rows = 3;
-
-  panelForm({
-    title: "Añadir servidor MCP",
-    fields: [
-      pair("server-name", "Nombre", name, "Letras, números, guiones y guiones bajos. Hasta 64 caracteres."),
-      pair("server-command", "Comando", command),
-      pair("server-args", "Argumentos", args, "Uno por línea."),
-      pair("server-env", "Variables de entorno", env, "CLAVE=valor, una por línea. Los valores no se vuelven a mostrar."),
-    ],
-    submit: el("button", "primary", "Añadir"),
-    act: () => invoke("add_server", {
-      root,
-      server: {
-        name: name.value.trim(),
-        command: command.value.trim(),
-        args: listed(args.value),
-        env: envOf(env.value),
-      },
-    }),
-    after: loadCapabilities,
-    back: addBtn,
-  });
-}
-
-function confirmRemoval({ spec, item }, back) {
-  panelForm({
-    title: `Quitar ${item.name}`,
-    fields: [el("p", null, spec.gone)],
-    submit: el("button", "primary danger", "Quitar"),
-    act: async () => {
-      await invoke(spec.remove, { name: item.name });
-      panelBack = addBtn;
-    },
-    after: loadCapabilities,
-    back,
-  });
-}
-
-const CAPS_MODE = "sens.capabilities.mode";
-const MARKET_KIND = "sens.market.kind";
-const MARKET_SOURCE = "sens.market.source";
-const MARKET_PAGE = 60;
-const MARKET_SEEK_WAIT = 300;
-const FILE_ROWS = 300;
-const BADGES = { anthropic: "Anthropic", partner: "Oficial", community: "Comunidad", skillsSh: "skills.sh" };
-const KIND_NAMES = { plugin: "Plugin", skill: "Skill", connector: "Conector" };
-const KIND_ICONS = { plugin: ICONS.package, skill: ICONS.book, connector: ICONS.plug };
-const SOURCE_GROUPS = {
-  all: () => true,
-  anthropic: (listing) => listing.badge === "anthropic" || listing.badge === "partner",
-  community: (listing) => listing.badge === "community",
-  skillsSh: (listing) => listing.badge === "skillsSh",
-};
-const DETAIL_TABS = [
-  ["summary", "Resumen"],
-  ["contents", "Contenido"],
-  ["runs", "Qué ejecuta"],
-];
-const ranked = createMarketRanker();
-
-let capsMode = ["installed", "explore"].includes(stored(CAPS_MODE, "")) ? stored(CAPS_MODE, "") : "installed";
-let kindFilter = Object.keys(KIND_NAMES).includes(stored(MARKET_KIND, "")) ? stored(MARKET_KIND, "") : "all";
-let sourceFilter = Object.keys(SOURCE_GROUPS).includes(stored(MARKET_SOURCE, "")) ? stored(MARKET_SOURCE, "") : "all";
-let marketData = null;
-let marketAsk = null;
-let marketFault = "";
-let marketHits = [];
-let marketHitsFault = "";
-let marketSeeking = false;
-const marketSearchTask = createDebouncedSearch({
-  search: (query) => invoke("market_search", { query }),
-  delay: MARKET_SEEK_WAIT,
-  changed: ({ pending, hits, error }) => {
-    marketSeeking = pending;
-    marketHits = hits;
-    marketHitsFault = error;
-    paintExplore();
-  },
-});
-let marketShown = MARKET_PAGE;
-let detailing = null;
-let installing = false;
-
-function showCapsMode(mode) {
-  capsMode = mode;
-  store(CAPS_MODE, mode);
-  detailing = null;
-  paintCapsMode();
-  if (mode === "explore") {
-    loadMarket(false);
-    paintExplore();
-  }
-}
-
-function paintCapsMode() {
-  for (const button of capsModeBar.querySelectorAll("[data-mode]")) {
-    const on = button.dataset.mode === capsMode;
-    button.setAttribute("aria-selected", String(on));
-    button.tabIndex = on ? 0 : -1;
-  }
-  capsInstalled.hidden = Boolean(detailing) || capsMode !== "installed";
-  capsExplore.hidden = Boolean(detailing) || capsMode !== "explore";
-  capsDetail.hidden = !detailing;
-  addBox.hidden = capsMode !== "installed" || Boolean(detailing);
-}
-
-function loadMarket(refresh) {
-  if (marketAsk) return marketAsk;
-  if (marketData && !refresh) return Promise.resolve();
-  marketAsk = invoke("market", { refresh })
-    .then((found) => {
-      marketData = found;
-      marketFault = "";
-    })
-    .catch((reason) => {
-      marketFault = String(reason);
-    })
-    .finally(() => {
-      marketAsk = null;
-      paintExplore();
-    });
-  paintMarketFoot();
-  return marketAsk;
-}
-
-const originFor = (listingId) => {
-  const found = Object.entries(caps.origins || {}).find(([, origin]) => origin.listing === listingId);
-  if (!found) return null;
-  const [key, origin] = found;
-  const cut = key.indexOf(":");
-  return { kind: key.slice(0, cut), name: key.slice(cut + 1), ...origin };
-};
-
-const installedItem = (origin) => {
-  const spec = KIND_SPEC[origin.kind];
-  const list = Object.entries(CAP_KINDS).find(([, one]) => one === spec)?.[0];
-  return caps[list]?.find((item) => item.name === origin.name) || null;
-};
-
-function paintChips() {
-  for (const chip of marketKinds.querySelectorAll("[data-kind]")) chip.setAttribute("aria-pressed", String(chip.dataset.kind === kindFilter));
-  for (const chip of marketSources.querySelectorAll("[data-source]")) chip.setAttribute("aria-pressed", String(chip.dataset.source === sourceFilter));
-}
-
-function paintMarketNote() {
-  const failed = (marketData?.sources || []).filter((source) => source.error).map((source) => `${source.label}: ${source.error}`);
-  if (marketHitsFault) failed.push(`skills.sh: ${marketHitsFault}`);
-  marketNote.textContent = failed.length ? `No pude actualizar ${failed.join(" · ")}` : "";
-  marketNote.hidden = !failed.length;
-  marketNote.classList.toggle("fault", failed.length > 0);
-}
-
-function paintMarketFoot() {
-  const newest = Math.max(0, ...(marketData?.sources || []).map((source) => source.fetchedAt || 0));
-  marketWhen.textContent = newest ? `Catálogo del ${when(newest)}` : "";
-  marketRefresh.disabled = Boolean(marketAsk);
-  marketRefresh.textContent = marketAsk ? "Actualizando…" : "Actualizar catálogo";
-}
-
-function paintExplore() {
-  paintChips();
-  paintMarketNote();
-  paintMarketFoot();
-  marketMore.hidden = true;
-  if (!marketData) {
-    const line = el("p", marketFault ? "none fault" : "none", marketFault || "Cargando el catálogo…");
-    marketList.replaceChildren(line);
-    return;
-  }
-  const needle = plain(marketSearch.value.trim());
-  const known = new Set(marketData.listings.map((listing) => listing.id));
-  const pool = [...marketData.listings, ...(needle ? marketHits.filter((hit) => !known.has(hit.id)) : [])];
-  const kept = pool.filter((listing) => (kindFilter === "all" || listing.kind === kindFilter) && SOURCE_GROUPS[sourceFilter](listing));
-  const found = needle ? ranked(kept, needle) : kept;
-  if (!found.length) {
-    const waiting = marketSeeking && needle.length >= 2;
-    marketList.replaceChildren(el("p", "none", waiting ? "Buscando también en skills.sh…" : "Nada coincide."));
-    return;
-  }
-  const grid = el("div", "card-grid");
-  grid.setAttribute("role", "list");
-  grid.append(...found.slice(0, marketShown).map(marketCard));
-  marketList.replaceChildren(grid);
-  const left = found.length - marketShown;
-  marketMore.hidden = left <= 0;
-  marketMore.textContent = `Ver más (${left})`;
-}
-
-function marketCard(listing) {
-  const art = el("span", "card-art");
-  art.innerHTML = KIND_ICONS[listing.kind];
-  const top = el("div", "card-top");
-  top.append(art, el("span", "label", KIND_NAMES[listing.kind]));
-
-  const said = listing.description || listing.category || listing.author;
-  const main = el("button", "card-main");
-  main.title = said;
-  main.append(el("span", "name", listing.title), el("span", "sub", said));
-  main.addEventListener("click", () => openDetail(listing.id));
-
-  const foot = el("div", "card-foot");
-  foot.append(el("span", "badge", BADGES[listing.badge]));
-  const by = listing.installs ? `${compact(listing.installs)} instalaciones` : listing.author;
-  if (by && by !== BADGES[listing.badge]) foot.append(el("span", null, by));
-  if (listing.login) {
-    const key = el("span", "key");
-    key.innerHTML = ICONS.keyRound;
-    key.title = "Pide iniciar sesión";
-    key.setAttribute("aria-label", key.title);
-    foot.append(key);
-  }
-  if (originFor(listing.id)) foot.append(el("span", "installed", "Instalada"));
-
-  const card = el("div", "card opens");
-  card.setAttribute("role", "listitem");
-  card.append(top, main, foot);
-  return card;
-}
-
-function seekMarket() {
-  marketShown = MARKET_PAGE;
-  const query = marketSearch.value.trim();
-  const wanted = SOURCE_GROUPS[sourceFilter]({ badge: "skillsSh" }) && ["all", "skill"].includes(kindFilter);
-  marketSearchTask.schedule(query, wanted);
-}
-
-async function openDetail(id) {
-  const back = { mode: capsMode, scroll: capsView.scrollTop };
-  detailing = { id, detail: null, fault: "", tab: "summary", file: "", back };
-  paintCapsMode();
-  paintDetail();
-  capsView.scrollTop = 0;
-  let detail = null;
-  let reason = "";
-  try {
-    detail = await invoke("market_detail", { id });
-  } catch (failed) {
-    reason = String(failed);
-  }
-  if (detailing?.id !== id) return;
-  detailing.detail = detail;
-  detailing.fault = reason;
-  paintDetail();
-}
-
-function closeDetail() {
-  const back = detailing?.back;
-  detailing = null;
-  paintCapsMode();
-  if (capsMode === "explore") paintExplore();
-  capsView.scrollTop = back?.scroll || 0;
-}
-
-function paintDetail() {
-  if (!detailing) return;
-  const { detail, fault: reason } = detailing;
-  if (reason) {
-    detailBody.replaceChildren(el("p", "none fault", reason));
-    return;
-  }
-  if (!detail) {
-    detailBody.replaceChildren(el("p", "none", "Descargando para mostrártelo…"));
-    return;
-  }
-  const listing = detail.listing;
-  const head = el("div", "detail-head");
-  head.append(
-    el("span", "label", `${KIND_NAMES[listing.kind]} · ${BADGES[listing.badge]}`),
-    el("h2", "detail-title", listing.title),
-  );
-  const meta = [listing.author, listing.version && `v${listing.version}`, detail.license, listing.installs && `${compact(listing.installs)} instalaciones`].filter(Boolean);
-  if (meta.length) head.append(el("p", "detail-meta", meta.join(" · ")));
-  const said = listing.description || firstLine(detail.readme);
-  if (said) head.append(el("p", "detail-said", said));
-  head.append(detailActions(detail));
-
-  const tabs = DETAIL_TABS.filter(([id]) => id !== "contents" || detail.files.length);
-  if (!tabs.some(([id]) => id === detailing.tab)) detailing.tab = "summary";
-  const bar = el("div", "tabs");
-  bar.setAttribute("role", "tablist");
-  bar.setAttribute("aria-label", "Partes de la ficha");
-  for (const [id, label] of tabs) {
-    const tab = el("button", "tab", label);
-    tab.setAttribute("role", "tab");
-    tab.setAttribute("aria-selected", String(id === detailing.tab));
-    tab.addEventListener("click", () => {
-      detailing.tab = id;
-      paintDetail();
-    });
-    bar.append(tab);
-  }
-  const strip = el("div", "view-head");
-  strip.append(bar);
-  const pane = el("div", "detail-pane");
-  pane.setAttribute("role", "tabpanel");
-  pane.append(DETAIL_PANES[detailing.tab](detail));
-  detailBody.replaceChildren(head, strip, pane);
-}
-
-const firstLine = (text) =>
-  (text || "").replace(FRONT_MATTER, "").split(/\r?\n/).map((line) => line.replace(/^#+\s*/, "").trim()).find(Boolean) || "";
-
-function detailActions(detail) {
-  const listing = detail.listing;
-  const box = el("div", "detail-actions");
-  const origin = originFor(listing.id);
-  if (origin) {
-    box.append(...installedActions(listing, origin));
-  } else {
-    const install = el("button", "primary", installing ? "Instalando…" : "Instalar");
-    install.disabled = installing || !listing.installable;
-    install.addEventListener("click", () => startInstall(detail, install));
-    box.append(install);
-    if (!listing.installable) {
-      const why = listing.login ? "Pide iniciar sesión en el servicio; Sens aún no puede hacerlo por ti." : "Este origen no se puede instalar desde Sens.";
-      box.append(el("span", "detail-why", why));
-    }
-  }
-  if (listing.homepage) {
-    const source = el("button", "quiet");
-    source.innerHTML = ICONS.external;
-    source.append("Ver fuente");
-    source.title = listing.homepage;
-    source.addEventListener("click", () => outward(listing.homepage));
-    box.append(source);
-  }
-  return box;
-}
-
-function installedActions(listing, origin) {
-  const spec = KIND_SPEC[origin.kind];
-  const item = installedItem(origin);
-  const actions = [];
-  if (item) {
-    const holder = el("label", "detail-switch");
-    holder.append(capSwitch(spec, item), root ? `Activa en ${stem(root)}` : "Abre un proyecto para activarla");
-    actions.push(holder);
-  }
-  if (listing.revision && origin.revision !== listing.revision) {
-    const refresh = el("button", "quiet");
-    refresh.innerHTML = ICONS.refresh;
-    refresh.append("Actualizar");
-    refresh.addEventListener("click", () =>
-      attempt(detailBody, async () => {
-        refresh.disabled = true;
-        await invoke("market_update", { id: listing.id, name: origin.name });
-        await loadCapabilities();
-      }),
-    );
-    actions.push(refresh);
-  }
-  const drop = el("button", "quiet", "Desinstalar");
-  drop.addEventListener("click", () => confirmRemoval({ spec, item: { name: origin.name } }, drop));
-  actions.push(drop);
-  return actions;
-}
-
-function runsOf(detail) {
-  const { hooks, servers, bin } = detail.parts;
-  return [
-    ...hooks.map((hook) => [`Hook · ${hook.event}`, hook.command]),
-    ...servers.map((server) => [`MCP · ${server.name}`, server.launch]),
-    ...bin.map((path) => ["Ejecutable", path]),
-  ];
-}
-
-function runRow(name, code) {
-  const row = el("div", "run-row");
-  row.append(el("span", "run-name", name));
-  if (code) row.append(el("code", null, code));
-  return row;
-}
-
-function startInstall(detail, button) {
-  const runs = detail.listing.kind === "plugin" ? runsOf(detail) : [];
-  const needs = detail.needs;
-  if (!runs.length && !needs.length) {
-    return attempt(detailBody, () => runInstall(detail, {}));
-  }
-  const fields = [];
-  if (runs.length) {
-    const list = el("div", "confirm-runs");
-    list.append(...runs.map(([name, code]) => runRow(name, code)));
-    fields.push(el("p", null, "Esto ejecuta código en tu equipo cuando el agente lo usa:"), list);
-  }
-  const inputs = needs.map((need, at) => {
-    const input = el("input", "field verbatim");
-    input.type = need.secret ? "password" : "text";
-    input.value = need.default || "";
-    fields.push(pair(`need-${at}`, need.name, input, [need.description, need.required ? "" : "Opcional."].filter(Boolean).join(" ")));
-    return [need.name, input];
-  });
-  panelForm({
-    title: `Instalar ${detail.listing.title}`,
-    fields,
-    submit: el("button", "primary", "Instalar"),
-    act: () => runInstall(detail, Object.fromEntries(inputs.map(([name, input]) => [name, input.value]))),
-    after: async () => {},
-    back: button,
-  });
-}
-
-async function runInstall(detail, values) {
-  installing = true;
-  paintDetail();
-  try {
-    await invoke("market_install", { root, id: detail.listing.id, values });
-  } finally {
-    installing = false;
-  }
-  await loadCapabilities();
-  paintDetail();
-}
-
-function summaryPane(detail) {
-  const box = el("div");
-  box.append(prose(detail.readme.replace(FRONT_MATTER, "")));
-  if (detail.listing.tools.length) {
-    const tools = el("div", "tool-chips");
-    tools.append(...detail.listing.tools.map((name) => el("code", null, name)));
-    box.append(el("p", "label", `Herramientas · ${detail.listing.tools.length}`), tools);
-  }
-  return box;
-}
-
-function contentsPane(detail) {
-  const nav = el("nav", "detail-nav");
-  nav.setAttribute("aria-label", "Ficheros");
-  const reader = el("div", "detail-reader");
-  const buttons = [];
-  const fileButton = (name, path, sub) => {
-    const button = el("button", "detail-file");
-    button.dataset.path = path;
-    button.append(el("span", null, name));
-    if (sub) button.append(el("span", "path", sub));
-    button.addEventListener("click", () => readFile(path, nav, reader));
-    buttons.push(button);
-    return button;
-  };
-  const groups = [
-    ["Skills", detail.parts.skills],
-    ["Comandos", detail.parts.commands],
-    ["Agentes", detail.parts.agents],
-  ];
-  for (const [label, parts] of groups) {
-    if (!parts.length) continue;
-    nav.append(el("p", "label", label), ...parts.map((part) => fileButton(part.name, part.path, part.path)));
-  }
-  nav.append(el("p", "label", `Ficheros · ${detail.files.length}`));
-  nav.append(...detail.files.slice(0, FILE_ROWS).map((row) => fileButton(row.path, row.path, weigh(row.size))));
-  if (detail.files.length > FILE_ROWS) nav.append(el("p", "none", `y ${detail.files.length - FILE_ROWS} más`));
-
-  const split = el("div", "detail-split");
-  split.append(nav, reader);
-  const first = detailing.file || detail.parts.skills[0]?.path || detail.parts.commands[0]?.path || detail.files.find((row) => MARKDOWN.test(row.path))?.path;
-  if (first) readFile(first, nav, reader);
-  else reader.append(el("p", "none", "Elige un fichero para leerlo."));
-  return split;
-}
-
-async function readFile(path, nav, reader) {
-  const id = detailing.id;
-  detailing.file = path;
-  for (const button of nav.querySelectorAll(".detail-file")) button.setAttribute("aria-current", String(button.dataset.path === path));
-  reader.replaceChildren(el("p", "none", "Leyendo…"));
-  let shown;
-  try {
-    const text = await invoke("market_file", { id, path });
-    shown = MARKDOWN.test(path) ? prose(text.replace(FRONT_MATTER, "")) : el("pre", null, text);
-  } catch (reason) {
-    shown = el("p", "none fault", String(reason));
-  }
-  if (detailing?.id !== id || detailing.file !== path) return;
-  reader.replaceChildren(shown);
-}
-
-function runsPane(detail) {
-  const box = el("div", "detail-runs");
-  const section = (label, rows) => {
-    if (rows.length) box.append(el("p", "label", label), ...rows);
-  };
-  section("Hooks", detail.parts.hooks.map((hook) => runRow(hook.event, hook.command)));
-  section("Servidores MCP", detail.parts.servers.map((server) => runRow(server.name, server.launch)));
-  section("Ejecutables", detail.parts.bin.map((path) => runRow(path, "")));
-  section("LSP", detail.parts.lsp.map((name) => runRow(name, "")));
-  section("Lo que te pedirá", detail.needs.map((need) => runRow(need.name, [need.description, need.required ? "" : "opcional"].filter(Boolean).join(" · "))));
-  if (detail.listing.login) section("Inicio de sesión", [runRow("Pide iniciar sesión en el servicio", "")]);
-  if (!box.childElementCount) box.append(el("p", "none", "No ejecuta código: solo instrucciones."));
-  return box;
-}
-
-const DETAIL_PANES = { summary: summaryPane, contents: contentsPane, runs: runsPane };
-
 const RECALL = "sens.choice";
 
 const KNOWN = "sens.models.v3";
@@ -4194,12 +3346,6 @@ const accountLine = document.getElementById("model-account");
 const connectBtn = document.getElementById("models-connect");
 const refreshBtn = document.getElementById("models-refresh");
 const editBtn = document.getElementById("models-edit");
-
-const weigh = (bytes) => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toLocaleString("es", { maximumFractionDigits: 1 })} MB`;
-};
 
 const modelsOf = (provider) => knownModels[provider.id] || [];
 const offeredBy = (provider) => modelsOf(provider).filter((card) => !hiddenModels.has(card.id));
@@ -4663,44 +3809,6 @@ for (const [name, one] of Object.entries(VIEWS)) {
   one.button.addEventListener("click", () => showView(name));
 }
 
-addBtn.insertAdjacentHTML("afterbegin", ICONS.plus);
-addBtn.addEventListener("click", () => CAP_TABS[capsStrip.at].add());
-capsSeek.insertAdjacentHTML("afterbegin", ICONS.search);
-capsSearch.addEventListener("input", paintCaps);
-marketSeek.insertAdjacentHTML("afterbegin", ICONS.search);
-marketSearch.addEventListener("input", seekMarket);
-detailBack.insertAdjacentHTML("afterbegin", ICONS.back);
-detailBack.addEventListener("click", closeDetail);
-marketMore.addEventListener("click", () => {
-  marketShown += MARKET_PAGE;
-  paintExplore();
-});
-marketRefresh.addEventListener("click", () => loadMarket(true));
-for (const button of capsModeBar.querySelectorAll("[data-mode]")) {
-  button.addEventListener("click", () => showCapsMode(button.dataset.mode));
-}
-capsModeBar.addEventListener("keydown", (event) => {
-  if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
-  event.preventDefault();
-  const next = capsMode === "installed" ? "explore" : "installed";
-  showCapsMode(next);
-  capsModeBar.querySelector(`[data-mode="${next}"]`).focus();
-});
-for (const chip of marketKinds.querySelectorAll("[data-kind]")) {
-  chip.addEventListener("click", () => {
-    kindFilter = chip.dataset.kind;
-    store(MARKET_KIND, kindFilter);
-    seekMarket();
-  });
-}
-for (const chip of marketSources.querySelectorAll("[data-source]")) {
-  chip.addEventListener("click", () => {
-    sourceFilter = chip.dataset.source;
-    store(MARKET_SOURCE, sourceFilter);
-    seekMarket();
-  });
-}
-capsFoot.insertAdjacentHTML("afterbegin", ICONS.shieldCheck);
 siteReload.insertAdjacentHTML("afterbegin", ICONS.refresh);
 siteConsole.insertAdjacentHTML("afterbegin", ICONS.terminal);
 siteReload.addEventListener("click", reloadSite);
@@ -4756,8 +3864,6 @@ filterInput.addEventListener("input", () => {
   clearTimeout(seeking);
   seeking = setTimeout(drawFiles, 120);
 });
-
-const sheets = [];
 
 function popover(sheet, anchor, before) {
   const one = {
@@ -4999,51 +4105,6 @@ function preview(title, back, node) {
   showPanel(title, node);
 }
 
-function pair(id, text, control, note) {
-  control.id = id;
-  control.autocomplete = "off";
-  control.spellcheck = false;
-  const label = el("label", "label", text);
-  label.htmlFor = id;
-  const box = el("div", "pair");
-  box.append(label, control);
-  if (note) {
-    const hint = el("p", "note", note);
-    hint.id = `${id}-note`;
-    control.setAttribute("aria-describedby", hint.id);
-    box.append(hint);
-  }
-  return box;
-}
-
-function panelForm({ title, fields, submit, act, after, back = profileBtn }) {
-  const said = el("p", "none fault");
-  said.setAttribute("role", "alert");
-  said.hidden = true;
-
-  submit.type = "submit";
-  const actions = el("div", "actions");
-  actions.append(submit);
-
-  const form = el("form", "form");
-  form.append(...fields, said, actions);
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    submit.disabled = true;
-    try {
-      await act();
-      panel.close();
-      await after();
-    } catch (reason) {
-      said.textContent = String(reason);
-      said.hidden = false;
-    }
-    submit.disabled = false;
-  });
-  panelBack = back;
-  showPanel(title, form);
-}
-
 function openSettingsView(section) {
   showSection(section);
   showView("settings");
@@ -5172,24 +4233,6 @@ for (const item of menu.querySelectorAll("[data-panel]")) {
     PANELS[item.dataset.panel]();
   });
 }
-
-const ADDS = { create: skillForm, import: importSkill, server: serverForm };
-const addSheet = steer(popover(addMenu, null));
-const rowSheet = steer(popover(capActions, null));
-
-for (const item of addMenu.querySelectorAll("[data-add]")) {
-  item.addEventListener("click", () => {
-    addSheet.shut();
-    addBtn.focus();
-    ADDS[item.dataset.add]();
-  });
-}
-
-removeItem.addEventListener("click", () => {
-  const back = rowSheet.anchor;
-  rowSheet.shut();
-  confirmRemoval(capTarget, back);
-});
 
 document.getElementById("panel-close").addEventListener("click", () => panel.close());
 panel.addEventListener("click", (event) => {
@@ -5450,7 +4493,24 @@ async function boot() {
   await paintRail();
 }
 
-Object.assign(legacy, { openUpdate, readAccount, refreshModels });
+Object.assign(legacy, {
+  openUpdate,
+  readAccount,
+  refreshModels,
+  showPanel(title, node, back) {
+    if (back) panelBack = back;
+    showPanel(title, node);
+  },
+  closePanel: () => panel.close(),
+  panelReturnsTo(back) {
+    panelBack = back;
+  },
+  syncBrowser,
+  prose,
+  showSource,
+  showTool,
+  outward,
+});
 
 hello();
 paintKnobs();

@@ -2,14 +2,96 @@
 // the printed URL. vite.config.ts injects it only into the dev server, and
 // inside Tauri the real IPC is already there, so it steps aside.
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
+import type { Capabilities } from "../ipc/types";
 
 const now = Date.now();
 const HOUR = 3_600_000;
 const ROOT = "C:/Proyectos/demo";
 const person = { name: "Demo", checkUpdates: false };
 
+const caps: Capabilities = {
+  skills: [
+    { name: "revisar-pr", description: "Revisa un pull request con la guía del equipo", enabled: true },
+    { name: "notas", description: "Resume la sesión en notas", enabled: false },
+  ],
+  servers: [
+    { name: "github", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"], envKeys: ["GITHUB_TOKEN"], kind: "stdio", url: "", enabled: false },
+  ],
+  plugins: [{ name: "formatter", description: "Formatea al guardar", version: "1.2.0", enabled: true }],
+  origins: { "plugin:formatter": { listing: "demo/formatter", revision: "r1", version: "1.2.0", installedAt: now - HOUR } },
+};
+type List = "skills" | "servers" | "plugins";
+
+const listing = (id: string, kind: string, title: string, badge: string, extra: object = {}) => ({
+  id,
+  kind,
+  name: id.split("/").pop(),
+  title,
+  description: `${title}, de prueba`,
+  author: "Demo",
+  badge,
+  source: "demo",
+  category: "",
+  version: "1.0.0",
+  homepage: "https://example.com",
+  installs: 1234,
+  login: false,
+  tools: [],
+  installable: true,
+  revision: "r1",
+  ...extra,
+});
+
+const listings = [
+  listing("demo/formatter", "plugin", "Formatter", "anthropic", { revision: "r2", tools: ["format"] }),
+  listing("demo/tests", "skill", "Escribir tests", "community"),
+  listing("demo/calendar", "connector", "Calendario", "partner", { login: true, installable: false }),
+];
+
+const setCapability = (list: List) => ({ name, enabled }: Record<string, unknown>) => {
+  const item = caps[list].find((one) => one.name === name);
+  if (item) item.enabled = Boolean(enabled);
+};
+const removeCapability = (list: List) => ({ name }: Record<string, unknown>) => {
+  const at = caps[list].findIndex((one) => one.name === name);
+  if (at >= 0) caps[list].splice(at, 1);
+};
+
 const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
-  last_project: () => null,
+  last_project: () => ROOT,
+  tree: () => [],
+  folder: () => [],
+  capabilities: () => structuredClone(caps),
+  set_skill: setCapability("skills"),
+  set_server: setCapability("servers"),
+  set_plugin: setCapability("plugins"),
+  remove_skill: removeCapability("skills"),
+  remove_server: removeCapability("servers"),
+  remove_plugin: removeCapability("plugins"),
+  skill_text: ({ name }) => `---\nname: ${name}\n---\n# ${name}\n\nInstrucciones de prueba.`,
+  market: () => ({ listings, sources: [{ id: "demo", label: "Demo", fetchedAt: now - HOUR, error: "" }] }),
+  market_search: ({ query }) => [listing(`skills.sh/${query}`, "skill", `Skill sobre ${query}`, "skillsSh")],
+  market_detail: ({ id }) => ({
+    listing: listings.find((one) => one.id === id) ?? listing(String(id), "skill", String(id), "skillsSh"),
+    readme: "# Léeme\n\nUna ficha **de prueba** con una lista:\n\n- uno\n- dos",
+    license: "MIT",
+    files: [
+      { path: "README.md", size: 1200 },
+      { path: "skills/format/SKILL.md", size: 800 },
+      { path: "hooks/format.sh", size: 90 },
+    ],
+    parts: {
+      skills: [{ name: "format", path: "skills/format/SKILL.md", description: "" }],
+      commands: [],
+      agents: [],
+      hooks: [{ event: "PostToolUse", command: "sh hooks/format.sh" }],
+      servers: [],
+      lsp: [],
+      bin: [],
+    },
+    needs: [],
+  }),
+  market_file: ({ path }) => (String(path).endsWith(".md") ? `# ${path}\n\nContenido de prueba.` : "echo formatea"),
   workspaces: () => [
     {
       root: ROOT,
