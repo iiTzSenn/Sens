@@ -6,6 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, WPARAM};
+use windows::Win32::System::ProcessStatus::EnumProcesses;
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, QueryFullProcessImageNameW,
     TerminateProcess,
@@ -41,14 +42,19 @@ pub fn settle(app: &Path, closing: &Closing, cancel: &AtomicBool, report: Report
     report(Step::Close, 0.06, progress::WAITING);
     let closed = match closing {
         Closing::Ask(ask) => {
-            ask();
-            wait(app, None, cancel)?
-        }
-        Closing::Wait(ask) => {
-            wait(app, Some(PATIENCE), cancel)? || {
+            closed_unseen(app, report) || {
                 ask();
                 wait(app, None, cancel)?
             }
+        }
+        Closing::Wait(ask) => {
+            wait(app, Some(GRACE), cancel)?
+                || closed_unseen(app, report)
+                || wait(app, Some(PATIENCE - GRACE), cancel)?
+                || {
+                    ask();
+                    wait(app, None, cancel)?
+                }
         }
         Closing::Force => close(app, false) || close(app, true),
     };
@@ -60,19 +66,36 @@ pub fn settle(app: &Path, closing: &Closing, cancel: &AtomicBool, report: Report
 }
 
 pub fn close(app: &Path, force: bool) -> bool {
-    let windows = top_windows();
-    let ours = processes_of(app, &windows);
-    for (window, process) in &windows {
-        if ours.contains(process) && is_main(*window) {
-            unsafe {
-                let _ = PostMessageW(Some(*window), WM_CLOSE, WPARAM(0), LPARAM(0));
-            }
+    shut(app, &processes_of(app), force)
+}
+
+fn closed_unseen(app: &Path, report: Report) -> bool {
+    let ours = processes_of(app);
+    if ours.is_empty() || !main_windows(&ours).is_empty() {
+        return false;
+    }
+    report(Step::Close, 0.06, progress::UNSEEN);
+    shut(app, &ours, true)
+}
+
+fn shut(app: &Path, ours: &BTreeSet<u32>, force: bool) -> bool {
+    for window in main_windows(ours) {
+        unsafe {
+            let _ = PostMessageW(Some(window), WM_CLOSE, WPARAM(0), LPARAM(0));
         }
     }
     if force {
         ours.iter().for_each(|process| terminate(*process));
     }
     wait(app, Some(GRACE), &AtomicBool::new(false)).unwrap_or(false)
+}
+
+fn main_windows(ours: &BTreeSet<u32>) -> Vec<HWND> {
+    top_windows()
+        .into_iter()
+        .filter(|(window, process)| ours.contains(process) && is_main(*window))
+        .map(|(window, _)| window)
+        .collect()
 }
 
 pub fn wait(app: &Path, limit: Option<Duration>, cancel: &AtomicBool) -> Result<bool, String> {
@@ -111,13 +134,29 @@ fn is_main(window: HWND) -> bool {
     unsafe { IsWindowVisible(window).as_bool() && GetWindow(window, GW_OWNER).is_err() }
 }
 
-fn processes_of(app: &Path, windows: &[(HWND, u32)]) -> BTreeSet<u32> {
+fn processes_of(app: &Path) -> BTreeSet<u32> {
     let wanted = app.to_string_lossy().to_lowercase();
-    let candidates: BTreeSet<u32> = windows.iter().map(|(_, process)| *process).collect();
-    candidates
+    running()
         .into_iter()
         .filter(|process| image_of(*process).is_some_and(|image| image.to_lowercase() == wanted))
         .collect()
+}
+
+fn running() -> Vec<u32> {
+    let mut ids = vec![0u32; 1024];
+    loop {
+        let mut filled = 0u32;
+        let room = (ids.len() * size_of::<u32>()) as u32;
+        if unsafe { EnumProcesses(ids.as_mut_ptr(), room, &mut filled) }.is_err() {
+            return Vec::new();
+        }
+        let count = filled as usize / size_of::<u32>();
+        if count < ids.len() {
+            ids.truncate(count);
+            return ids;
+        }
+        ids.resize(ids.len() * 2, 0);
+    }
 }
 
 fn image_of(process: u32) -> Option<String> {
@@ -145,11 +184,14 @@ fn terminate(process: u32) {
 mod tests {
     use std::fs::{self, File};
     use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::process::CommandExt;
     use std::path::PathBuf;
+    use std::process::{Command, Stdio};
     use std::sync::Mutex;
     use std::sync::atomic::AtomicUsize;
 
     use super::*;
+    use crate::system::CREATE_NO_WINDOW;
 
     fn scratch_app(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("sens-setup-running-{name}"));
@@ -247,6 +289,40 @@ mod tests {
 
         assert_eq!(settled, Err(CANCELLED.to_string()));
         drop(lock);
+        let _ = fs::remove_dir_all(app.parent().unwrap());
+    }
+
+    #[test]
+    #[ignore]
+    fn sleeps_as_a_stand_in_for_sens() {
+        thread::sleep(Duration::from_secs(60));
+    }
+
+    #[test]
+    fn a_sens_left_running_without_a_window_is_closed_without_asking() {
+        let app = scratch_app("unseen");
+        fs::copy(std::env::current_exe().unwrap(), &app).unwrap();
+        let mut stand_in = Command::new(&app)
+            .args(["running::tests::sleeps_as_a_stand_in_for_sens", "--exact", "--ignored"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .unwrap();
+        let asked = AtomicUsize::new(0);
+        let ask = || {
+            asked.fetch_add(1, Ordering::SeqCst);
+        };
+        let lines = Mutex::new(Vec::new());
+        let report = |_: Step, _: f64, line: &str| lines.lock().unwrap().push(line.to_string());
+
+        assert!(is_open(&app));
+        let settled = settle(&app, &Closing::Ask(&ask), &AtomicBool::new(false), &report);
+
+        assert_eq!(settled, Ok(()));
+        assert_eq!(asked.load(Ordering::SeqCst), 0);
+        assert_eq!(*lines.lock().unwrap(), [progress::WAITING, progress::UNSEEN, progress::CLOSED]);
+        assert!(stand_in.try_wait().unwrap().is_some());
         let _ = fs::remove_dir_all(app.parent().unwrap());
     }
 

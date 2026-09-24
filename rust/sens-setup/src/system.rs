@@ -12,7 +12,7 @@ use windows::core::{HSTRING, w};
 use winreg::RegKey;
 use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const DETACHED_PROCESS: u32 = 0x0000_0008;
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;

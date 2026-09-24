@@ -10,6 +10,7 @@ pub const START_MENU: &str = "Acceso directo en el menú Inicio";
 pub const DESKTOP: &str = "Acceso directo en el escritorio";
 pub const WAITING: &str = "Sens está abierta; esperando a que se cierre";
 pub const CLOSED: &str = "Sens se ha cerrado";
+pub const UNSEEN: &str = "Sens seguía abierta sin ventana; cerrándola";
 pub const UNLINKING: &str = "Quitando los accesos directos";
 pub const UNREGISTERING: &str = "Quitando Sens de Windows";
 pub const FORGETTING: &str = "Borrando tus ajustes, skills y plugins de Sens";
