@@ -1,12 +1,15 @@
-import { memo, useLayoutEffect, useMemo, useRef } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
-import { FRONT_MATTER } from "../../shared/format.js";
+import { openPicture } from "../../app/Dialog";
+import { EmptyView } from "../../shared/EmptyView";
+import { FRONT_MATTER, stem, weigh } from "../../shared/format.js";
+import { ICONS } from "../../shared/icons.js";
 import { Markdown } from "../../shared/markdown/Markdown";
 import { languageOf } from "../../shared/syntax/languages";
 import { usePainted, type Look, type Painted, type Runs } from "../../shared/syntax/paint";
 import { useSeen } from "../../shared/useSeen";
 import { project, type Edits } from "../project/store";
-import { setMode, viewer, viewOf } from "./view";
+import { setMode, textOf, viewer, viewOf, type Body } from "./view";
 
 // The file beside the tree: as code, or as a page when it reads as one. Its
 // name and the agent's counts (ViewerHead) and the Código/Vista switch
@@ -14,6 +17,10 @@ import { setMode, viewer, viewOf } from "./view";
 export function Viewer() {
   const title = useStore(viewer, (s) => s.title);
   const mode = useStore(viewer, (s) => s.mode);
+  const body = useStore(viewer, (s) => s.body);
+  const shown = useStore(viewer, (s) => s.shown);
+  if (body.kind === "picture") return <Picture key={shown} title={title} data={body.data} bytes={body.bytes} />;
+  if (body.kind !== "text") return <Notice {...noticeOf(body)} />;
   const reading = mode === "view" && viewOf(title) === "reading";
   return (
     <>
@@ -51,8 +58,9 @@ export function ViewerHead() {
 export function ViewerModes() {
   const title = useStore(viewer, (s) => s.title);
   const mode = useStore(viewer, (s) => s.mode);
+  const text = useStore(viewer, (s) => s.body.kind === "text");
   const kind = viewOf(title);
-  if (!kind) return null;
+  if (!kind || !text) return null;
   return (
     <div className="segment">
       <button type="button" aria-pressed={mode === "source"} onClick={() => setMode("source")}>
@@ -81,7 +89,7 @@ function useOpensAtTop<Box extends HTMLElement>() {
 // colored as VS Code colors its language.
 function Source({ hidden }: { hidden: boolean }) {
   const title = useStore(viewer, (s) => s.title);
-  const text = useStore(viewer, (s) => s.text);
+  const text = useStore(viewer, (s) => textOf(s.body));
   const shown = useStore(viewer, (s) => s.shown);
   const edits = useEdits();
   const box = useOpensAtTop<HTMLDivElement>();
@@ -146,11 +154,46 @@ const Line = memo(function Line({ number, runs, looks, added }: { number: number
 });
 
 function Reading({ hidden }: { hidden: boolean }) {
-  const text = useStore(viewer, (s) => s.text);
+  const text = useStore(viewer, (s) => textOf(s.body));
   const box = useOpensAtTop<HTMLDivElement>();
   return (
     <div className="reading" ref={box} hidden={hidden}>
       <Markdown text={text.replace(FRONT_MATTER, "")} />
+    </div>
+  );
+}
+
+function Picture({ title, data, bytes }: { title: string; data: string; bytes: number }) {
+  const [drawn, setDrawn] = useState("");
+  const [broken, setBroken] = useState(false);
+  if (broken) return <Notice art={ICONS.image} lead="No pude dibujar la imagen" said={`Su contenido no es una imagen que el visor sepa leer (${weigh(bytes)}).`} />;
+  return (
+    <div className="sight-view">
+      <button type="button" className="frame" title="Ver en grande" onClick={(event) => openPicture(stem(title), data, event.currentTarget)}>
+        <img
+          alt={stem(title)}
+          src={data}
+          onLoad={({ currentTarget: { naturalWidth, naturalHeight } }) => setDrawn(`${naturalWidth} × ${naturalHeight}`)}
+          onError={() => setBroken(true)}
+        />
+      </button>
+      <p className="size">{drawn ? `${drawn} · ${weigh(bytes)}` : weigh(bytes)}</p>
+    </div>
+  );
+}
+
+type Said = { art: string; lead: string; said: string };
+
+function noticeOf(body: Exclude<Body, { kind: "text" | "picture" }>): Said {
+  if (body.kind === "fault") return { art: ICONS.info, lead: "Error al abrir", said: body.fault };
+  if (body.kind === "tooBig") return { art: ICONS.info, lead: "Demasiado grande", said: `Pesa ${weigh(body.bytes)} y el visor muestra hasta ${weigh(body.cap)}.` };
+  return { art: ICONS.info, lead: "Sin vista previa", said: `No es texto UTF-8 ni una imagen (${weigh(body.bytes)}).` };
+}
+
+function Notice(said: Said) {
+  return (
+    <div className="file-note" role="status">
+      <EmptyView {...said} />
     </div>
   );
 }

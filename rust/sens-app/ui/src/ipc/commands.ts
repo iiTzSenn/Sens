@@ -20,6 +20,7 @@ import type {
   Message,
   Method,
   NewServer,
+  Opened,
   Profile,
   Provider,
   ProviderState,
@@ -110,7 +111,7 @@ export const commands = {
   folder: (root: string, path: string) => invoke<Entry[]>("folder", { root, path }),
   findFiles: (root: string, needle: string) => invoke<Entry[]>("find_files", { root, needle }),
   changes: (root: string) => invoke<Changes | null>("changes", { root }),
-  openFile: (root: string, path: string) => invoke<string>("open_file", { root, path }),
+  openFile: (root: string, path: string) => invoke<Opened>("open_file", { root, path }),
   // Files or pictures to send with a message: pictures come back as data.
   attach: (root: string, paths: string[]) => invoke<Attachments>("attach", { root, paths }),
   repo: (root: string) => invoke<Repo | null>("repo", { root }),

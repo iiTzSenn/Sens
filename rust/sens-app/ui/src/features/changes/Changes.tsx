@@ -10,7 +10,7 @@ import { languageOf } from "../../shared/syntax/languages";
 import { ICONS } from "../../shared/icons.js";
 import { project } from "../project/store";
 import type { DiffFile } from "./diff";
-import { showFile } from "../files/view";
+import { showFile, type Body } from "../files/view";
 import { changes, unfold } from "./store";
 
 const CHANGE_PREVIEW = 400;
@@ -133,24 +133,26 @@ function Counts({ file, plus }: { file: DiffFile; plus: number }) {
 
 // A new file has no diff: its lines are read and shown as added, and counted.
 function ChangeBody({ file, counted }: { file: DiffFile; counted: (lines: number) => void }) {
-  const [fresh, setFresh] = useState<{ text: string } | { fault: string } | null>(null);
+  const [fresh, setFresh] = useState<Body | null>(null);
 
   useEffect(() => {
     if (!file.fresh || file.binary || PICTURE.test(file.path)) return;
     let live = true;
     commands.openFile(project.getState().root, file.path).then(
-      (text) => live && setFresh({ text }),
-      (reason) => live && setFresh({ fault: String(reason) }),
+      (opened) => live && setFresh(opened),
+      (reason) => live && setFresh({ kind: "fault", fault: String(reason) }),
     );
     return () => {
       live = false;
     };
   }, [file]);
 
-  if (file.binary || (file.fresh && PICTURE.test(file.path))) return <p className="none">Fichero binario.</p>;
+  const binary = <p className="none">Fichero binario.</p>;
+  if (file.binary || (file.fresh && PICTURE.test(file.path))) return binary;
   if (file.fresh) {
     if (!fresh) return null;
-    if ("fault" in fresh) return <p className="none fault">{fresh.fault}</p>;
+    if (fresh.kind === "fault") return <p className="none fault">{fresh.fault}</p>;
+    if (fresh.kind !== "text") return binary;
     return <Added path={file.path} text={fresh.text} counted={counted} />;
   }
   if (!file.hunks.length) {

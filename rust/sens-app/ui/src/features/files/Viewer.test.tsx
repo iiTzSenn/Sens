@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { dialog } from "../../app/modal";
+import type { Opened } from "../../ipc/types";
 import { paint } from "../../shared/syntax/paint";
 import { forgetEdits, noteEdit, project } from "../project/store";
 import { showSite } from "../web/store";
@@ -26,7 +28,7 @@ beforeEach(() => {
   modes = document.body.appendChild(document.createElement("div"));
   project.setState({ root: "C:/demo", touched: new Map() });
   viewer.setState(viewer.getInitialState(), true);
-  ipc.commands.openFile.mockReset().mockImplementation(async (_root: string, path: string) => FILES[path]);
+  ipc.commands.openFile.mockReset().mockImplementation(async (_root: string, path: string) => text(FILES[path]));
   Element.prototype.scrollIntoView = vi.fn();
 });
 
@@ -35,6 +37,7 @@ afterEach(() => {
   head.remove();
   modes.remove();
   forgetEdits();
+  dialog.setState(dialog.getInitialState(), true);
 });
 
 const show = () => {
@@ -44,6 +47,13 @@ const show = () => {
 };
 const lines = () => [...document.querySelectorAll(".source .line .src")].map((line) => line.textContent);
 const button = (name: string) => screen.getByRole("button", { name });
+const text = (text: string): Opened => ({ kind: "text", text });
+const picture = () => document.querySelector<HTMLImageElement>(".sight-view img");
+const notice = () => {
+  const said = screen.getByRole("status");
+  return [said.querySelector(".lead")?.textContent, said.querySelector(".lead + p")?.textContent];
+};
+const JPEG = "data:image/jpeg;base64,/9j/4AAQ";
 
 describe("file viewer", () => {
   it("says nothing is open yet", () => {
@@ -91,7 +101,7 @@ describe("file viewer", () => {
         disconnect() {}
       },
     );
-    ipc.commands.openFile.mockResolvedValueOnce(Array.from({ length: 450 }, (_, at) => `línea ${at + 1}`).join("\n"));
+    ipc.commands.openFile.mockResolvedValueOnce(text(Array.from({ length: 450 }, (_, at) => `línea ${at + 1}`).join("\n")));
     show();
     act(() => noteEdit({ path: "notas.txt", lines: [420], plus: 1, minus: 0 }));
     await act(async () => openFile("notas.txt"));
@@ -131,9 +141,88 @@ describe("file viewer", () => {
     expect(viewer.getState().opened).toBe("");
   });
 
+  it("shows a picture as itself, with its size, and larger on a click", async () => {
+    ipc.commands.openFile.mockResolvedValueOnce({ kind: "picture", data: JPEG, bytes: 245_760 });
+    show();
+    await act(async () => openFile("fotos/gandhi.jpg"));
+    expect(head.querySelector(".where")?.textContent).toBe("fotos/gandhi.jpg");
+    expect(picture()?.getAttribute("src")).toBe(JPEG);
+    expect(document.querySelector(".source")).toBeNull();
+    expect(modes.childElementCount).toBe(0);
+    expect(document.querySelector(".sight-view .size")?.textContent).toBe("240 KB");
+
+    Object.defineProperties(picture()!, { naturalWidth: { value: 800 }, naturalHeight: { value: 600 } });
+    fireEvent.load(picture()!);
+    expect(document.querySelector(".sight-view .size")?.textContent).toBe("800 × 600 · 240 KB");
+
+    fireEvent.click(button("gandhi.jpg"));
+    expect(dialog.getState()).toMatchObject({ open: true, title: "gandhi.jpg", wide: true });
+  });
+
+  it("says a picture that does not draw, and draws the next one", async () => {
+    ipc.commands.openFile.mockResolvedValueOnce({ kind: "picture", data: "data:image/png;base64,AAAA", bytes: 4 });
+    show();
+    await act(async () => openFile("roto.png"));
+    fireEvent.error(picture()!);
+    expect(picture()).toBeNull();
+    expect(notice()).toEqual(["No pude dibujar la imagen", "Su contenido no es una imagen que el visor sepa leer (4 B)."]);
+
+    ipc.commands.openFile.mockResolvedValueOnce({ kind: "picture", data: JPEG, bytes: 4 });
+    await act(async () => openFile("fotos/gandhi.jpg"));
+    expect(picture()?.getAttribute("src")).toBe(JPEG);
+  });
+
+  it("says a file too heavy to show weighs more than the viewer takes", async () => {
+    ipc.commands.openFile.mockResolvedValueOnce({ kind: "tooBig", bytes: 12 * 1024 * 1024, cap: 8 * 1024 * 1024 });
+    show();
+    await act(async () => openFile("fotos/panorama.png"));
+    expect(picture()).toBeNull();
+    expect(lines()).toEqual([]);
+    expect(notice()).toEqual(["Demasiado grande", "Pesa 12 MB y el visor muestra hasta 8 MB."]);
+  });
+
+  it("says a file that is not text has nothing to show, rather than drawing it as code", async () => {
+    ipc.commands.openFile.mockResolvedValueOnce({ kind: "binary", bytes: 1_258_291 });
+    show();
+    await act(async () => openFile("dist/app.exe"));
+    expect(head.querySelector(".where")?.textContent).toBe("dist/app.exe");
+    expect(lines()).toEqual([]);
+    expect(notice()).toEqual(["Sin vista previa", "No es texto UTF-8 ni una imagen (1,2 MB)."]);
+
+    await act(async () => openFile("src/app.ts"));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(lines()[1]).toBe("export const app = a + 1;");
+  });
+
+  it("offers no page view of a Markdown file that is not text", async () => {
+    ipc.commands.openFile.mockResolvedValueOnce({ kind: "binary", bytes: 10 });
+    show();
+    await act(async () => openFile("README.md"));
+    expect(modes.childElementCount).toBe(0);
+    expect(document.querySelector(".reading")).toBeNull();
+    expect(viewer.getState().mode).toBe("source");
+  });
+
+  it("says why a file could not be read, instead of showing that as its first line", async () => {
+    ipc.commands.openFile.mockRejectedValueOnce("notas.txt no existe");
+    show();
+    await act(async () => openFile("notas.txt"));
+    expect(lines()).toEqual([]);
+    expect(notice()).toEqual(["Error al abrir", "notas.txt no existe"]);
+  });
+
+  it("reads Markdown as a page again once a read that failed goes through", async () => {
+    ipc.commands.openFile.mockRejectedValueOnce("README.md no existe");
+    show();
+    await act(async () => openFile("README.md"));
+    await act(async () => openFile("README.md"));
+    expect(button("Vista").getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector(".reading h1")?.textContent).toBe("Demo");
+  });
+
   it("drops a read that a later one overtook, and forgets all on a new project", async () => {
     show();
-    let answer!: (text: string) => void;
+    let answer!: (opened: Opened) => void;
     ipc.commands.openFile.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
     let slow!: Promise<void>;
     act(() => {
@@ -141,7 +230,7 @@ describe("file viewer", () => {
     });
     await act(async () => openFile("src/app.ts"));
     await act(async () => {
-      answer("<p>tarde</p>");
+      answer(text("<p>tarde</p>"));
       await slow;
     });
     expect(head.querySelector(".where")?.textContent).toBe("src/app.ts");

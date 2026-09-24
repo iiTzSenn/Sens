@@ -27,7 +27,7 @@ beforeEach(() => {
   ipc.commands.tree.mockReset().mockResolvedValue([{ path: "main.py", symbols: 7 }]);
   ipc.commands.folder.mockReset().mockImplementation(async (_root: string, path: string) => TREE[path] ?? []);
   ipc.commands.findFiles.mockReset().mockResolvedValue([entry("src/ui/Button.tsx")]);
-  ipc.commands.openFile.mockReset().mockResolvedValue("export const app = 1;");
+  ipc.commands.openFile.mockReset().mockResolvedValue({ kind: "text", text: "export const app = 1;" });
 });
 
 afterEach(cleanup);
@@ -59,7 +59,7 @@ describe("file tree", () => {
 
     await act(async () => fireEvent.click(row("app.ts")));
     expect(ipc.commands.openFile).toHaveBeenCalledWith("C:/demo", "src/app.ts");
-    expect(viewer.getState()).toMatchObject({ title: "src/app.ts", opened: "src/app.ts", text: "export const app = 1;" });
+    expect(viewer.getState()).toMatchObject({ title: "src/app.ts", opened: "src/app.ts", body: { kind: "text", text: "export const app = 1;" } });
     expect(row("app.ts").getAttribute("aria-current")).toBe("true");
   });
 

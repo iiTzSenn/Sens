@@ -44,7 +44,7 @@ beforeEach(() => {
   project.setState({ root: "C:/demo", session: "s1" });
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.changes.mockResolvedValue({ diff: DIFF, fresh: ["notes.md"] });
-  ipc.commands.openFile.mockResolvedValue("a\nb\nc");
+  ipc.commands.openFile.mockResolvedValue({ kind: "text", text: "a\nb\nc" });
   shell.setState({ ...shell.getInitialState(), toolsOpen: true, tool: "changes" }, true);
 });
 
@@ -92,6 +92,19 @@ describe("changes panel", () => {
     });
     expect(ipc.commands.openFile).toHaveBeenCalledWith("C:/demo", "notes.md");
     expect(row("notes.md").querySelector(".marks")?.textContent).toBe("+3−0");
+  });
+
+  it("says a new file that is not text is binary, not why it could not be read", async () => {
+    ipc.commands.changes.mockResolvedValue({ diff: "", fresh: ["build/app.bin"] });
+    ipc.commands.openFile.mockResolvedValue({ kind: "binary", bytes: 4096 });
+    showChanges();
+    await act(async () => loadChanges());
+    await act(async () => {
+      row("app.bin").open = true;
+      fireEvent(row("app.bin"), new Event("toggle"));
+    });
+    expect(row("app.bin").querySelector(".none")?.textContent).toBe("Fichero binario.");
+    expect(row("app.bin").querySelector(".marks")?.textContent).toBe("nuevo");
   });
 
   it("marks what the agent touched and jumps to the file panel", async () => {

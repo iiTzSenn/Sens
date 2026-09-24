@@ -89,7 +89,7 @@ const DIFF = [
 
 // A project with a bit of everything, to see the file icons.
 const FOLDERS: Record<string, string[]> = {
-  "": ["src/", "docs/", ".gitignore", "Dockerfile", "package.json", "README.md", "main.py", "Cargo.toml", "datos.csv", "logo.png", "notas.xyz"],
+  "": ["src/", "docs/", ".gitignore", "Dockerfile", "package.json", "README.md", "main.py", "Cargo.toml", "datos.csv", "logo.png", "notas.xyz", "setup.exe"],
   src: ["components/", "app.tsx", "index.ts", "types.d.ts", "lib.rs", "styles.css", "query.sql", "build.ps1"],
   "src/components": ["Button.tsx", "Button.test.tsx"],
   docs: ["guia.md", "api.yaml", "config.toml"],
@@ -276,7 +276,12 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
       .flatMap(entries)
       .filter((entry) => !entry.dir && entry.name.toLowerCase().includes(String(needle).toLowerCase())),
   changes: () => ({ diff: DIFF, fresh: ["notas/idea.md"] }),
-  open_file: ({ path }) => SAMPLES[String(path)] ?? `# ${path}\n\nUna idea.\nOtra línea.`,
+  open_file: ({ path }) =>
+    String(path).endsWith(".png")
+      ? { kind: "picture", data: SQUARE, bytes: 2048 }
+      : String(path).endsWith(".exe")
+        ? { kind: "binary", bytes: 1_234_567 }
+        : { kind: "text", text: SAMPLES[String(path)] ?? `# ${path}\n\nUna idea.\nOtra línea.` },
   task_output: () => "compilando…\nlisto en 3 s",
   artifacts: () => [
     artifact("image", "captura.png", 1),

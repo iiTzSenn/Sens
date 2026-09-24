@@ -87,10 +87,9 @@ fn find_files(root: String, needle: String) -> Result<Vec<files::Entry>, String>
     files::search(Path::new(&root), &needle)
 }
 
-#[tauri::command]
-fn open_file(root: String, path: String) -> Result<String, String> {
-    let full = files::inside(Path::new(&root), &path)?;
-    std::fs::read_to_string(&full).map_err(|error| format!("no pude leer {path}: {error}"))
+#[tauri::command(async)]
+fn open_file(root: String, path: String) -> Result<files::Opened, String> {
+    files::open(Path::new(&root), &path)
 }
 
 #[tauri::command(async)]

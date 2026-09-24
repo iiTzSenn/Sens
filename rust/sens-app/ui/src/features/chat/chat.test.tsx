@@ -52,6 +52,7 @@ beforeEach(() => {
   ipc.commands.openSession.mockResolvedValue("s1");
   ipc.commands.tree.mockResolvedValue([]);
   ipc.commands.folder.mockResolvedValue([]);
+  ipc.commands.openFile.mockResolvedValue({ kind: "text", text: "" });
   shell.setState(shell.getInitialState(), true);
 });
 

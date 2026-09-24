@@ -9,10 +9,11 @@ use sens_agent::chat::Event;
 use sens_agent::session::{self, Entry};
 use serde::Serialize;
 
+use crate::files;
 use crate::projects::{self, Registry, Workspace};
 
-const MEGABYTE: u64 = 1024 * 1024;
-const IMAGE_CAP: u64 = 8 * MEGABYTE;
+pub const MEGABYTE: u64 = 1024 * 1024;
+pub const IMAGE_CAP: u64 = 8 * MEGABYTE;
 const TEXT_CAP: u64 = MEGABYTE;
 const SCHEMES: [&str; 2] = ["http://", "https://"];
 const DOCUMENTS: [&str; 16] = [
@@ -50,13 +51,16 @@ pub struct Attachments {
     pub items: Vec<Attached>,
     pub refused: Vec<String>,
 }
-const IMAGES: [(&str, &str); 6] = [
+const IMAGES: [(&str, &str); 9] = [
     ("png", "image/png"),
     ("jpg", "image/jpeg"),
     ("jpeg", "image/jpeg"),
     ("gif", "image/gif"),
     ("webp", "image/webp"),
     ("svg", "image/svg+xml"),
+    ("avif", "image/avif"),
+    ("bmp", "image/bmp"),
+    ("ico", "image/x-icon"),
 ];
 
 #[derive(Serialize, Default, Debug)]
@@ -381,7 +385,7 @@ fn millis(time: SystemTime) -> u64 {
         .unwrap_or_default()
 }
 
-fn mime_of(path: &Path) -> Option<&'static str> {
+pub fn mime_of(path: &Path) -> Option<&'static str> {
     let extension = path.extension()?.to_string_lossy().to_lowercase();
     IMAGES
         .iter()
@@ -412,7 +416,11 @@ pub fn data(registry: &Registry, path: &str) -> Result<String, String> {
     let full = vetted(registry, path)?;
     let mime = mime_of(&full).ok_or_else(|| format!("{path} no es una imagen"))?;
     let bytes = capped(&full, path, IMAGE_CAP)?;
-    Ok(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
+    Ok(data_url(mime, &bytes))
+}
+
+pub fn data_url(mime: &str, bytes: &[u8]) -> String {
+    format!("data:{mime};base64,{}", STANDARD.encode(bytes))
 }
 
 pub fn text(registry: &Registry, path: &str) -> Result<String, String> {
@@ -421,14 +429,9 @@ pub fn text(registry: &Registry, path: &str) -> Result<String, String> {
 }
 
 fn capped(full: &Path, path: &str, cap: u64) -> Result<Vec<u8>, String> {
-    let size = full
-        .metadata()
+    files::bounded(full, cap)
         .map_err(|error| format!("no pude leer {path}: {error}"))?
-        .len();
-    if size > cap {
-        return Err(format!("{path} pasa de {} MB", cap / MEGABYTE));
-    }
-    std::fs::read(full).map_err(|error| format!("no pude leer {path}: {error}"))
+        .ok_or_else(|| format!("{path} pasa de {} MB", cap / MEGABYTE))
 }
 
 pub fn destination(registry: &Registry, target: &str) -> Result<Outside, String> {

@@ -86,7 +86,7 @@ describe("the shelf", () => {
   it("opens text in the file panel, pages in the browser, and the rest outside", async () => {
     await open();
     await act(async () => fireEvent.click(within(card("plan.md")).getByRole("button", { name: /plan.md/ })));
-    expect(viewer.getState()).toMatchObject({ title: "C:/demo/.sens/artifacts/plan.md", text: "# Plan", home: "C:/demo", opened: "" });
+    expect(viewer.getState()).toMatchObject({ title: "C:/demo/.sens/artifacts/plan.md", body: { kind: "text", text: "# Plan" }, home: "C:/demo", opened: "" });
     expect(shell.getState()).toMatchObject({ toolsOpen: true, tool: "files" });
 
     await act(async () => fireEvent.click(within(card("informe.html")).getByRole("button", { name: /informe.html/ })));

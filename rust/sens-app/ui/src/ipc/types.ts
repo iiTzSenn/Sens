@@ -191,6 +191,12 @@ export interface Entry {
   ignored: boolean;
 }
 
+export type Opened =
+  | { kind: "text"; text: string }
+  | { kind: "picture"; data: string; bytes: number }
+  | { kind: "tooBig"; bytes: number; cap: number }
+  | { kind: "binary"; bytes: number };
+
 /** FileRow, rust/sens-app/src/main.rs: how many symbols Sens indexed in a file */
 export interface IndexedFile {
   path: string;
