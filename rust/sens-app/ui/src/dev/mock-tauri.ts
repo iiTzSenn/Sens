@@ -6,6 +6,7 @@ import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 const now = Date.now();
 const HOUR = 3_600_000;
 const ROOT = "C:/Proyectos/demo";
+const person = { name: "Demo", checkUpdates: false };
 
 const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   last_project: () => null,
@@ -33,7 +34,22 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
     },
   ],
   claude_account: () => ({ billing: "subscription", plan: "max", source: "claude.ai", email: "demo@example.com" }),
-  profile: () => ({ name: "Demo", checkUpdates: false }),
+  providers_state: () => [
+    {
+      id: "claude",
+      vendor: "Anthropic",
+      label: "Claude Code",
+      method: "subscription",
+      keyHint: "",
+      version: "2.1.0",
+      account: { billing: "subscription", plan: "max", source: "claude.ai", email: "demo@example.com" },
+      error: "",
+      installed: true,
+    },
+  ],
+  profile: () => ({ ...person }),
+  save_profile: ({ name }) => void (person.name = String(name).trim()),
+  set_update_check: ({ on }) => void (person.checkUpdates = Boolean(on)),
   update_check: () => ({ latest: null, installable: false }),
   "plugin:app|version": () => "0.0.0-dev",
   "plugin:window|is_maximized": () => false,

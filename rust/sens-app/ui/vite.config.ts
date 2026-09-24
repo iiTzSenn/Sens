@@ -1,3 +1,4 @@
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 // tauri.conf.json loads this port in `tauri dev` and dist/ in `tauri build`.
@@ -7,6 +8,7 @@ export default defineConfig({
   clearScreen: false,
   server: { port: 5173, strictPort: true },
   plugins: [
+    react(),
     {
       name: "sens-mock-tauri",
       apply: "serve",
