@@ -464,6 +464,7 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
 
 if (!("__TAURI_INTERNALS__" in window)) {
   window.__SENS_LOOK__ = kept;
+  window.__SENS_WELCOMED__ = person.welcomed;
   mockWindows("main");
   mockIPC(
     (cmd, args) => {

@@ -43,10 +43,11 @@ function bytes(size: number) {
   return `${number.format(value >= 100 ? Math.round(value) : value)} ${units[unit]}`;
 }
 
-function stoneFor(screen: Screen, leaving: boolean): StoneState {
+function stoneFor(screen: Screen, leaving: boolean, opening: boolean): StoneState {
   if (screen === "look") return "focus";
   if (screen === "busy") return "scan";
   if (screen === "error" || leaving) return "rest";
+  if (opening) return "scan";
   if (screen === "done") return "done";
   return "idle";
 }
@@ -87,9 +88,30 @@ function useCount(target: number) {
 
 type Look = "signal" | "plain" | "danger";
 
-function Go({ children, look = "signal", focus = false, disabled = false, onClick }: { children: ReactNode; look?: Look; focus?: boolean; disabled?: boolean; onClick: () => unknown }) {
+function Go({
+  children,
+  look = "signal",
+  focus = false,
+  disabled = false,
+  busy = false,
+  onClick,
+}: {
+  children: ReactNode;
+  look?: Look;
+  focus?: boolean;
+  disabled?: boolean;
+  busy?: boolean;
+  onClick: () => unknown;
+}) {
   return (
-    <button type="button" className={look === "signal" ? "go" : `go ${look}`} autoFocus={focus} disabled={disabled} onClick={onClick}>
+    <button
+      type="button"
+      className={look === "signal" ? "go" : `go ${look}`}
+      autoFocus={focus}
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
+      onClick={onClick}
+    >
       <span>{children}</span>
       {look === "signal" && <Icon svg={ICONS.advance} />}
     </button>
@@ -100,12 +122,13 @@ export function Setup() {
   const info = useStore(installer, (s) => s.info);
   const screen = useStore(installer, (s) => s.screen);
   const accent = useStore(installer, (s) => s.look.accent);
+  const opening = useStore(installer, (s) => s.opening);
   if (!info) return screen === "error" ? <Broken /> : null;
   return (
     <div className="setup stage" data-screen={screen} data-mode={info.mode}>
       <Bar />
       <figure className="stone" aria-hidden="true">
-        <StoneCanvas state={stoneFor(screen, info.mode === "uninstall")} replay={screen === "look" ? accent : ""} />
+        <StoneCanvas state={stoneFor(screen, info.mode === "uninstall", opening)} replay={screen === "look" ? accent : ""} />
       </figure>
       <main className="words" key={screen}>
         {screen === "welcome" && <Welcome info={info} />}
@@ -254,7 +277,7 @@ function LookStep() {
         <span className="label">
           Color <b>{named}</b>
         </span>
-        <AccentPicker named={false} chosen={chosen.accent} pick={(accent) => chooseLook({ ...chosen, accent })} />
+        <AccentPicker chosen={chosen.accent} pick={(accent) => chooseLook({ ...chosen, accent })} />
       </div>
       <div className="actions">
         <Go focus onClick={run}>
@@ -335,6 +358,8 @@ function Running() {
 
 function Done({ info }: { info: SetupState }) {
   const dir = useStore(installer, (s) => s.dir);
+  const opening = useStore(installer, (s) => s.opening);
+  const openFault = useStore(installer, (s) => s.openFault);
   const [title, lead] = doneWords(info);
   const leaving = uninstalling();
   return (
@@ -349,17 +374,17 @@ function Done({ info }: { info: SetupState }) {
             </Go>
           ) : (
             <>
-              <Go focus onClick={openSens}>
-                Abrir Sens
+              <Go focus busy={opening} onClick={openSens}>
+                {opening ? "Abriendo Sens…" : "Abrir Sens"}
               </Go>
-              <button type="button" className="ghost" onClick={() => setup.quit()}>
+              <button type="button" className="ghost" disabled={opening} onClick={() => setup.quit()}>
                 Cerrar
               </button>
             </>
           )}
         </div>
       )}
-      {!leaving && <p className="hint mono">{dir}</p>}
+      {!leaving && (openFault ? <p className="hint" data-mood="fault" role="alert">{openFault}</p> : <p className="hint mono">{dir}</p>)}
     </section>
   );
 }

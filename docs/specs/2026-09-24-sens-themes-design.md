@@ -52,9 +52,15 @@ Apariencia: elegir, sin botón de guardar.
 - **El paso del instalador solo sale en una instalación nueva e interactiva.**
   Una actualización, una reinstalación o una instalación pasiva no preguntan:
   usan el aspecto guardado, y la ventana del instalador ya se abre con él.
-- **Ajustes es una hoja modal.** `<dialog>` de 880 × 640 como máximo, centrada,
-  con las secciones a la izquierda y un título y «Cerrar» arriba. Esc, el fondo
-  o la X la cierran y el foco vuelve a quien la abrió. `Ctrl+,` la abre.
+- **Ajustes es una hoja modal, hecha con las piezas de Sens.** Modal sí, pero
+  no la de Claude Desktop (columna lateral con iconos, título grande,
+  tarjetas con miniaturas): por dentro es una vista de Sens — cabecera con la
+  etiqueta y una línea, pestañas sobre la regla como en la ficha de
+  Capacidades, y en Apariencia la superficie destacada con la marca. Esc, el
+  fondo o la X la cierran y el foco vuelve a quien la abrió. `Ctrl+,` la abre.
+- **Del instalador a la app sin saltos.** La bienvenida sale desde el primer
+  fotograma de una instalación nueva, la ventana de Sens no aparece hasta
+  estar pintada, y el instalador no se cierra hasta verla.
 
 ## Modelo
 
@@ -147,10 +153,18 @@ En desarrollo: `setup.html?look=light.iris` simula un aspecto guardado.
 
 ## Ajustes
 
-- Secciones: General (nombre, actualizaciones, bienvenida), **Apariencia** y
-  Proveedores, cada una con su icono Lucide.
-- Apariencia: *Modo* con tres tarjetas que dibujan una ventana en miniatura
-  (Sistema, partida en diagonal) y *Color* con las cinco muestras y su nombre.
+- `<dialog>` de 720 × 600 como máximo, centrada. Cabecera como `view-top`:
+  «AJUSTES» en etiqueta y «Tu perfil, cómo se ve Sens y con quién trabaja.»;
+  a la derecha la tecla `Esc` y el botón de cerrar con borde de Sens. Debajo,
+  las pestañas General, **Apariencia** y Proveedores (`.tabs`, flechas,
+  Inicio y Fin), sin iconos.
+- Apariencia: la superficie destacada (`view-focus`, el tinte del acento) dice
+  lo que hay ahora — «Claro · Iris» — y lleva la marca de Sens, cuyo corte se
+  vuelve a trazar en el color elegido (1300 ms, el *focus* de la identidad;
+  quieto con movimiento reducido). Debajo, los mismos controles que el
+  instalador: *Modo* en tres segmentos con icono y *Color* en cinco muestras.
+- La marca es un componente (`shared/Mark.tsx`) que usan la barra de la
+  ventana, el respaldo sin WebGL de la piedra y esta superficie.
 - La hoja se abre desde el menú del perfil, desde «Actualizar Claude Code» del
   selector de modelos (en Proveedores) y con `Ctrl+,`. Mientras está abierta,
   los atajos de la ventana no actúan y el panel web nativo se oculta, como con
@@ -159,6 +173,24 @@ En desarrollo: `setup.html?look=light.iris` simula un aspecto guardado.
   la bienvenida.
 - La vista de Ajustes a pantalla completa desaparece (`View` ya no tiene
   `settings`).
+
+## Del instalador a la app
+
+Antes, «Abrir Sens» cerraba el instalador al instante; la app tardaba en
+aparecer, se pintaba vacía, enseñaba el chat y solo cuando llegaba el perfil
+por IPC saltaba la bienvenida, con un fundido que dejaba ver la app debajo.
+
+- Rust deja `window.__SENS_WELCOMED__` junto al aspecto; `greetAtStart()`
+  abre la bienvenida antes del primer render y sin fundido (`data-still`).
+  Cuando llega el perfil, `greetIfNew()` no la reinicia: solo rellena el
+  nombre si sigue vacío.
+- La ventana se crea oculta y centrada (`"visible": false, "center": true`);
+  la página la enseña tras dos fotogramas (`core:window:allow-show`) y Rust la
+  enseña a los 4 s si la página no lo hizo.
+- `setup_launch` abre Sens y espera hasta 8 s a que tenga una ventana visible
+  (`running::shown`). Mientras, el botón dice «Abriendo Sens…», «Cerrar» se
+  desactiva y la piedra hace *scan*. Si no puede abrirla, lo dice bajo los
+  botones y no se cierra. Al volver de una actualización pasa lo mismo.
 
 ## Pruebas
 
@@ -171,11 +203,18 @@ En desarrollo: `setup.html?look=light.iris` simula un aspecto guardado.
 - `setup/Setup.test.tsx`: el paso nuevo, «Volver» a la pantalla de origen, la
   elección que llega a `setup_install`, una reinstalación que abre en el
   aspecto guardado y no pregunta.
-- `settings/Settings.test.tsx`: la hoja abre en la sección pedida y devuelve el
-  foco; elegir guarda y enseña; un fallo vuelve al aspecto anterior y lo dice.
+- `settings/Settings.test.tsx`: la hoja abre en la sección pedida, las
+  flechas cambian de pestaña y el foco vuelve al cerrar; elegir guarda y enseña
+  «Claro · Rosa»; un fallo vuelve al aspecto anterior y lo dice.
+- `welcome/Welcome.test.tsx`: con `__SENS_WELCOMED__ = false` la bienvenida
+  está desde el principio, quieta, y el perfil que llega después no la
+  reinicia.
 - `syntax.test.ts`, `markdown.test.tsx`: colores `light-dark(Light+, Dark+)`.
+- `setup/Setup.test.tsx` también: «Abriendo Sens…» hasta que Sens está en
+  pantalla, y el motivo cuando no se puede abrir.
 - Rust: `look.rs` en las dos crates; la instalación escribe el aspecto elegido
-  y deja el guardado cuando no se eligió ninguno.
+  y deja el guardado cuando no se eligió ninguno; `profile::script`;
+  `running::shown` deja de esperar a una app que nadie ejecuta.
 
 ## Fuera de alcance
 

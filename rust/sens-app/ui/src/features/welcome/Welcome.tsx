@@ -61,12 +61,13 @@ export function Welcome() {
 
 function Stage() {
   const step = useStore(welcome, (s) => s.step);
+  const still = useStore(welcome, (s) => s.still);
   const scanning = useStore(welcome, (s) => s.scanning);
   const applying = useStore(welcome, (s) => s.applying);
   const finished = useStore(welcome, (s) => s.finished);
   const busy = useStore(settings, (s) => Boolean(s.progress) || s.connecting);
   return (
-    <div className="welcome stage" role="dialog" aria-modal="true" aria-label="Bienvenida a Sens">
+    <div className="welcome stage" role="dialog" aria-modal="true" aria-label="Bienvenida a Sens" data-still={still ? "true" : undefined}>
       <header className="bar">
         <b className="wordmark">sens</b>
         <Progress step={step} />

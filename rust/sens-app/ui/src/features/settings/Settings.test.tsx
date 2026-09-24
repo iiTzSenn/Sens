@@ -142,15 +142,19 @@ describe("the settings sheet", () => {
     const opener = Object.assign(document.createElement("button"), { textContent: "Ajustes" });
     document.body.append(opener);
     render(<SettingsDialog />);
-    expect(screen.queryByRole("navigation", { name: "Secciones de ajustes" })).toBeNull();
+    expect(screen.queryByRole("tablist", { name: "Secciones de ajustes" })).toBeNull();
 
     await act(async () => openSettings("look", opener));
-    expect(screen.getByRole("heading", { name: "Apariencia" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Apariencia/ }).getAttribute("aria-current")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Apariencia" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tabpanel").textContent).toContain("Oscuro · Señal");
+
+    await act(async () => fireEvent.keyDown(screen.getByRole("tab", { name: "Apariencia" }), { key: "ArrowRight" }));
+    expect(settings.getState().section).toBe("providers");
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Proveedores" }));
 
     await act(async () => fireEvent.click(screen.getByLabelText("Cerrar ajustes")));
     expect(settingsSheet.getState().open).toBe(false);
-    expect(screen.queryByRole("navigation", { name: "Secciones de ajustes" })).toBeNull();
+    expect(screen.queryByRole("tablist", { name: "Secciones de ajustes" })).toBeNull();
     expect(document.activeElement).toBe(opener);
     opener.remove();
   });
@@ -167,6 +171,7 @@ describe("appearance settings", () => {
 
     expect(ipc.commands.setLook).toHaveBeenLastCalledWith({ mode: "light", accent: "rose" });
     expect(document.documentElement.dataset.accent).toBe("rose");
+    expect(screen.getByText("Claro · Rosa")).toBeTruthy();
     expect(screen.getByRole("radio", { name: "Rosa" })).toHaveProperty("checked", true);
   });
 

@@ -5,7 +5,7 @@ import type { Found, ProviderState } from "../../ipc/types";
 import { profile } from "../profile/store";
 import { rail } from "../rail/store";
 import { settings } from "../settings/store";
-import { greetIfNew, openWelcome, welcome } from "./store";
+import { greetAtStart, greetIfNew, openWelcome, welcome } from "./store";
 import { Welcome } from "./Welcome";
 
 const ipc = vi.hoisted(() => ({
@@ -111,6 +111,24 @@ describe("the welcome", () => {
     profile.setState({ person: { name: "", checkUpdates: true, welcomed: false } });
     greetIfNew();
     expect(welcome.getState().open).toBe(true);
+  });
+
+  it("is there from the first frame when Rust says a fresh install has not seen it", async () => {
+    window.__SENS_WELCOMED__ = true;
+    greetAtStart();
+    expect(welcome.getState().open).toBe(false);
+
+    window.__SENS_WELCOMED__ = false;
+    greetAtStart();
+    render(<Welcome />);
+    expect(welcome.getState()).toMatchObject({ open: true, still: true, step: "hello", name: "" });
+    expect(screen.getByRole("dialog", { name: "Bienvenida a Sens" }).dataset.still).toBe("true");
+
+    await press(/Empezar/);
+    profile.setState({ person: { name: "Ada", checkUpdates: true, welcomed: false } });
+    greetIfNew();
+    expect(welcome.getState()).toMatchObject({ open: true, step: "name", name: "Ada" });
+    delete window.__SENS_WELCOMED__;
   });
 
   it("walks from hello to a finished import and opens the chosen project", async () => {

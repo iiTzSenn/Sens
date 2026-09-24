@@ -452,7 +452,12 @@ from tone, spacing, and edges. Use generous negative space and avoid nested
 cards when one divider is sufficient.
 
 Every screen should have one obvious focal action, one dominant information
-region, and minimal chrome. If a card contains only a label and value, consider
+region, and minimal chrome.
+
+A sheet over the window (Ajustes) is built from the same parts as a view, not
+from another app's settings screen: a head with the micro label and one line
+of description, tabs sitting on the head's rule, the `Esc` key shown as a
+keycap beside a bordered close button, and at most one featured surface. If a card contains only a label and value, consider
 plain aligned text before adding a container.
 
 ### Data visualization

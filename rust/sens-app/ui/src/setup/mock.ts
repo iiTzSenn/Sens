@@ -77,7 +77,7 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
     open = false;
     return true;
   },
-  setup_launch: () => console.info("[mock-setup] abrir Sens"),
+  setup_launch: () => pause(1400).then(() => console.info("[mock-setup] Sens ya está en pantalla")),
   setup_quit: () => console.info("[mock-setup] salir"),
   "plugin:dialog|open": () => "D:\\Programas",
   "plugin:window|show": () => null,

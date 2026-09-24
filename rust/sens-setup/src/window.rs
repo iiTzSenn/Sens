@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::window::Color;
@@ -18,6 +19,7 @@ use crate::uninstall::{self, Removal};
 use crate::{VERSION, demo, payload, system};
 
 const BACKGROUND: Color = Color(0x0c, 0x0d, 0x0d, 0xff);
+const HANDOFF: Duration = Duration::from_secs(8);
 
 struct Setup {
     launch: Launch,
@@ -167,13 +169,16 @@ fn setup_close_app(setup: State<Setup>, force: bool) -> bool {
     payload::embedded().is_none() || running::close(&setup.layout().app(), force)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn setup_launch(setup: State<Setup>) -> Result<(), String> {
     if payload::embedded().is_none() {
+        std::thread::sleep(Duration::from_millis(900));
         return Ok(());
     }
     let layout = setup.layout();
-    system::launch_detached(&layout.app(), &layout.dir)
+    system::launch_detached(&layout.app(), &layout.dir)?;
+    running::shown(&layout.app(), HANDOFF);
+    Ok(())
 }
 
 #[tauri::command]

@@ -40,6 +40,8 @@ export const installer = createStore(() => ({
   closing: "",
   force: false,
   fault: "",
+  opening: false,
+  openFault: "",
 }));
 
 const set = installer.setState;
@@ -177,7 +179,10 @@ async function finish() {
   set({ progress: 1, screen: "done" });
   if (uninstalling() || !unattended()) return;
   await sleep(UPDATE_PAUSE);
-  if (info().relaunch) await setup.launch();
+  if (info().relaunch) {
+    set({ opening: true });
+    await setup.launch();
+  }
   await setup.quit();
 }
 
@@ -202,7 +207,13 @@ export async function quit() {
 }
 
 export async function openSens() {
-  await setup.launch();
+  set({ opening: true, openFault: "" });
+  try {
+    await setup.launch();
+  } catch (reason) {
+    set({ opening: false, openFault: String(reason) });
+    return;
+  }
   await setup.quit();
 }
 

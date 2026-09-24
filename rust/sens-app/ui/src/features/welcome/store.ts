@@ -27,8 +27,15 @@ export interface Place {
   last: number;
 }
 
+declare global {
+  interface Window {
+    __SENS_WELCOMED__?: boolean;
+  }
+}
+
 export const welcome = createStore(() => ({
   open: false,
+  still: false,
   step: "hello" as Step,
   name: "",
   found: null as Found | null,
@@ -49,13 +56,23 @@ const set = welcome.setState;
 
 const importable = (project: FoundProject) => project.exists && project.sessions > 0;
 
+export function greetAtStart() {
+  if (window.__SENS_WELCOMED__ !== false) return;
+  openWelcome();
+  set({ still: true });
+}
+
 export function greetIfNew() {
-  if (profile.getState().person.welcomed === false) openWelcome();
+  if (profile.getState().person.welcomed !== false) return;
+  const { open, name } = welcome.getState();
+  if (!open) return openWelcome();
+  if (!name) set({ name: profile.getState().person.name });
 }
 
 export function openWelcome(step: Step = "hello") {
   set({
     open: true,
+    still: false,
     step,
     name: profile.getState().person.name,
     finished: false,

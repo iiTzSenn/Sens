@@ -93,8 +93,6 @@ body {
 .look-field { margin-top: 24px; }
 .look-field > .label { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .look-field > .label b { font-size: 13px; font-weight: 500; letter-spacing: normal; text-transform: none; color: var(--text); }
-.setup .mode-choice { height: 44px; padding: 0 12px; place-content: center; border-radius: var(--r-control); }
-.setup .mode-name { font-size: 14px; }
-.setup .accents { gap: 14px; }
+.setup .mode-choice { height: 44px; font-size: 14px; }
 .setup .swatch { width: 30px; height: 30px; }
 .setup[data-screen="look"] .actions { margin-top: 30px; }

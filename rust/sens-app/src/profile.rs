@@ -22,6 +22,12 @@ impl Default for Profile {
     }
 }
 
+impl Profile {
+    pub fn script(&self) -> String {
+        format!("window.__SENS_WELCOMED__ = {};", self.welcomed)
+    }
+}
+
 pub fn load(base: &Path) -> Profile {
     crate::store::stored(&base.join(FILE))
 }
@@ -114,6 +120,15 @@ mod tests {
         assert!(!profile.welcomed);
         assert!(!profile.check_updates);
         assert!(!load(&temp_root("welcome-missing")).welcomed);
+    }
+
+    #[test]
+    fn the_page_learns_before_it_draws_whether_to_welcome() {
+        let base = temp_root("script");
+        assert_eq!(load(&base).script(), "window.__SENS_WELCOMED__ = false;");
+
+        set_welcomed(&base, true).unwrap();
+        assert_eq!(load(&base).script(), "window.__SENS_WELCOMED__ = true;");
     }
 
     #[test]

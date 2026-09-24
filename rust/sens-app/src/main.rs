@@ -409,20 +409,31 @@ fn set_look(app: AppHandle, look: look::Look) -> Result<(), String> {
     look::save(&data_dir(&app)?, look)
 }
 
+const UNPAINTED: std::time::Duration = std::time::Duration::from_secs(4);
+
 fn open_window(app: &App) -> tauri::Result<()> {
     let Some(config) = app.config().app.windows.first().cloned() else {
         return Ok(());
     };
-    let look = data_dir(app.handle()).map(|base| look::load(&base)).unwrap_or_default();
+    let base = data_dir(app.handle()).ok();
+    let look = base.as_deref().map(look::load).unwrap_or_default();
+    let person = base.as_deref().map(profile::load).unwrap_or_default();
     let theme = look.theme();
     let window = WebviewWindowBuilder::from_config(app.handle(), &config)?
         .theme(theme)
         .background_color(look::ground(theme.unwrap_or(Theme::Dark)))
         .initialization_script(look.script())
+        .initialization_script(person.script())
         .build()?;
     if theme.is_none() {
         window.set_background_color(Some(look::ground(window.theme()?)))?;
     }
+    std::thread::spawn(move || {
+        std::thread::sleep(UNPAINTED);
+        if !window.is_visible().unwrap_or(true) {
+            let _ = window.show();
+        }
+    });
     Ok(())
 }
 

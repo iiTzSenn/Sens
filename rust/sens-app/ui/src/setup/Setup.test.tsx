@@ -196,6 +196,29 @@ describe("the installer", () => {
     await vi.waitFor(() => expect(shown()).toBe("done"), { timeout: 5000 });
   });
 
+  it("stays until Sens is on screen, and says why when it cannot open it", async () => {
+    await open();
+    await press(/Empezar/);
+    await press(/Instalar Sens/);
+    await vi.waitFor(() => expect(shown()).toBe("done"), { timeout: 5000 });
+
+    fake.launch.mockRejectedValueOnce("no pude abrir Sens: acceso denegado");
+    await press(/Abrir Sens/);
+    expect(screen.getByRole("alert").textContent).toBe("no pude abrir Sens: acceso denegado");
+    expect(fake.quit).not.toHaveBeenCalled();
+
+    let appeared = () => {};
+    fake.launch.mockImplementationOnce(() => new Promise<void>((done) => (appeared = done)));
+    await press(/Abrir Sens/);
+    const opening = screen.getByRole("button", { name: /Abriendo Sens/ });
+    expect(opening.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByText("Cerrar", { selector: "button.ghost" })).toHaveProperty("disabled", true);
+    expect(fake.quit).not.toHaveBeenCalled();
+
+    await act(async () => appeared());
+    expect(fake.quit).toHaveBeenCalled();
+  });
+
   it("updates on its own, reopens Sens and quits when launched by the app", async () => {
     await open({ mode: "update", installed: { version: "0.16.0", dir: "C:\\Sens" }, passive: true, relaunch: true });
 

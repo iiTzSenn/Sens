@@ -20,6 +20,7 @@ const SHARING_VIOLATION: i32 = 32;
 const PATIENCE: Duration = Duration::from_secs(30);
 const GRACE: Duration = Duration::from_secs(10);
 const POLL: Duration = Duration::from_millis(250);
+const GLANCE: Duration = Duration::from_millis(80);
 const STILL_OPEN: &str = "Sens sigue abierta y no se pudo cerrar";
 
 pub enum Closing<'a> {
@@ -96,6 +97,17 @@ fn main_windows(ours: &BTreeSet<u32>) -> Vec<HWND> {
         .filter(|(window, process)| ours.contains(process) && is_main(*window))
         .map(|(window, _)| window)
         .collect()
+}
+
+pub fn shown(app: &Path, within: Duration) -> bool {
+    let started = Instant::now();
+    while started.elapsed() < within {
+        if !main_windows(&processes_of(app)).is_empty() {
+            return true;
+        }
+        thread::sleep(GLANCE);
+    }
+    false
 }
 
 pub fn wait(app: &Path, limit: Option<Duration>, cancel: &AtomicBool) -> Result<bool, String> {
@@ -323,6 +335,16 @@ mod tests {
         assert_eq!(asked.load(Ordering::SeqCst), 0);
         assert_eq!(*lines.lock().unwrap(), [progress::WAITING, progress::UNSEEN, progress::CLOSED]);
         assert!(stand_in.try_wait().unwrap().is_some());
+        let _ = fs::remove_dir_all(app.parent().unwrap());
+    }
+
+    #[test]
+    fn an_app_nobody_runs_is_never_seen_and_the_wait_ends() {
+        let app = scratch_app("never-shown");
+        let started = Instant::now();
+
+        assert!(!shown(&app, Duration::from_millis(300)));
+        assert!(started.elapsed() < Duration::from_secs(2));
         let _ = fs::remove_dir_all(app.parent().unwrap());
     }
 

@@ -11,6 +11,7 @@ import { anchorMenu } from "../shared/anchorMenu";
 import { stem } from "../shared/format.js";
 import { Icon } from "../shared/Icon";
 import { ICONS } from "../shared/icons.js";
+import { Mark } from "../shared/Mark";
 import { useSheet, type Sheet } from "../shared/useSheet";
 import { panelShows, railFolded, shell, showTool, toggleRail, type Tool } from "./shell";
 
@@ -35,23 +36,7 @@ export function Topbar() {
         <Icon svg={closed ? ICONS.panelOpen : ICONS.panelClose} />
       </button>
       <div className="brand">
-        <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
-          <defs>
-            <clipPath id="sens-brand-body">
-              <rect width="48" height="48" rx="11" />
-            </clipPath>
-          </defs>
-          <g clipPath="url(#sens-brand-body)">
-            <rect width="48" height="48" fill="var(--mark-body)" />
-            <path
-              d="M48 13C41 13 35 8.5 29 8.5C21 8.5 13.5 13 13.5 18.5C13.5 23 19 21.8 24 24C29 26.2 34.5 25 34.5 29.5C34.5 35 27 39.5 19 39.5C13 39.5 7 35 0 35"
-              fill="none"
-              stroke="var(--glow)"
-              strokeWidth="4.6"
-              strokeLinecap="round"
-            />
-          </g>
-        </svg>
+        <Mark size={18} micro />
         <b>sens</b>
       </div>
       <ProjectTitle />

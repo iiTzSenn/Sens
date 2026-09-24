@@ -42,6 +42,8 @@
 .stage .go.danger svg { display: none; }
 .stage .go.danger:hover { filter: none; background: var(--card); }
 .stage .go:focus-visible { outline-offset: 4px; }
+.stage .go[aria-busy="true"] { opacity: 1; cursor: progress; }
+.stage .go[aria-busy="true"] svg { display: none; }
 
 .stage .ghost {
   height: 40px; padding: 0 18px; border-radius: var(--r-control);

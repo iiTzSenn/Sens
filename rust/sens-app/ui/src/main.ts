@@ -1,4 +1,5 @@
 import "./styles.css";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { StrictMode, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
@@ -11,12 +12,13 @@ import { loadCatalog } from "./features/models/store";
 import { loadProfile } from "./features/profile/store";
 import { tickTasks } from "./features/tasks/store";
 import { startUpdates } from "./features/updates/store";
-import { greetIfNew } from "./features/welcome/store";
+import { greetAtStart, greetIfNew } from "./features/welcome/store";
 import { enterSite, hearBrowser } from "./features/web/store";
 import { followLook, lookOf, showLook } from "./shared/look";
 
 showLook(lookOf(window.__SENS_LOOK__));
 followLook();
+greetAtStart();
 
 // Once: what Rust tells (the chat, the browser, dropped files), what each tool
 // reads as it comes on screen, the window, and then the last project.
@@ -29,6 +31,7 @@ whenShown("web", enterSite);
 whenShown("tasks", tickTasks);
 
 createRoot(document.getElementById("app")!).render(createElement(StrictMode, null, createElement(App)));
+requestAnimationFrame(() => requestAnimationFrame(() => getCurrentWindow().show()));
 
 loadCatalog();
 loadProfile().then(() => {

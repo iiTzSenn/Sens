@@ -592,7 +592,7 @@
   .confirm-runs { display: grid; gap: 6px; max-height: 200px; overflow: auto; }
 
   .settings {
-    width: min(880px, calc(100vw - 48px)); height: min(640px, calc(100vh - 48px));
+    width: min(720px, calc(100vw - 48px)); height: min(600px, calc(100vh - 48px));
     max-width: none; max-height: none; padding: 0; overflow: hidden;
     border: 1px solid var(--hair-strong); border-radius: var(--r-sheet);
     background: var(--panel); color: var(--text);
@@ -600,29 +600,27 @@
   .settings[open] { animation: settings-in var(--slow) var(--curve) both; }
   .settings::backdrop { background: var(--scrim); }
   @keyframes settings-in { from { opacity: 0; transform: translateY(6px); } }
-  .settings-frame { height: 100%; display: grid; grid-template-columns: 216px minmax(0, 1fr); }
-  .settings-nav {
-    display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow: auto;
-    padding: 20px 12px; border-right: 1px solid var(--hair); background: var(--ground);
+  .settings-frame { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+  .settings-head { padding: 20px 16px 0 28px; border-bottom: 1px solid var(--hair); }
+  .settings-top { display: flex; align-items: flex-start; gap: 10px; }
+  .settings-top > div { flex: 1; min-width: 0; }
+  .settings-top .label { margin: 0; }
+  .settings-top p { margin: 4px 0 0; font-size: 13px; line-height: 19px; color: var(--faint); }
+  .settings-keys { display: flex; align-items: center; height: 28px; }
+  .settings-keys kbd {
+    min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center;
+    border: 1px solid var(--hair-strong); border-radius: var(--r-key);
+    font-family: var(--mono); font-size: 10px; line-height: 1; color: var(--ghost);
   }
-  .settings-nav .label { margin: 0 10px 12px; }
-  .settings-link {
-    height: 34px; display: flex; align-items: center; gap: 10px; padding: 0 10px;
-    border-radius: var(--r-control); text-align: left; font-size: 13px; color: var(--dim);
-    transition: background var(--fast) var(--curve), color var(--fast) var(--curve);
-  }
-  .settings-link svg { flex: none; color: var(--faint); transition: color var(--fast) var(--curve); }
-  .settings-link:hover { background: var(--card); color: var(--text); }
-  .settings-link[aria-current="true"] { background: var(--raise); color: var(--text); }
-  .settings-link[aria-current="true"] svg { color: var(--text); }
-  .settings-main { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
-  .settings-head { display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 16px 0 32px; }
-  .settings-head h3 { margin: 0; font-size: 18px; line-height: 24px; font-weight: 600; letter-spacing: -.01em; }
-  .settings-head .icon-btn { margin-left: auto; border-color: transparent; background: none; }
-  .settings-head .icon-btn:hover { background: var(--raise); border-color: var(--edge); }
-  .settings-main > .settings-pane { overflow: auto; padding: 4px 32px 32px; gap: 28px; }
+  .settings-tabs { margin-top: 12px; }
+  .settings-frame > .settings-pane { overflow: auto; padding: 24px 28px 32px; gap: 28px; }
   .settings-pane { display: grid; align-content: start; gap: 16px; min-width: 0; }
-  .settings-pane .modes { max-width: 520px; }
+  .settings-pane .modes { max-width: 420px; }
+  .look-now { display: flex; align-items: center; gap: 24px; margin-top: 0; padding: 18px 22px; }
+  .look-now > div { flex: 1; min-width: 0; display: grid; gap: 4px; }
+  .look-mark { --mark-body: var(--sens-carbon-950); width: 52px; height: 52px; flex: none; }
+  .look-mark path { stroke-dasharray: 1; animation: cut-draw 1300ms var(--curve) both; }
+  @keyframes cut-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
   .settings-pane > .label { margin: 0; }
   .settings-pane .pair { display: grid; gap: 8px; }
   .settings-pane .field { width: 100%; height: 32px; font-family: var(--ui); font-size: 13px; color: var(--text); }
@@ -1489,6 +1487,7 @@
   .selectable { user-select: text; }
 
   .welcome { position: fixed; inset: 0; z-index: 60; background: var(--ground); animation: fresh 240ms var(--curve) both; }
+  .welcome[data-still="true"] { animation: none; }
   .welcome .bar { padding-left: clamp(40px, 7vw, 112px); }
   .welcome h1 { font-size: 48px; line-height: 52px; }
   .welcome-steps { display: flex; gap: 6px; margin: 0 0 0 28px; padding: 0; list-style: none; -webkit-app-region: no-drag; }
@@ -1607,7 +1606,7 @@
     .composer .box[data-busy="true"]::after { animation: none; background: var(--focus); opacity: .5; }
     .pulse, .pane-dot[data-busy="true"], .step[data-state="running"] .step-state, .win .tools-btn[data-running="true"]::after, #site-reload[data-loading="true"] svg, .models-refresh[aria-busy="true"] svg, .activity { animation: none; opacity: 1; }
     .update-ping::after { animation: none; opacity: 0; }
-    .settings[open] { animation: none; }
+    .settings[open], .look-mark path { animation: none; }
     .reply .flow > *, .fresh, .thought[data-live="true"] summary span, .step[data-state="running"] .step-verb, .effort[data-max="true"] .effort-label, .model-sheet .mode-sub, .snap-ghost, .pane { animation: none; }
     :is(details.step, details.thought)::details-content { transition: none; }
   }

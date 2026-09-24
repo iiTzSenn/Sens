@@ -1,42 +1,21 @@
-.modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .mode-choice, .accent-choice { position: relative; cursor: pointer; }
 .modes input, .accents input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
 
 .mode-choice {
-  display: grid; gap: 10px; padding: 8px; border-radius: var(--r-card);
-  border: 1px solid var(--hair-strong); color: var(--faint);
+  display: flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 12px;
+  border: 1px solid var(--hair-strong); border-radius: var(--r-control);
+  font-size: 13px; color: var(--faint);
   transition: border-color var(--fast) var(--curve), color var(--fast) var(--curve);
 }
+.mode-choice svg { flex: none; }
 .mode-choice:hover { border-color: var(--edge); color: var(--text); }
 .mode-choice:has(input:checked) { border-color: var(--focus); color: var(--text); }
 .mode-choice:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
-.mode-name { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; line-height: 20px; }
-.mode-name svg { flex: none; }
 
-.mode-art {
-  position: relative; display: block; aspect-ratio: 16 / 10; overflow: hidden;
-  border: 1px solid var(--hair); border-radius: var(--r-control);
-}
-.miniature { position: absolute; inset: 0; display: block; background: var(--ground); }
-.miniature[data-half="true"] { clip-path: polygon(62% 0, 100% 0, 100% 100%, 38% 100%); }
-.miniature::before {
-  content: ""; position: absolute; inset: 0 auto 0 0; width: 26%;
-  background: var(--panel); border-right: 1px solid var(--hair);
-}
-.miniature i { position: absolute; left: 34%; height: 6%; border-radius: 999px; background: var(--raise); }
-.miniature i:nth-child(1) { top: 18%; right: 20%; }
-.miniature i:nth-child(2) { top: 32%; right: 40%; }
-.miniature i:nth-child(3) {
-  top: auto; bottom: 10%; right: 8%; height: 24%;
-  border: 1px solid var(--hair-strong); border-radius: var(--r-key); background: var(--panel);
-}
-.miniature b { position: absolute; right: 12%; bottom: 16%; width: 10%; aspect-ratio: 1; border-radius: 50%; background: var(--accent-fill); }
-
-.accents { display: flex; flex-wrap: wrap; gap: 10px 18px; }
-.accent-choice { display: grid; justify-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--faint); transition: color var(--fast) var(--curve); }
-.accent-choice:hover, .accent-choice:has(input:checked) { color: var(--text); }
+.accents { display: flex; flex-wrap: wrap; gap: 14px; }
 .swatch {
-  width: 28px; height: 28px; border-radius: 50%; background: var(--accent-500);
+  display: block; width: 28px; height: 28px; border-radius: 50%; background: var(--accent-500);
   outline: 2px solid transparent; outline-offset: 3px;
   transition: outline-color var(--fast) var(--curve);
 }
