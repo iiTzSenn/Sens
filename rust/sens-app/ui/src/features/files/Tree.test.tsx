@@ -2,12 +2,12 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Entry } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
-import { noteTouched, project } from "../project/store";
-import { files, forgetTree, loadFiles, revealFile, showOpened } from "./store";
+import { noteEdit, project } from "../project/store";
+import { files, forgetTree, loadFiles, revealFile } from "./store";
 import { Tree } from "./Tree";
+import { present, viewer } from "./view";
 
-const ipc = vi.hoisted(() => ({ commands: { tree: vi.fn(), folder: vi.fn(), findFiles: vi.fn() } }));
+const ipc = vi.hoisted(() => ({ commands: { tree: vi.fn(), folder: vi.fn(), findFiles: vi.fn(), openFile: vi.fn() } }));
 
 vi.mock("../../ipc/commands", () => ({ commands: ipc.commands }));
 
@@ -21,12 +21,13 @@ const TREE: Record<string, Entry[]> = {
 
 beforeEach(() => {
   files.setState(files.getInitialState(), true);
-  project.setState({ root: "C:/demo", touched: new Set() });
+  project.setState({ root: "C:/demo", touched: new Map() });
+  viewer.setState(viewer.getInitialState(), true);
   forgetTree();
   ipc.commands.tree.mockReset().mockResolvedValue([{ path: "main.py", symbols: 7 }]);
   ipc.commands.folder.mockReset().mockImplementation(async (_root: string, path: string) => TREE[path] ?? []);
   ipc.commands.findFiles.mockReset().mockResolvedValue([entry("src/ui/Button.tsx")]);
-  legacy.view = vi.fn(async () => {});
+  ipc.commands.openFile.mockReset().mockResolvedValue("export const app = 1;");
 });
 
 afterEach(cleanup);
@@ -56,15 +57,17 @@ describe("file tree", () => {
     await act(async () => fireEvent.click(row("src")));
     expect(ipc.commands.folder.mock.calls.filter(([, path]) => path === "src")).toHaveLength(1);
 
-    fireEvent.click(row("app.ts"));
-    expect(legacy.view).toHaveBeenCalledWith("src/app.ts");
+    await act(async () => fireEvent.click(row("app.ts")));
+    expect(ipc.commands.openFile).toHaveBeenCalledWith("C:/demo", "src/app.ts");
+    expect(viewer.getState()).toMatchObject({ title: "src/app.ts", opened: "src/app.ts", text: "export const app = 1;" });
+    expect(row("app.ts").getAttribute("aria-current")).toBe("true");
   });
 
   it("reveals the folders above a file opened elsewhere, and marks it", async () => {
     await open();
     await act(async () => {
       revealFile("src/ui/Button.tsx");
-      showOpened("src/ui/Button.tsx");
+      present("src/ui/Button.tsx", "", "C:/demo", "src/ui/Button.tsx");
     });
     expect(names()).toEqual(["src", "ui", "Button.tsx", "app.ts", "main.py", "README.md"]);
     expect(row("Button.tsx").getAttribute("aria-current")).toBe("true");
@@ -72,7 +75,7 @@ describe("file tree", () => {
 
   it("marks what the agent touched, and the folders holding it", async () => {
     await open();
-    act(() => noteTouched(["src/app.ts"]));
+    act(() => noteEdit({ path: "src/app.ts", lines: [2], plus: 1, minus: 0 }));
     expect(row("src").dataset.touched).toBe("true");
     expect(row("main.py").dataset.touched).toBe("false");
   });

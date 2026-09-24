@@ -7,6 +7,7 @@ import { EmptyView } from "../../shared/EmptyView";
 import { ago, when } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
+import { useSeen } from "../../shared/useSeen";
 import { CountTabs, ProjectFocus, ViewSeek } from "../../shared/ViewParts";
 import { plain } from "../market/search.js";
 import { KIND_ICON, KIND_LABEL, SHELF_TABS, keeps, keptTally, originOf, pictureKey, saying, sessionOf, type ShelfTab } from "./items";
@@ -161,19 +162,11 @@ function Thumb({ item }: { item: Artifact }) {
   const [src, setSrc] = useState("");
   const [fault, setFault] = useState("");
   const key = pictureKey(item);
+  const seen = useSeen(frame, { root: () => document.getElementById("shelf"), margin: "200px" });
 
   useEffect(() => {
-    const sight = new IntersectionObserver(
-      ([seen]) => {
-        if (!seen?.isIntersecting) return;
-        sight.disconnect();
-        picture(item).then(setSrc, (reason) => setFault(String(reason)));
-      },
-      { root: document.getElementById("shelf"), rootMargin: "200px" },
-    );
-    if (frame.current) sight.observe(frame.current);
-    return () => sight.disconnect();
-  }, [key]);
+    if (seen) picture(item).then(setSrc, (reason) => setFault(String(reason)));
+  }, [seen, key]);
 
   return (
     <button

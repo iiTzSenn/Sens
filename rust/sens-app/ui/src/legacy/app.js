@@ -8,17 +8,19 @@ import { enterCapabilities } from "../features/capabilities/store";
 import { forgetChanges, loadChanges, soonChanges } from "../features/changes/store";
 import { plain } from "../features/market/search.js";
 import { loadProfile, profile } from "../features/profile/store";
-import { forgetTree, loadFiles, revealFile, showOpened } from "../features/files/store";
-import { noteTouched, project } from "../features/project/store";
+import { forgetTree, loadFiles } from "../features/files/store";
+import { forgetViewer, openFile, viewer } from "../features/files/view";
+import { forgetEdits, noteEdit, project } from "../features/project/store";
 import { enterSettings, settings, showSection } from "../features/settings/store";
 import { forgetTasks, noteTask, runningTasks, settleTasks, tasks, tickTasks } from "../features/tasks/store";
 import { TASK_EVENTS } from "../features/tasks/tasks";
 import { startUpdates, updates } from "../features/updates/store";
 import { API_KEY_SOURCE, PLANS, keyed } from "../shared/account";
-import { MARKDOWN, PAGE, TEXTUAL, compact, parentOf, seconds, stem, weigh, whole } from "../shared/format.js";
+import { PAGE, compact, seconds, stem, weigh, whole } from "../shared/format.js";
 import { ICONS } from "../shared/icons.js";
-import { fileIcon } from "../shared/fileIcons";
 import { sheets } from "../shared/sheets.js";
+import { languageNamed, languageOf } from "../shared/syntax/languages";
+import { paintCode, paintRows, runNodes } from "../shared/syntax/paint";
 import { store, stored } from "../shared/storage.js";
 import { legacy } from "./bridge";
 
@@ -34,9 +36,6 @@ const taskInput = document.getElementById("task");
 const rootLabel = document.getElementById("root");
 const folderBtn = document.getElementById("folder");
 const sessionList = document.getElementById("sessions");
-const where = document.getElementById("where");
-const marks = document.getElementById("marks");
-const sourcePane = document.getElementById("source");
 const codePanel = document.getElementById("code");
 const toolBtn = document.getElementById("tools");
 const toolMenu = document.getElementById("tool-menu");
@@ -52,10 +51,6 @@ const siteLog = document.getElementById("site-log");
 const siteConsole = document.getElementById("site-console");
 const siteReload = document.getElementById("site-reload");
 const siteWidths = document.getElementById("site-widths");
-const codeModes = document.getElementById("code-modes");
-const modeSource = document.getElementById("mode-source");
-const modeView = document.getElementById("mode-view");
-const readingPane = document.getElementById("reading");
 const codeBody = document.getElementById("code-body");
 const crewLabel = document.getElementById("crew");
 const effortBox = document.getElementById("effort");
@@ -107,8 +102,6 @@ let current = "";
 let replyNow = null;
 let busy = false;
 let stopping = false;
-let opened = "";
-const touched = new Map();
 
 const el = (tag, className, value) => {
   const node = document.createElement(tag);
@@ -159,19 +152,22 @@ const bold = (value) => el("b", null, value);
 
 const MARKS = { add: "+", del: "−", "": " ", gap: "⋯" };
 
-function linesCard(rows, preview = DIFF_PREVIEW) {
+// The rows show plain at once and take their language's colors when they come.
+function linesCard(rows, preview = DIFF_PREVIEW, language = null) {
   const card = el("div", "diff");
   const lines = el("div", "lines");
+  const colored = paintRows(rows, language, () => card.isConnected);
   const draw = (from, to) => {
-    for (const { kind, num, text } of rows.slice(from, to)) {
+    rows.slice(from, to).forEach(({ kind, num, text }, at) => {
       const row = el("div", kind ? `row ${kind}` : "row");
-      row.append(
-        el("span", "num", num ? String(num) : ""),
-        el("span", "mark", MARKS[kind]),
-        el("span", "src", text),
-      );
+      const src = el("span", "src", text);
+      row.append(el("span", "num", num ? String(num) : ""), el("span", "mark", MARKS[kind]), src);
       lines.append(row);
-    }
+      colored.then((painted) => {
+        const one = painted[from + at];
+        if (one) src.replaceChildren(...runNodes(one.runs, one.looks));
+      });
+    });
   };
 
   draw(0, preview);
@@ -188,7 +184,7 @@ function linesCard(rows, preview = DIFF_PREVIEW) {
   return card;
 }
 
-function patchView(hunks, preview) {
+function patchView(hunks, preview, language) {
   const rows = [];
   const added = [];
   let plus = 0;
@@ -214,7 +210,7 @@ function patchView(hunks, preview) {
       }
     }
   }
-  return { node: linesCard(rows, preview), plus, minus, added };
+  return { node: linesCard(rows, preview, language), plus, minus, added };
 }
 
 const addedRows = (text) => String(text).split("\n").map((line, at) => ({ kind: "add", num: at + 1, text: line }));
@@ -439,12 +435,13 @@ function outcome(name, input, output, error, detail) {
   const patch = Array.isArray(detail?.structuredPatch) ? detail.structuredPatch : [];
   const path = relative(input.file_path || detail?.filePath || "");
   if (EDITS.has(name) && patch.length) {
-    const view = patchView(patch);
+    const view = patchView(patch, DIFF_PREVIEW, languageOf(path));
     return { nodes: [view.node], meta: `+${view.plus} −${view.minus}`, touched: { path, lines: view.added, plus: view.plus, minus: view.minus } };
   }
   if (name === "Write" && detail?.type === "create") {
-    const rows = addedRows(detail.content ?? input.content ?? "");
-    return { nodes: [linesCard(rows)], meta: `+${rows.length}`, touched: { path, lines: rows.map((row) => row.num), plus: rows.length, minus: 0 } };
+    const content = detail.content ?? input.content ?? "";
+    const rows = addedRows(content);
+    return { nodes: [linesCard(rows, DIFF_PREVIEW, languageOf(path, content))], meta: `+${rows.length}`, touched: { path, lines: rows.map((row) => row.num), plus: rows.length, minus: 0 } };
   }
   if (name === "Read") {
     const lines = detail?.file?.numLines;
@@ -630,8 +627,9 @@ function permissionPreview(tool, input) {
   if (SHELLS.has(tool)) {
     return [terminalView(input.command), input.description ? el("p", "ask-note", input.description) : null].filter(Boolean);
   }
-  if (tool === "Edit") return [linesCard(replacedRows(input.old_string ?? "", input.new_string ?? ""))];
-  if (tool === "Write") return [linesCard(addedRows(input.content ?? ""))];
+  const language = languageOf(input.file_path || "", input.content || "");
+  if (tool === "Edit") return [linesCard(replacedRows(input.old_string ?? "", input.new_string ?? ""), DIFF_PREVIEW, language)];
+  if (tool === "Write") return [linesCard(addedRows(input.content ?? ""), DIFF_PREVIEW, language)];
   if (tool === "WebFetch") return [webLink(input.url), input.prompt ? el("p", "ask-note", input.prompt) : null].filter(Boolean);
   if (tool === "WebSearch") return [el("p", "ask-note", input.query || "")];
   return [codeBlock(JSON.stringify(input, null, 2), "json")];
@@ -1304,60 +1302,6 @@ function sessionRow(home, summary) {
   return row;
 }
 
-const KEYWORDS = new Set(["abstract","as","async","await","break","case","catch","class","const","continue","crate","def","default","delete","do","elif","else","enum","export","extends","extern","false","fn","for","from","func","function","go","if","impl","implements","import","in","instanceof","interface","lambda","let","loop","match","mod","mut","new","nil","null","of","package","pass","pub","raise","return","self","static","struct","super","switch","this","throw","trait","true","try","type","typeof","undefined","use","var","void","where","while","with","yield"]);
-
-const TOKENS = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(\/\/.*$)|(\b\d[\w.]*\b)|([A-Za-z_$][\w$]*)(?=\s*\()|([A-Za-z_$][\w$]*)/gm;
-
-function painted(text, hash) {
-  const out = document.createDocumentFragment();
-  if (hash && /^\s*#/.test(text)) {
-    out.append(el("span", "tok-com", text));
-    return out;
-  }
-  let last = 0;
-  for (const found of text.matchAll(TOKENS)) {
-    const [all, str, com, num, call] = found;
-    if (found.index > last) out.append(document.createTextNode(text.slice(last, found.index)));
-    if (str) out.append(el("span", "tok-str", all));
-    else if (com) out.append(el("span", "tok-com", all));
-    else if (num) out.append(el("span", "tok-num", all));
-    else if (KEYWORDS.has(all)) out.append(el("span", "tok-key", all));
-    else if (call) out.append(el("span", "tok-fn", all));
-    else out.append(document.createTextNode(all));
-    last = found.index + all.length;
-  }
-  if (last < text.length) out.append(document.createTextNode(text.slice(last)));
-  return out;
-}
-
-const HASHED = /\.(py|rb|sh|toml|ya?ml)$/i;
-
-function sourceLines(text, hash, change) {
-  const drawn = document.createDocumentFragment();
-  text.split("\n").forEach((line, i) => {
-    const row = el("div", "line");
-    if (change && change.add.has(i + 1)) row.dataset.touched = "add";
-    const src = el("span", "src");
-    src.append(painted(line, hash));
-    row.append(el("span", "num", String(i + 1)), src);
-    drawn.append(row);
-  });
-  return drawn;
-}
-
-function showSource(label, drawn, path = "", change = null) {
-  opened = path;
-  where.textContent = label;
-  where.title = label;
-  marks.replaceChildren();
-  if (change) {
-    marks.append(el("span", "plus", `+${change.plus}`), el("span", "minus", `−${change.minus}`));
-  }
-  sourcePane.replaceChildren(drawn);
-  sourcePane.scrollTop = 0;
-  showOpened(path);
-}
-
 const panelShows = (name) => body.dataset.code === "open" && codePanel.dataset.tool === name;
 
 function showTool(name) {
@@ -1380,8 +1324,6 @@ let browsing = false;
 let browserShown = false;
 let browserSpot = "";
 let browserFrame = 0;
-let viewKind = "";
-let page = null;
 
 const PLAIN_HTTP = /^(localhost|\d{1,3}(\.\d{1,3}){3}|\[::1\])(:\d+)?([/?#]|$)/i;
 const WEBBED = /^https?:\/\//i;
@@ -1527,32 +1469,7 @@ function hearConsole(level, text) {
   if (level === "error" && siteLog.hidden) siteConsole.dataset.fault = "true";
 }
 
-function offer(kind) {
-  viewKind = kind;
-  codeModes.hidden = !kind;
-  mode(kind === "reading" ? "view" : "source");
-}
-
-function mode(which) {
-  if (which === "view" && viewKind === "site") return showSite(page.path, page.home);
-  const reading = which === "view" && viewKind === "reading";
-  sourcePane.hidden = reading;
-  readingPane.hidden = !reading;
-  modeView.setAttribute("aria-pressed", String(reading));
-  modeSource.setAttribute("aria-pressed", String(!reading));
-}
-
-function present(path, text, change = null, home = root) {
-  showSource(path, sourceLines(text, HASHED.test(path), change), path, change);
-  page = PAGE.test(path) ? { path, home } : null;
-  if (page) return offer("site");
-  if (!MARKDOWN.test(path)) return offer("");
-  readingPane.replaceChildren(prose(text));
-  readingPane.scrollTop = 0;
-  offer("reading");
-}
-
-function forgetView() {
+function forgetSite() {
   if (browsing) invoke("browser_act", { act: "close" }).catch(warnBrowser);
   browsing = false;
   browserShown = false;
@@ -1563,42 +1480,19 @@ function forgetView() {
   siteUrlInput.title = "";
   siteLog.replaceChildren();
   siteLog.hidden = true;
-  readingPane.replaceChildren();
-  page = null;
-  offer("");
   paintSite();
 }
 
-async function view(path) {
-  const stay = opened === path && !sourcePane.hidden;
-  revealFile(path);
-  let text;
-  try {
-    text = await invoke("open_file", { root, path });
-  } catch (reason) {
-    text = String(reason);
-  }
-
-  present(path, text, touched.get(path));
-  if (stay) mode("source");
-  sourcePane.querySelector('[data-touched="add"]')?.scrollIntoView({ block: "center" });
-}
-
-function markTouched({ path, lines, plus, minus }) {
-  const known = touched.get(path) || { add: new Set(), plus: 0, minus: 0 };
-  for (const line of lines) known.add.add(line);
-  known.plus += plus;
-  known.minus += minus;
-  touched.set(path, known);
-  noteTouched(touched.keys());
-  if (opened === path && panelShows("files")) view(path);
+function markTouched(edit) {
+  noteEdit(edit);
+  if (viewer.getState().opened === edit.path) openFile(edit.path);
   if (onProject() && panelShows("web")) reloadSite();
   if (panelShows("changes")) soonChanges();
 }
 
 function openTouched(path) {
   showTool("files");
-  view(path);
+  openFile(path);
 }
 
 const TOOLS = {
@@ -1892,13 +1786,12 @@ async function enter(picked) {
   current = "";
   rootLabel.textContent = stem(picked);
   folderBtn.title = picked;
-  touched.clear();
-  noteTouched([]);
+  forgetEdits();
   attached = [];
   paintClips();
-  forgetView();
+  forgetSite();
+  forgetViewer();
   forgetTree();
-  showSource("Ningún fichero abierto", el("p", "empty", "Elige un fichero."));
   idle(true);
   if (showing) VIEWS[showing].load();
   await invoke("remember", { root: picked }).catch((reason) => (owed = String(reason)));
@@ -1965,7 +1858,6 @@ const MD_HEAD = /^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const MD_ITEM = /^(\s*)(?:([-*+])|(\d+)[.)])\s+(.*)$/;
 const MD_INLINE = /(`+)(.+?)\1|\*\*(.+?)\*\*|__(.+?)__|\*(?!\s)(.+?)\*|(?<!\w)_(?!\s)(.+?)_(?!\w)|!?\[([^\]]*)\]\(([^)\s]*)[^)]*\)/g;
 const WEB = /^https?:\/\//i;
-const HASH_LANGUAGES = new Set(["py", "python", "sh", "bash", "shell", "zsh", "ps1", "powershell", "pwsh", "toml", "yaml", "yml", "rb", "ruby", "dockerfile", "makefile"]);
 const CODE_FOLD = 30;
 const TONGUES = {
   js: "amber", mjs: "amber", cjs: "amber", jsx: "amber", json: "amber",
@@ -2052,12 +1944,8 @@ function unfolder(box, label) {
 }
 
 function codeBlock(text, language = "") {
-  const hash = HASH_LANGUAGES.has(language.toLowerCase());
   const code = el("code");
-  text.split("\n").forEach((line, at) => {
-    if (at) code.append("\n");
-    code.append(painted(line, hash));
-  });
+  paintCode(code, text, languageNamed(language));
   const pre = el("pre");
   pre.append(code);
 
@@ -2822,11 +2710,11 @@ async function switchTo(name) {
   }
   paintChip();
   tick(["rama · ", bold(repo.branch)]);
-  touched.clear();
-  noteTouched([]);
+  forgetEdits();
   forgetChanges();
   await loadFiles();
-  if (opened) await view(opened);
+  const { opened } = viewer.getState();
+  if (opened) await openFile(opened);
 }
 
 const canSend = () => Boolean(root && choice.provider && (taskInput.value.trim() || pasted.length));
@@ -2976,8 +2864,6 @@ for (const [name, one] of Object.entries(VIEWS)) {
 siteReload.insertAdjacentHTML("afterbegin", ICONS.refresh);
 siteConsole.insertAdjacentHTML("afterbegin", ICONS.terminal);
 siteReload.addEventListener("click", reloadSite);
-modeSource.addEventListener("click", () => mode("source"));
-modeView.addEventListener("click", () => mode("view"));
 siteConsole.addEventListener("click", () => {
   siteLog.hidden = !siteLog.hidden;
   siteConsole.setAttribute("aria-pressed", String(!siteLog.hidden));
@@ -3662,21 +3548,17 @@ Object.assign(legacy, {
   },
   syncBrowser,
   prose,
-  showSource,
   showTool,
-  present,
   showSite,
   outward,
   preview,
   resume,
   session: () => current,
   panelShows,
-  openTouched,
-  view,
-  diffView: (hunks, preview) => patchView(hunks, preview).node,
-  addedView(text, preview) {
+  diffView: (hunks, preview, path) => patchView(hunks, preview, languageOf(path)).node,
+  addedView(text, preview, path) {
     const rows = addedRows(text);
-    return { node: linesCard(rows, preview), lines: rows.length };
+    return { node: linesCard(rows, preview, languageOf(path, text)), lines: rows.length };
   },
   folded: (text) => foldedBox(prose(text), lengthy(text)),
 });

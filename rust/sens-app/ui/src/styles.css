@@ -1211,6 +1211,9 @@
   .task-actions .quiet { border: 1px solid var(--hair-strong); font-size: 12px; }
   .task-actions .fault { font-size: 12px; }
 
+  /* A box React renders into that lays out as if its children were its parent's. */
+  .hosted { display: contents; }
+
   .code-body {
     --tree: clamp(150px, var(--tree-width, 232px), 60%);
     position: relative; display: grid; grid-template-columns: var(--tree) minmax(0, 1fr); min-height: 0;
@@ -1250,7 +1253,10 @@
   .reading { overflow: auto; padding: 20px 8px 40px; background: var(--ground); user-select: text; }
   .reading[hidden] { display: none; }
   .reading .prose { margin: 0 auto; font-size: 14px; line-height: 22px; }
-  .source { overflow: auto; padding: 12px 0 28px; user-select: text; background: var(--ground); }
+  .source { --line: 21.25px; overflow: auto; padding: 12px 0 28px; user-select: text; background: var(--ground); }
+  .source[hidden] { display: none; }
+  /* Tabs as wide as VS Code draws them, wherever code shows. */
+  .source, .diff .lines, .codeblock pre, .prose pre { tab-size: 4; }
   .site { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; background: var(--ground); }
   .site-bar { display: flex; align-items: center; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--hair); }
   .site-bar .segment { margin-left: auto; }
@@ -1268,7 +1274,7 @@
   .site-log p { margin: 0; overflow-wrap: anywhere; }
   .site-log p[data-level="warn"] { color: var(--amber); }
   .site-log p[data-level="error"] { color: var(--red); }
-  .source .line { display: flex; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; white-space: pre; }
+  .source .line { display: flex; font-family: var(--mono); font-size: 12.5px; line-height: var(--line); white-space: pre; }
   .source .line .num {
     width: 56px; flex: none; text-align: right; padding-right: 16px;
     color: var(--ghost); user-select: none; border-right: 1px solid transparent;
@@ -1306,12 +1312,6 @@
   .prose table { border-collapse: collapse; font-size: 13px; line-height: 20px; }
   .prose :is(th, td) { padding: 6px 12px; border: 1px solid var(--hair-strong); text-align: left; vertical-align: top; }
   .prose th { font-weight: 600; color: var(--text); background: var(--card); }
-
-  .tok-key { color: var(--sens-info); }
-  .tok-str { color: var(--sens-alloy-300); }
-  .tok-num { color: var(--sens-alloy-300); }
-  .tok-com { color: var(--ghost); font-style: italic; }
-  .tok-fn { color: var(--text); }
 
   .panel {
     width: 420px; max-width: calc(100vw - 32px); padding: 0;

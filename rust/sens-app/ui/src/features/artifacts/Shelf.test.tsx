@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Artifact } from "../../ipc/types";
 import { legacy } from "../../legacy/bridge";
+import { viewer } from "../files/view";
 import { project } from "../project/store";
 import { Shelf } from "./Shelf";
 import { artifacts, loadShelf } from "./store";
@@ -54,7 +55,6 @@ beforeEach(() => {
   ipc.commands.artifactData.mockResolvedValue("data:image/png;base64,AAAA");
   ipc.commands.artifactText.mockResolvedValue("# Plan");
   legacy.preview = vi.fn();
-  legacy.present = vi.fn();
   legacy.showSite = vi.fn(async () => {});
   legacy.showTool = vi.fn();
   legacy.resume = vi.fn();
@@ -83,7 +83,7 @@ describe("the shelf", () => {
   it("opens text in the file panel, pages in the browser, and the rest outside", async () => {
     await open();
     await act(async () => fireEvent.click(within(card("plan.md")).getByRole("button", { name: /plan.md/ })));
-    expect(legacy.present).toHaveBeenCalledWith("C:/demo/.sens/artifacts/plan.md", "# Plan", null, "C:/demo");
+    expect(viewer.getState()).toMatchObject({ title: "C:/demo/.sens/artifacts/plan.md", text: "# Plan", home: "C:/demo", opened: "" });
     expect(legacy.showTool).toHaveBeenCalledWith("files");
 
     await act(async () => fireEvent.click(within(card("informe.html")).getByRole("button", { name: /informe.html/ })));

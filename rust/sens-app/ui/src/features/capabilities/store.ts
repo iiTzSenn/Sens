@@ -5,10 +5,10 @@ import type { Capabilities, Detail, Listing, Market } from "../../ipc/types";
 import { legacy } from "../../legacy/bridge";
 import { store, stored } from "../../shared/storage.js";
 import { createDebouncedSearch, createMarketRanker } from "../market/search.js";
+import { present } from "../files/view";
 import { project } from "../project/store";
 import {
   CAP_TAB_IDS,
-  FRONT_MATTER,
   KIND_CHIPS,
   MARKET_PAGE,
   NO_CAPS,
@@ -145,7 +145,7 @@ export async function toggle(spec: Spec, name: string, where: Where = "listFault
 export const openSkill = (name: string) =>
   attempt("listFault", async () => {
     const text = await commands.skillText(name);
-    legacy.showSource(`skills/${name}/SKILL.md`, legacy.prose(text.replace(FRONT_MATTER, "")));
+    present(`skills/${name}/SKILL.md`, text, "");
     legacy.showTool("files");
   });
 

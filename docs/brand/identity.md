@@ -170,6 +170,27 @@ icons, values, cursor states, and the brand incision.
 - Avoid alloy-500 for tiny text on dark backgrounds; use alloy-400 or lighter.
 - Focus rings: 2 px signal-500 on dark UI; 2 px signal-700 with 2 px paper separation on light UI.
 
+### 3.7 Code syntax colors
+
+One exception to 3.1 and to the rule against a rainbow palette: code shows
+the colors of VS Code's Dark+ theme, so a keyword, a string, a type or a
+comment reads as it does in the editor the user already knows. Coloring by
+grammar is a functional need: it tells structure at a glance, and a palette of
+our own would have to be learned.
+
+- The grammars are VS Code's own TextMate grammars, through Shiki; GitHub
+  Linguist decides which language a file is, by its name, extension or
+  shebang. Anything without a grammar stays plain.
+- They color code and nothing else: the file viewer, code blocks in the chat,
+  and diffs (removed lines read as the file before, the rest as the file
+  after). Paths, logs and machine output stay mono in Alloy.
+- Plain text keeps the surface's own text token; only tokens a grammar names
+  take a theme color. Backgrounds stay Carbon: the theme's own is not used.
+- The theme's colors are not edited, and Signal never appears among them.
+- The table is generated from the installed packages with
+  `npm run languages -w sens-app-ui`. Upgrade shiki or linguist-languages,
+  then regenerate.
+
 ## 4. Logo and symbol
 
 ### 4.1 Construction
@@ -520,7 +541,7 @@ When creating or modifying any Sens visual asset or interface:
 
 1. Read this entire guide before proposing visual changes.
 2. Begin by stating the user task and the single most important information/action on the screen.
-3. Reuse the defined tokens. Do not invent another blue, purple, green, radius, shadow, or type scale unless a documented functional need exists.
+3. Reuse the defined tokens. Do not invent another blue, purple, green, radius, shadow, or type scale unless a documented functional need exists. Code syntax colors are one (3.7).
 4. Keep Signal below roughly 5% of the visible composition.
 5. Use Signal only for active intelligence, focus, relevant results, or confirmed completion.
 6. Use semantic colors for warning, danger, success, and info; include a non-color cue.

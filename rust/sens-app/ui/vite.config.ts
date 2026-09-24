@@ -11,6 +11,9 @@ import table from "./src/shared/file-icons.json" with { type: "json" };
 export default defineConfig({
   clearScreen: false,
   server: { port: 5173, strictPort: true },
+  // The syntax worker loads each grammar as its own chunk, which only module
+  // workers can.
+  worker: { format: "es" },
   plugins: [
     react(),
     fileIcons(),

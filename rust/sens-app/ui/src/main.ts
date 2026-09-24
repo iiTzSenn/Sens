@@ -4,6 +4,7 @@ import { mountShelf } from "./features/artifacts/Shelf";
 import { mountCapabilities } from "./features/capabilities/Capabilities";
 import { mountChanges } from "./features/changes/Changes";
 import { mountTree } from "./features/files/Tree";
+import { mountViewer } from "./features/files/Viewer";
 import { mountSettings } from "./features/settings/Settings";
 import { mountTasks } from "./features/tasks/TasksPanel";
 
@@ -15,4 +16,5 @@ mountCapabilities(byId("capabilities-body"));
 mountSettings(byId("settings-body"));
 mountChanges(byId("changes"), byId("change-marks"));
 mountTree(byId("tree"));
+mountViewer(byId("viewer"), byId("viewer-head"), byId("viewer-modes"));
 mountTasks(byId("tasks"), byId("task-tally"));

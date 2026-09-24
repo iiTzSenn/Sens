@@ -193,13 +193,9 @@
     <aside class="code" id="code" data-tool="files">
       <section class="tool" data-tool="files" aria-label="Ficheros">
         <div class="code-head">
-          <span class="where" id="where">Ningún fichero abierto</span>
-          <span class="marks" id="marks"></span>
+          <div class="hosted" id="viewer-head"></div>
           <div class="code-tools">
-            <div class="segment" id="code-modes" hidden>
-              <button id="mode-source" aria-pressed="true">Código</button>
-              <button id="mode-view" aria-pressed="false">Vista</button>
-            </div>
+            <div class="hosted" id="viewer-modes"></div>
             <button class="icon-btn" id="toggle-tree" title="Árbol de ficheros" aria-pressed="true">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M4 6h6M4 12h16M4 18h10"/>
@@ -211,8 +207,7 @@
         <div class="code-body" id="code-body" data-tree="shown">
           <div class="tree" id="tree"></div>
           <div class="split" id="tree-split" role="separator" aria-orientation="vertical" aria-label="Ancho del árbol de ficheros" tabindex="0"></div>
-          <div class="source" id="source"><p class="empty">Elige un fichero.</p></div>
-          <div class="reading" id="reading" hidden></div>
+          <div class="hosted" id="viewer"></div>
         </div>
       </section>
 

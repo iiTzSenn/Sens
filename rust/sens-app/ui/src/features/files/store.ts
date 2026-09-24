@@ -3,14 +3,13 @@ import { commands } from "../../ipc/commands";
 import type { Entry } from "../../ipc/types";
 import { project } from "../project/store";
 
-// The file tree: which folders are open, what each folder read holds, how many
-// symbols Sens indexed per file, and the file open in the viewer (app.js opens
-// it and mirrors it here). `loads` counts reloads, so a search runs again.
+// The file tree: which folders are open, what each folder read holds, and how
+// many symbols Sens indexed per file. `loads` counts reloads, so a search runs
+// again.
 export const files = createStore(() => ({
   unfolded: new Set<string>(),
   folders: new Map<string, Entry[]>(),
   symbols: new Map<string, number>(),
-  opened: "",
   fault: "",
   loads: 0,
 }));
@@ -87,5 +86,3 @@ export function revealFile(path: string) {
     return next.size === unfolded.size ? {} : { unfolded: next };
   });
 }
-
-export const showOpened = (path: string) => set({ opened: path });

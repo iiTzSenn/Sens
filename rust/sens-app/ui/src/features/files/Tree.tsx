@@ -3,18 +3,17 @@ import { createRoot } from "react-dom/client";
 import { useStore } from "zustand";
 import { commands } from "../../ipc/commands";
 import type { Entry } from "../../ipc/types";
-import { legacy } from "../../legacy/bridge";
 import { FileIcon } from "../../shared/FileIcon";
 import { parentOf } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { project } from "../project/store";
 import { files, loadFolder, toggleFolder } from "./store";
+import { openFile, viewer } from "./view";
 
 const SEEK_WAIT = 120;
 
-// The filter and the list go in .tree; the splitter beside it and the viewer
-// stay in app.js.
+// The filter and the list go in .tree; the splitter beside it stays in app.js.
 export function mountTree(host: Element) {
   createRoot(host).render(
     <StrictMode>
@@ -124,10 +123,10 @@ function Fault({ reason }: { reason: string }) {
 // A folder is touched when the agent edited something inside it.
 function FileRow({ entry, depth, found = false }: { entry: Entry; depth: number; found?: boolean }) {
   const open = useStore(files, (s) => entry.dir && s.unfolded.has(entry.path));
-  const opened = useStore(files, (s) => s.opened === entry.path);
+  const opened = useStore(viewer, (s) => s.opened === entry.path);
   const count = useStore(files, (s) => s.symbols.get(entry.path));
   const touched = useStore(project, (s) =>
-    entry.dir ? [...s.touched].some((path) => path.startsWith(`${entry.path}/`)) : s.touched.has(entry.path),
+    entry.dir ? [...s.touched.keys()].some((path) => path.startsWith(`${entry.path}/`)) : s.touched.has(entry.path),
   );
 
   return (
@@ -141,7 +140,7 @@ function FileRow({ entry, depth, found = false }: { entry: Entry; depth: number;
       aria-expanded={entry.dir ? open : undefined}
       aria-current={opened ? "true" : undefined}
       data-touched={String(touched)}
-      onClick={() => (entry.dir ? toggleFolder(entry.path) : legacy.view(entry.path))}
+      onClick={() => (entry.dir ? toggleFolder(entry.path) : openFile(entry.path))}
     >
       {entry.dir ? (
         <span className="glyph">

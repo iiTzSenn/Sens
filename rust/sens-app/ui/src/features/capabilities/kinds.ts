@@ -1,9 +1,9 @@
 import type { CapabilityKind } from "../../ipc/commands";
 import type { Capabilities, Detail, Listing, Plugin, Provenance, Server, Skill } from "../../ipc/types";
+import { FRONT_MATTER } from "../../shared/format.js";
 import { ICONS } from "../../shared/icons.js";
 import { plain } from "../market/search.js";
 
-export const FRONT_MATTER = /^﻿?---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export type List = "plugins" | "skills" | "servers";

@@ -12,11 +12,8 @@ export const legacy = {
   syncBrowser: (): void => {},
   // The markdown renderer the chat uses, until it moves too.
   prose: (_text: string): HTMLElement => document.createElement("div"),
-  // The file panel on the right.
-  showSource: (_title: string, _node: Node): void => {},
+  // The tool panel on the right, and a page of `home` in its web tool.
   showTool: (_tool: string): void => {},
-  // A file's text in that panel, as if opened from `home`.
-  present: (_path: string, _text: string, _change: null, _home: string): void => {},
   showSite: async (_path: string, _home: string): Promise<void> => {},
   outward: (_target: string): void => {},
   // The shared dialog, wide, for a picture.
@@ -26,12 +23,9 @@ export const legacy = {
   // The session open in the chat, and whether a tool panel is on screen.
   session: (): string => "",
   panelShows: (_tool: string): boolean => false,
-  // Opens a file of the project in the file panel, with the agent's edits
-  // marked: `openTouched` also brings the panel to Ficheros.
-  openTouched: (_path: string): void => {},
-  view: async (_path: string): Promise<void> => {},
-  // The chat's renderers: a diff, a new file's lines, folded text.
-  diffView: (_hunks: unknown[], _preview: number): Node => document.createElement("div"),
-  addedView: (_text: string, _preview: number) => ({ node: document.createElement("div") as Node, lines: 0 }),
+  // The chat's renderers: a diff, a new file's lines (both colored as the
+  // file at `path`), folded text.
+  diffView: (_hunks: unknown[], _preview: number, _path: string): Node => document.createElement("div"),
+  addedView: (_text: string, _preview: number, _path: string) => ({ node: document.createElement("div") as Node, lines: 0 }),
   folded: (_text: string): Node => document.createElement("div"),
 };

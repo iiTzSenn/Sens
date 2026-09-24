@@ -94,6 +94,150 @@ const FOLDERS: Record<string, string[]> = {
   docs: ["guia.md", "api.yaml", "config.toml"],
 };
 
+// A few files with real code, to see the viewer color each language.
+const SAMPLES: Record<string, string> = {
+  "main.py": [
+    "#!/usr/bin/env python3",
+    '"""Saluda a quien se lo pida."""',
+    "from dataclasses import dataclass",
+    "",
+    "",
+    "@dataclass",
+    "class Greeter:",
+    '    name: str = "mundo"',
+    "",
+    "    def greet(self, times: int = 1) -> str:",
+    "        # Una línea por vez",
+    '        return "\\n".join(f"Hola, {self.name}!" for _ in range(times))',
+    "",
+    "",
+    'if __name__ == "__main__":',
+    "    print(Greeter().greet(2))",
+  ].join("\n"),
+  "src/app.tsx": [
+    'import { useState } from "react";',
+    'import { Button } from "./components/Button";',
+    "",
+    "interface Props {",
+    "  title: string;",
+    "  start?: number;",
+    "}",
+    "",
+    "// El contador de la portada.",
+    "export function App({ title, start = 0 }: Props) {",
+    "  const [count, setCount] = useState(start);",
+    "  return (",
+    '    <main className="app">',
+    "      <h1>{title}</h1>",
+    "      <Button onClick={() => setCount(count + 1)}>Sumar {count}</Button>",
+    "    </main>",
+    "  );",
+    "}",
+  ].join("\n"),
+  "src/lib.rs": [
+    "use std::collections::HashMap;",
+    "",
+    "/// Cuenta las palabras de un texto.",
+    "pub fn count(text: &str) -> HashMap<&str, usize> {",
+    "    let mut seen = HashMap::new();",
+    "    for word in text.split_whitespace() {",
+    "        *seen.entry(word).or_insert(0) += 1;",
+    "    }",
+    "    seen",
+    "}",
+    "",
+    "#[cfg(test)]",
+    "mod tests {",
+    "    #[test]",
+    "    fn counts() {",
+    '        assert_eq!(super::count("a b a")["a"], 2);',
+    "    }",
+    "}",
+  ].join("\n"),
+  "src/styles.css": [
+    ":root { --accent: #c7ff4a; }",
+    "",
+    "/* La tarjeta */",
+    ".card:hover > .title {",
+    "  color: var(--accent);",
+    "  padding: 4px 8px !important;",
+    "}",
+  ].join("\n"),
+  "src/query.sql": [
+    "-- Los proyectos más activos",
+    "SELECT p.name, COUNT(*) AS turns",
+    "FROM projects p",
+    "JOIN turns t ON t.project_id = p.id",
+    "WHERE t.at > now() - INTERVAL '7 days'",
+    "GROUP BY p.name",
+    "ORDER BY turns DESC",
+    "LIMIT 10;",
+  ].join("\n"),
+  "src/build.ps1": [
+    "param([switch]$Release)",
+    "",
+    "# Compila la app",
+    '$mode = if ($Release) { "release" } else { "debug" }',
+    'Write-Host "Compilando en $mode..."',
+    "cargo build --profile $mode",
+  ].join("\n"),
+  Dockerfile: ["FROM node:22-alpine", "WORKDIR /app", "COPY package*.json ./", "RUN npm ci", "COPY . .", 'CMD ["npm", "start"]'].join("\n"),
+  "package.json": ['{', '  "name": "demo",', '  "private": true,', '  "scripts": { "dev": "vite" },', '  "version": "1.0.0"', "}"].join("\n"),
+  "Cargo.toml": ["[package]", 'name = "demo"', 'version = "0.1.0"', "edition = \"2024\"", "", "[dependencies]", 'serde = { version = "1", features = ["derive"] }'].join("\n"),
+};
+
+// A turn with code in its answer and an edit, to see the chat color them.
+const FENCE = "```";
+const agent = (event: Record<string, unknown>) => ({ kind: "agent", at: now - HOUR, event });
+const REPLAY = [
+  { kind: "task", text: "Añade un saludo configurable", files: [], images: [], at: now - HOUR },
+  agent({ kind: "started", model: "demo-model" }),
+  agent({
+    kind: "tool",
+    id: "t1",
+    name: "Edit",
+    input: { file_path: `${ROOT}/src/app.tsx`, old_string: "", new_string: "" },
+  }),
+  agent({
+    kind: "toolDone",
+    id: "t1",
+    output: "",
+    error: false,
+    detail: {
+      filePath: `${ROOT}/src/app.tsx`,
+      structuredPatch: [
+        {
+          oldStart: 9,
+          newStart: 9,
+          lines: [
+            " // El contador de la portada.",
+            "-export function App({ title, start = 0 }: Props) {",
+            '+export function App({ title, start = 0, greeting = "Hola" }: Props) {',
+            "   const [count, setCount] = useState(start);",
+          ],
+        },
+      ],
+    },
+  }),
+  agent({
+    kind: "said",
+    text: [
+      "Listo. Ahora `App` acepta un saludo:",
+      "",
+      FENCE + "tsx",
+      '<App title="Sens" greeting="Buenas" />',
+      FENCE,
+      "",
+      "Y desde la terminal:",
+      "",
+      FENCE + "console",
+      "$ npm run dev -- --port 5173",
+      FENCE,
+    ].join("\n"),
+  }),
+  agent({ kind: "finished", millis: 4200, tokensOut: 812 }),
+];
+
 const entries = (path: string) =>
   (FOLDERS[path] ?? []).map((name) => {
     const dir = name.endsWith("/");
@@ -109,7 +253,7 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
       .flatMap(entries)
       .filter((entry) => !entry.dir && entry.name.toLowerCase().includes(String(needle).toLowerCase())),
   changes: () => ({ diff: DIFF, fresh: ["notas/idea.md"] }),
-  open_file: ({ path }) => `# ${path}\n\nUna idea.\nOtra línea.`,
+  open_file: ({ path }) => SAMPLES[String(path)] ?? `# ${path}\n\nUna idea.\nOtra línea.`,
   task_output: () => "compilando…\nlisto en 3 s",
   artifacts: () => [
     artifact("image", "captura.png", 1),
@@ -164,6 +308,7 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
       ],
     },
   ],
+  replay: ({ id }) => (id === "demo-1" ? REPLAY : []),
   providers: () => [{ id: "claude", vendor: "Anthropic", label: "Claude Code" }],
   models: () => [
     {

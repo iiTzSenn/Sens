@@ -11,6 +11,7 @@ import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { project } from "../project/store";
 import type { DiffFile } from "./diff";
+import { openFile } from "../files/view";
 import { changes, unfold } from "./store";
 
 const CHANGE_PREVIEW = 400;
@@ -110,7 +111,8 @@ function ChangeRow({ file }: { file: DiffFile }) {
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              legacy.openTouched(file.path);
+              legacy.showTool("files");
+              openFile(file.path);
             }}
           >
             <Icon svg={ICONS.fileCode} />
@@ -159,19 +161,19 @@ function ChangeBody({ file, counted }: { file: DiffFile; counted: (lines: number
   if (file.fresh) {
     if (!fresh) return null;
     if ("fault" in fresh) return <p className="none fault">{fresh.fault}</p>;
-    return <Added text={fresh.text} counted={counted} />;
+    return <Added path={file.path} text={fresh.text} counted={counted} />;
   }
   if (!file.hunks.length) {
     return <p className="none">{file.state === "R" ? "Renombrado, sin cambios de contenido." : "Sin cambios de contenido."}</p>;
   }
-  return <Borrowed make={() => legacy.diffView(file.hunks, CHANGE_PREVIEW)} made={file} />;
+  return <Borrowed make={() => legacy.diffView(file.hunks, CHANGE_PREVIEW, file.path)} made={file} />;
 }
 
-function Added({ text, counted }: { text: string; counted: (lines: number) => void }) {
+function Added({ path, text, counted }: { path: string; text: string; counted: (lines: number) => void }) {
   return (
     <Borrowed
       make={() => {
-        const { node, lines } = legacy.addedView(text, CHANGE_PREVIEW);
+        const { node, lines } = legacy.addedView(text, CHANGE_PREVIEW, path);
         counted(lines);
         return node;
       }}

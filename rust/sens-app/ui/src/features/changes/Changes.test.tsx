@@ -2,7 +2,8 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { legacy } from "../../legacy/bridge";
-import { noteTouched, project } from "../project/store";
+import { viewer } from "../files/view";
+import { noteEdit, project } from "../project/store";
 import { forgetTasks, noteTask, settleTasks } from "../tasks/store";
 import { TasksPanel } from "../tasks/TasksPanel";
 import { ChangesPanel } from "./Changes";
@@ -36,7 +37,7 @@ beforeEach(() => {
   ipc.commands.openFile.mockResolvedValue("a\nb\nc");
   legacy.diffView = vi.fn(() => Object.assign(document.createElement("div"), { className: "diff", textContent: "diff" }));
   legacy.addedView = vi.fn((text: string) => ({ node: document.createElement("div"), lines: text.split("\n").length }));
-  legacy.openTouched = vi.fn();
+  legacy.showTool = vi.fn();
   legacy.folded = vi.fn((text: string) => Object.assign(document.createElement("div"), { textContent: text }));
   legacy.prose = vi.fn((text: string) => Object.assign(document.createElement("div"), { textContent: text }));
   legacy.session = () => "s1";
@@ -92,10 +93,12 @@ describe("changes panel", () => {
   it("marks what the agent touched and jumps to the file panel", async () => {
     render(<ChangesPanel totals={header} />);
     await act(async () => loadChanges());
-    act(() => noteTouched(["src/app.js"]));
+    act(() => noteEdit({ path: "src/app.js", lines: [1], plus: 1, minus: 0 }));
     expect(row("app.js").dataset.touched).toBe("true");
-    fireEvent.click(row("app.js").querySelector(".jump")!);
-    expect(legacy.openTouched).toHaveBeenCalledWith("src/app.js");
+    await act(async () => fireEvent.click(row("app.js").querySelector(".jump")!));
+    expect(legacy.showTool).toHaveBeenCalledWith("files");
+    await act(async () => {});
+    expect(viewer.getState()).toMatchObject({ title: "src/app.js", opened: "src/app.js" });
   });
 });
 

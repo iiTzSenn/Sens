@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { useStore } from "zustand";
 import type { Detail, Listing } from "../../ipc/types";
 import { legacy } from "../../legacy/bridge";
-import { MARKDOWN, compact, stem, weigh } from "../../shared/format.js";
+import { FRONT_MATTER, MARKDOWN, compact, stem, weigh } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { Prose } from "../../shared/Prose";
@@ -13,7 +13,6 @@ import {
   BADGES,
   DETAIL_TABS,
   FILE_ROWS,
-  FRONT_MATTER,
   KIND_NAMES,
   firstLine,
   installedItem,
