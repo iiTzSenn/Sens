@@ -12,6 +12,7 @@
     "app:dev": "cd rust/sens-app && tauri dev",
     "setup:dev": "cd rust/sens-setup && tauri dev",
     "app:installer": "node scripts/app-installer.mjs",
+    "version:check": "node scripts/version.ts",
     "brand": "tsx scripts/brand.ts"
   },
   "author": "Sofia",

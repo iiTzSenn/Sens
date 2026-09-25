@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { brotliCompressSync, constants } from "node:zlib";
+import { disagreement } from "./version.ts";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const appDir = path.join(root, "rust", "sens-app");
@@ -31,6 +32,13 @@ if (process.platform !== "win32") {
 
 if (!existsSync(cli)) {
   console.error("falta @tauri-apps/cli. Instálalo con: npm ci");
+  process.exit(1);
+}
+
+const versionFaults = disagreement();
+if (versionFaults.length) {
+  console.error("la versión no es la misma en todas partes, y las copias instaladas se liarían:");
+  for (const fault of versionFaults) console.error(`  ${fault}`);
   process.exit(1);
 }
 
