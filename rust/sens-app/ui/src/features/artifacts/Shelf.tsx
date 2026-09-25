@@ -9,7 +9,8 @@ import { ICONS } from "../../shared/icons.js";
 import { useSeen } from "../../shared/useSeen";
 import { CountTabs, ProjectFocus, ViewSeek } from "../../shared/ViewParts";
 import { plain } from "../market/search.js";
-import { KIND_ICON, KIND_LABEL, SHELF_TABS, keeps, keptTally, originOf, pictureKey, saying, sessionOf, type ShelfTab } from "./items";
+import { t } from "./copy";
+import { KIND_ICON, keeps, keptTally, kindOf, originOf, pictureKey, saying, sessionOf, shelfTabs, type ShelfTab } from "./items";
 import { artifacts, openArtifact, pickTab, picture } from "./store";
 
 export function Shelf() {
@@ -23,21 +24,21 @@ export function Shelf() {
     <>
       <header className="view-top">
         <div>
-          <h1 className="label">Artefactos</h1>
-          <p>Imágenes, ficheros y enlaces que dejan tus sesiones.</p>
+          <h1 className="label">{t.title}</h1>
+          <p>{t.lead}</p>
         </div>
       </header>
       <ProjectFocus
         prefix="shelf"
         tally={(root) => keptTally(items.filter((item) => item.root === root).length)}
-        unopened="Abre un proyecto para ver los suyos."
-        note="La lista de abajo incluye los de todos tus proyectos."
+        unopened={t.unopened}
+        note={t.note}
       />
       <div className="view-head">
         <CountTabs
           prefix="shelf"
-          label="Tipos de artefacto"
-          tabs={SHELF_TABS}
+          label={t.kindsLabel}
+          tabs={shelfTabs()}
           at={tab}
           count={(id) => items.filter((item) => keeps(id, item)).length}
           pick={pickTab}
@@ -46,8 +47,8 @@ export function Shelf() {
       <ViewSeek
         id="shelf-seek"
         input="shelf-search"
-        label="Buscar un artefacto"
-        placeholder="Buscar un artefacto…"
+        label={t.search}
+        placeholder={t.searching}
         value={search}
         change={setSearch}
         hidden={!items.length}
@@ -70,7 +71,7 @@ export function Shelf() {
       </div>
       <p className="view-foot" id="shelf-foot">
         <Icon svg={ICONS.shieldCheck} />
-        Los artefactos se guardan en .sens/artifacts, dentro de tu proyecto.
+        {t.foot}
       </p>
     </>
   );
@@ -81,14 +82,14 @@ function ShelfList({ items, tab, search }: { items: Artifact[]; tab: ShelfTab; s
     return (
       <EmptyView
         art={ICONS.shelf}
-        lead="No hay artefactos"
-        said="Las imágenes, ficheros y enlaces aparecerán aquí según los produzcan las sesiones."
+        lead={t.emptyLead}
+        said={t.emptySaid}
       />
     );
   }
   const needle = plain(search.trim());
   const shown = needle ? items.filter(saying(needle)) : items;
-  if (!shown.length) return <p className="none">Nada coincide.</p>;
+  if (!shown.length) return <p className="none">{t.noMatch}</p>;
   if (tab === "image") {
     return (
       <div className="thumbs">
@@ -114,7 +115,7 @@ function ArtifactCard({ item }: { item: Artifact }) {
         <span className="card-art">
           <Icon svg={KIND_ICON[item.kind] || ICONS.fileText} />
         </span>
-        <span className="label">{KIND_LABEL[item.kind] || "Fichero"}</span>
+        <span className="label">{kindOf(item)}</span>
       </div>
       <button className="card-main" title={item.target} onClick={(event) => openArtifact(item, event.currentTarget)}>
         <span className={item.kind === "link" ? "name url" : "name"}>{item.name}</span>
@@ -134,14 +135,14 @@ function Origin({ item }: { item: Artifact }) {
   if (!item.session) {
     return (
       <span className="from" data-empty="true">
-        sin sesión
+        {t.noSession}
       </span>
     );
   }
   const said = sessionOf(item);
   const session = item.session;
   return (
-    <button className="from" title={`Abrir la sesión · ${said}`} onClick={() => resume(item.root, session)}>
+    <button className="from" title={t.openSession(said)} onClick={() => resume(item.root, session)}>
       {said}
     </button>
   );

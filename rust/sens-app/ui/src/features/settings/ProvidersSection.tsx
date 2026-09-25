@@ -4,14 +4,8 @@ import type { Method, ProviderState } from "../../ipc/types";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { models } from "../models/store";
-import {
-  CLAUDE_CODE_WEIGHT,
-  PROVIDER_METHODS,
-  SIGN_IN_DOORS,
-  claudeCodeStatus,
-  providerLine,
-  signedIn,
-} from "./providers";
+import { t } from "./copy";
+import { claudeCodeStatus, providerLine, providerMethods, signInDoor, signedIn } from "./providers";
 import {
   forgetKey,
   install,
@@ -32,17 +26,15 @@ export function ProvidersSection() {
   const fault = useStore(settings, (s) => s.fault);
   return (
     <>
-      <p className="note">
-        Con quién trabaja Sens. Sens nunca ve tus credenciales: el inicio de sesión lo hace cada herramienta.
-      </p>
+      <p className="note">{t.providersLead}</p>
       {fault ? (
         <p className="none fault">{fault}</p>
       ) : !providers ? (
-        <p className="none">Comprobando…</p>
+        <p className="none">{t.checking}</p>
       ) : (
         providers.map((state) => <ProviderCard key={state.id} state={state} />)
       )}
-      <p className="settings-later">Más proveedores, pronto.</p>
+      <p className="settings-later">{t.moreProviders}</p>
     </>
   );
 }
@@ -85,15 +77,13 @@ export function ProviderCard({ state }: { state: ProviderState }) {
 function ClaudeCodeMissing({ state, busy }: Card) {
   return (
     <>
-      <p className="note">
-        {`Sens usa Claude Code, el agente de Anthropic. Al conectar, Sens lo descarga de Anthropic (${CLAUDE_CODE_WEIGHT}) y lo instala solo para tu usuario, sin permisos de administrador.`}
-      </p>
+      <p className="note">{t.missing(t.weight)}</p>
       <div className="settings-row">
         <button className="quiet" disabled={busy} onClick={() => install(state)}>
-          Instalar ahora
+          {t.installNow}
         </button>
         <button className="quiet" disabled={busy} onClick={() => loadProviders()}>
-          Comprobar otra vez
+          {t.checkAgain}
         </button>
       </div>
     </>
@@ -103,12 +93,10 @@ function ClaudeCodeMissing({ state, busy }: Card) {
 function ClaudeCodeBehind({ state, busy, behind }: Card & { behind: string }) {
   return (
     <>
-      <p className="note">
-        {`Hay una versión nueva de Claude Code: v${behind}. Los modelos más recientes solo aparecen con ella.`}
-      </p>
+      <p className="note">{t.newer(behind)}</p>
       <div className="settings-row">
         <button className="quiet" disabled={busy} onClick={() => updateClaudeCode(state)}>
-          Actualizar Claude Code
+          {t.updateClaudeCode}
         </button>
       </div>
     </>
@@ -118,8 +106,8 @@ function ClaudeCodeBehind({ state, busy, behind }: Card & { behind: string }) {
 function MethodChoices({ state, method, busy }: Card & { method: Method }) {
   return (
     <fieldset className="choices">
-      <legend className="label">Cómo entra</legend>
-      {PROVIDER_METHODS.map((option) => (
+      <legend className="label">{t.signsIn}</legend>
+      {providerMethods().map((option) => (
         <label className="choice" key={option.id}>
           <input
             type="radio"
@@ -141,29 +129,29 @@ function MethodChoices({ state, method, busy }: Card & { method: Method }) {
 
 function SignInActions({ state, method, busy }: Card & { method: Exclude<Method, "apiKey"> }) {
   const connecting = useStore(settings, (s) => s.connecting);
-  const door = SIGN_IN_DOORS[method];
+  const door = signInDoor(method);
   return (
     <>
       <div className="settings-row">
         <button className="primary" disabled={busy || connecting} onClick={() => signIn(state, method)}>
           <Icon svg={ICONS.external} />
-          {connecting ? "Esperando a que termines…" : door.button}
+          {connecting ? t.waiting : door.button}
         </button>
       </div>
       <ol className="sign-steps">
-        {!state.installed && <li>{`Sens instala Claude Code desde Anthropic (${CLAUDE_CODE_WEIGHT}).`}</li>}
-        <li>{`Se abre tu navegador en ${door.site}.`}</li>
-        <li>Autorizas a Claude Code y te da un código.</li>
-        <li>Si te lo pide, pégalo en la ventana de Claude Code. Sens se entera solo.</li>
+        {!state.installed && <li>{t.installsFirst(t.weight)}</li>}
+        <li>{t.browserOpens(door.site)}</li>
+        <li>{t.authorize}</li>
+        <li>{t.paste}</li>
       </ol>
-      <p className="note">El código y tu sesión los maneja Claude Code; Sens nunca los ve.</p>
+      <p className="note">{t.codeNote}</p>
       {signedIn(state) && !connecting && (
         <div className="settings-row">
           <button className="quiet" disabled={busy} onClick={() => signOut(state)}>
-            Cerrar sesión
+            {t.signOut}
           </button>
           <button className="quiet" disabled={busy} onClick={() => recheck(state)}>
-            Comprobar
+            {t.check}
           </button>
         </div>
       )}
@@ -184,9 +172,9 @@ function KeyActions({ state, busy }: Card) {
     <>
       {state.keyHint && (
         <div className="settings-row">
-          <span className="note">{`Clave guardada: ${state.keyHint}`}</span>
+          <span className="note">{t.keySaved(state.keyHint)}</span>
           <button className="quiet" disabled={busy} onClick={() => forgetKey(state)}>
-            Quitar clave
+            {t.removeKey}
           </button>
         </div>
       )}
@@ -197,20 +185,18 @@ function KeyActions({ state, busy }: Card) {
           id={`key-${state.id}`}
           autoComplete="off"
           spellCheck={false}
-          placeholder={state.keyHint ? "Pega una clave nueva para cambiarla" : "sk-ant-…"}
-          aria-label="Clave de API"
+          placeholder={state.keyHint ? t.newKey : "sk-ant-…"}
+          aria-label={t.apiKey}
           value={key}
           onChange={(event) => setKey(event.target.value)}
           disabled={busy}
         />
         <button className="primary" disabled={busy}>
-          Guardar clave
+          {t.saveKey}
         </button>
       </form>
-      <p className="note">Se guarda cifrada con tu usuario de Windows y nunca se vuelve a mostrar.</p>
-      {!state.installed && (
-        <p className="note">{`Al guardarla, Sens instala también Claude Code desde Anthropic (${CLAUDE_CODE_WEIGHT}).`}</p>
-      )}
+      <p className="note">{t.keyNote}</p>
+      {!state.installed && <p className="note">{t.keyInstalls(t.weight)}</p>}
     </>
   );
 }

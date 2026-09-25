@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use flate2::read::GzDecoder;
+use sens_agent::said;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -15,7 +16,28 @@ const USED: &str = ".sens-usado";
 const TARBALL_CAP: u64 = 50 * MEGABYTE;
 const READ_CAP: u64 = 512 * 1024;
 const STALE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
-pub const UNSUPPORTED: &str = "este origen no se puede instalar desde Sens";
+
+pub fn unsupported() -> String {
+    said!(
+        en: "this source can’t be installed from Sens",
+        es: "este origen no se puede instalar desde Sens",
+        fr: "cette source ne peut pas être installée depuis Sens",
+        de: "diese Quelle lässt sich nicht über Sens installieren",
+        ja: "この提供元は Sens からインストールできません",
+        zh: "此来源无法从 Sens 安装",
+    )
+}
+
+pub fn not_in_repository(path: &str) -> String {
+    said!(
+        en: "{path} doesn’t exist in the repository",
+        es: "no existe {path} en el repositorio",
+        fr: "{path} n’existe pas dans le dépôt",
+        de: "{path} gibt es im Repository nicht",
+        ja: "リポジトリに {path} がありません",
+        zh: "仓库中不存在 {path}",
+    )
+}
 
 #[derive(Clone, Copy)]
 pub struct Limits {
@@ -66,7 +88,14 @@ pub fn inner_path(path: &str) -> Result<String, String> {
     let trimmed = path.trim().trim_start_matches("./").trim_end_matches('/');
     let parts: Vec<&str> = trimmed.split(['/', '\\']).filter(|part| !part.is_empty() && *part != ".").collect();
     if Path::new(trimmed).is_absolute() || parts.iter().any(|part| *part == ".." || part.contains(':')) {
-        return Err(format!("la ruta {path} sale de su repositorio"));
+        return Err(said!(
+            en: "the path {path} leaves its repository",
+            es: "la ruta {path} sale de su repositorio",
+            fr: "le chemin {path} sort de son dépôt",
+            de: "der Pfad {path} verlässt sein Repository",
+            ja: "パス {path} はリポジトリの外を指しています",
+            zh: "路径 {path} 指向仓库之外",
+        ));
     }
     Ok(parts.join("/"))
 }
@@ -84,7 +113,7 @@ pub fn wanted(source: &Value, catalog: &Origin) -> Result<Wanted, String> {
         "github" => (github_repo(&text("repo")), inner_path(&text("path"))?),
         _ => (None, String::new()),
     };
-    let repo = repo.ok_or(UNSUPPORTED)?;
+    let repo = repo.ok_or_else(unsupported)?;
     Ok(Wanted { repo, reference, path })
 }
 
@@ -144,7 +173,14 @@ pub fn ensure_files(base: &Path, key: &str, files: &[(String, String)]) -> Resul
             }
             total += contents.len() as u64;
             if at >= LIMITS.files || total > LIMITS.bytes {
-                return Err("la skill es demasiado grande".into());
+                return Err(said!(
+                    en: "the skill is too big",
+                    es: "la skill es demasiado grande",
+                    fr: "la skill est trop volumineuse",
+                    de: "der Skill ist zu groß",
+                    ja: "スキルが大きすぎます",
+                    zh: "该技能过大",
+                ));
             }
             write(&staging.join(&inside), contents.as_bytes())?;
         }
@@ -154,13 +190,29 @@ pub fn ensure_files(base: &Path, key: &str, files: &[(String, String)]) -> Resul
 }
 
 fn place(folder: &Path, fill: impl FnOnce(&Path) -> Result<(), String>) -> Result<(), String> {
-    let parent = folder.parent().ok_or("no sé dónde guardar la descarga")?;
+    let parent = folder.parent().ok_or_else(|| {
+        said!(
+            en: "there’s nowhere to save the download",
+            es: "no sé dónde guardar la descarga",
+            fr: "impossible de savoir où enregistrer le téléchargement",
+            de: "unklar, wo der Download gespeichert werden soll",
+            ja: "ダウンロードの保存先がわかりません",
+            zh: "找不到保存下载内容的位置",
+        )
+    })?;
     let staging = parent.join(format!("{STAGING}{:016x}", digest((folder, std::process::id(), SystemTime::now()))));
-    std::fs::create_dir_all(&staging).map_err(|error| format!("no pude crear {}: {error}", staging.display()))?;
+    std::fs::create_dir_all(&staging).map_err(|error| crate::files::uncreated(&staging, error))?;
     let placed = fill(&staging).and_then(|()| match std::fs::rename(&staging, folder) {
         Ok(()) => Ok(()),
         Err(_) if folder.is_dir() => Ok(()),
-        Err(error) => Err(format!("no pude guardar la descarga: {error}")),
+        Err(error) => Err(said!(
+            en: "couldn’t save the download: {error}",
+            es: "no pude guardar la descarga: {error}",
+            fr: "impossible d’enregistrer le téléchargement : {error}",
+            de: "der Download konnte nicht gespeichert werden: {error}",
+            ja: "ダウンロードを保存できませんでした: {error}",
+            zh: "无法保存下载内容：{error}",
+        )),
     });
     let _ = std::fs::remove_dir_all(&staging);
     placed?;
@@ -171,9 +223,9 @@ fn place(folder: &Path, fill: impl FnOnce(&Path) -> Result<(), String>) -> Resul
 
 fn write(path: &Path, contents: &[u8]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| format!("no pude crear {}: {error}", parent.display()))?;
+        std::fs::create_dir_all(parent).map_err(|error| crate::files::uncreated(parent, error))?;
     }
-    std::fs::write(path, contents).map_err(|error| format!("no pude escribir {}: {error}", path.display()))
+    std::fs::write(path, contents).map_err(|error| crate::files::unwritten(path, error))
 }
 
 pub fn extract(archive: &[u8], inner: &str, into: &Path, limits: Limits) -> Result<usize, String> {
@@ -181,7 +233,16 @@ pub fn extract(archive: &[u8], inner: &str, into: &Path, limits: Limits) -> Resu
     let mut unpacked = tar::Archive::new(GzDecoder::new(archive));
     let mut files = 0usize;
     let mut bytes = 0u64;
-    let unreadable = |error: std::io::Error| format!("el paquete está dañado: {error}");
+    let unreadable = |error: std::io::Error| {
+        said!(
+            en: "the package is damaged: {error}",
+            es: "el paquete está dañado: {error}",
+            fr: "le paquet est endommagé : {error}",
+            de: "das Paket ist beschädigt: {error}",
+            ja: "パッケージが壊れています: {error}",
+            zh: "软件包已损坏：{error}",
+        )
+    };
 
     for entry in unpacked.entries().map_err(unreadable)? {
         let mut entry = entry.map_err(unreadable)?;
@@ -199,16 +260,32 @@ pub fn extract(archive: &[u8], inner: &str, into: &Path, limits: Limits) -> Resu
         }
         let target = rest.iter().fold(into.to_path_buf(), |path, part| path.join(part));
         if kind.is_dir() {
-            std::fs::create_dir_all(&target).map_err(|error| format!("no pude crear {}: {error}", target.display()))?;
+            std::fs::create_dir_all(&target).map_err(|error| crate::files::uncreated(&target, error))?;
             continue;
         }
         files += 1;
         bytes += entry.size();
         if files > limits.files {
-            return Err(format!("tiene más de {} ficheros", limits.files));
+            return Err(said!(
+                en: "it has more than {count} files",
+                es: "tiene más de {count} ficheros",
+                fr: "il contient plus de {count} fichiers",
+                de: "es enthält mehr als {count} Dateien",
+                ja: "ファイルが {count} 個を超えています",
+                zh: "文件超过 {count} 个",
+                count = limits.files,
+            ));
         }
         if bytes > limits.bytes {
-            return Err(format!("pasa de {} MB al descomprimir", limits.bytes / MEGABYTE));
+            return Err(said!(
+                en: "it’s over {cap} MB once unpacked",
+                es: "pasa de {cap} MB al descomprimir",
+                fr: "il dépasse {cap} Mo une fois décompressé",
+                de: "entpackt ist es größer als {cap} MB",
+                ja: "展開すると {cap} MB を超えます",
+                zh: "解压后超过 {cap} MB",
+                cap = limits.bytes / MEGABYTE,
+            ));
         }
         let mut contents = Vec::with_capacity(entry.size() as usize);
         entry.read_to_end(&mut contents).map_err(unreadable)?;
@@ -216,7 +293,7 @@ pub fn extract(archive: &[u8], inner: &str, into: &Path, limits: Limits) -> Resu
     }
 
     if files == 0 && !wanted.is_empty() {
-        return Err(format!("no existe {inner} en el repositorio"));
+        return Err(not_in_repository(inner));
     }
     Ok(files)
 }
@@ -258,20 +335,45 @@ fn slashed(path: &Path) -> String {
 pub fn read(folder: &Path, relative: &str) -> Result<String, String> {
     let inside = inner_path(relative)?;
     let path = folder.join(&inside);
-    let meta = std::fs::symlink_metadata(&path).map_err(|_| format!("no existe {relative}"))?;
+    let meta = std::fs::symlink_metadata(&path).map_err(|_| {
+        said!(
+            en: "{relative} doesn’t exist",
+            es: "no existe {relative}",
+            fr: "{relative} n’existe pas",
+            de: "{relative} existiert nicht",
+            ja: "{relative} は存在しません",
+            zh: "{relative} 不存在",
+        )
+    })?;
     if !meta.is_file() {
-        return Err(format!("{relative} no es un fichero"));
+        return Err(crate::files::not_a_file(relative));
     }
     if meta.len() > READ_CAP {
-        return Err(format!("{relative} es demasiado grande para mostrarlo"));
+        return Err(said!(
+            en: "{relative} is too big to show",
+            es: "{relative} es demasiado grande para mostrarlo",
+            fr: "{relative} est trop volumineux pour être affiché",
+            de: "{relative} ist zu groß zum Anzeigen",
+            ja: "{relative} は大きすぎて表示できません",
+            zh: "{relative} 太大，无法显示",
+        ));
     }
-    let bytes = std::fs::read(&path).map_err(|error| format!("no pude leer {relative}: {error}"))?;
-    String::from_utf8(bytes).map_err(|_| format!("{relative} no es texto"))
+    let bytes = std::fs::read(&path).map_err(|error| crate::files::unread(relative, error))?;
+    String::from_utf8(bytes).map_err(|_| {
+        said!(
+            en: "{relative} isn’t text",
+            es: "{relative} no es texto",
+            fr: "{relative} n’est pas du texte",
+            de: "{relative} ist kein Text",
+            ja: "{relative} はテキストではありません",
+            zh: "{relative} 不是文本",
+        )
+    })
 }
 
 pub fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
     for row in files(from) {
-        let contents = std::fs::read(from.join(&row.path)).map_err(|error| format!("no pude leer {}: {error}", row.path))?;
+        let contents = std::fs::read(from.join(&row.path)).map_err(|error| crate::files::unread(&row.path, error))?;
         write(&to.join(&row.path), &contents)?;
     }
     Ok(())
@@ -301,6 +403,7 @@ fn prune(parent: &Path, keep: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sens_agent::language::{Language, speaking};
     use flate2::Compression;
     use flate2::write::GzEncoder;
     use serde_json::json;
@@ -369,7 +472,7 @@ mod tests {
             json!({ "source": "archive", "url": "https://x/y.zip" }),
             json!(42),
         ] {
-            assert_eq!(wanted(&source, &catalog()).unwrap_err(), UNSUPPORTED);
+            assert_eq!(wanted(&source, &catalog()).unwrap_err(), unsupported());
         }
         assert!(wanted(&json!("../fuera"), &catalog()).is_err());
         assert!(wanted(&json!({ "source": "git-subdir", "url": "o/r", "path": "../x" }), &catalog()).is_err());
@@ -430,9 +533,13 @@ mod tests {
             ("t/p/b", tar::EntryType::Regular, b"12345"),
             ("t/p/c", tar::EntryType::Regular, b"12345"),
         ]);
-        assert!(extract(&archive, "p", &root.join("1"), Limits { files: 2, bytes: 1_000 }).unwrap_err().contains("más de 2"));
+        assert!(extract(&archive, "p", &root.join("1"), Limits { files: 2, bytes: 1_000 }).unwrap_err().contains("more than 2"));
         assert!(extract(&archive, "p", &root.join("2"), Limits { files: 10, bytes: 12 }).is_err());
-        assert!(extract(&archive, "nada", &root.join("3"), LIMITS).unwrap_err().contains("no existe"));
+        assert!(extract(&archive, "nada", &root.join("3"), LIMITS).unwrap_err().contains("doesn’t exist"));
+        let spoken = speaking(Language::Es, || extract(&archive, "p", &root.join("4"), Limits { files: 2, bytes: 1_000 }));
+        assert_eq!(spoken.unwrap_err(), "tiene más de 2 ficheros");
+        let spoken = speaking(Language::Zh, || extract(&archive, "nada", &root.join("5"), LIMITS));
+        assert_eq!(spoken.unwrap_err(), "仓库中不存在 nada");
     }
 
     #[test]
@@ -443,7 +550,7 @@ mod tests {
         write(&root.parent().unwrap().join("sens-snapshot-secreto.txt"), b"x").unwrap();
 
         assert_eq!(read(&root, "a.md").unwrap(), "hola");
-        assert!(read(&root, "b.bin").unwrap_err().contains("no es texto"));
+        assert!(read(&root, "b.bin").unwrap_err().contains("isn’t text"));
         assert!(read(&root, "../sens-snapshot-secreto.txt").is_err());
         assert!(read(&root, "nada.md").is_err());
     }

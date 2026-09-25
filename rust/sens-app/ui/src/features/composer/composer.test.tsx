@@ -84,7 +84,7 @@ describe("the composer", () => {
     render(<Composer />);
     expect(document.getElementById("crew")?.textContent).toBe("Sonnet");
     expect(currentSettings()).toEqual({ provider: "claude", model: "claude-sonnet", effort: "medium", thinking: true, mode: "default" });
-    act(() => noteLimits({ five_hour: { utilization: 0.42 } }));
+    act(() => noteLimits({ kind: "limits", status: "allowed", window: "", utilization: null, resetsAt: null, threshold: null, overage: null, windows: { five_hour: { utilization: 0.42, resetsAt: null } } }));
     expect(accountLine()).toEqual({ text: "Suscripción Max · claude.ai · ada@example.com · 42 % usado en 5 h", warn: false });
   });
 
@@ -92,7 +92,8 @@ describe("the composer", () => {
     render(<Composer />);
     expect((button("Enviar") as HTMLButtonElement).disabled).toBe(true);
     act(() => focused().desk.setState({ attached: [{ path: "src/app.ts", name: "app.ts", bytes: 2048, outside: false }] }));
-    expect(screen.getByText("src/app.ts", { selector: ".clip span" })).toBeTruthy();
+    expect(screen.getByText("app.ts", { selector: ".clip-head" })).toBeTruthy();
+    expect(screen.getByText("TS · 2 KB", { selector: ".clip-meta" })).toBeTruthy();
     fireEvent.change(field(), { target: { value: "  Revisa esto  " } });
     await act(async () => fireEvent.keyDown(field(), { key: "Enter" }));
     expect(ipc.commands.chatSend).toHaveBeenCalledWith("C:/demo", "s1", { text: "Revisa esto", files: ["src/app.ts"], images: [] }, currentSettings());

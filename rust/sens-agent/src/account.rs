@@ -2,7 +2,8 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
-use crate::process::{CLAUDE, claude, unlaunched};
+use crate::process::{CLAUDE, claude, launched, unlaunched};
+use crate::said;
 
 const FIRST_PARTY: &str = "firstParty";
 const BEARER: &str = "ANTHROPIC_AUTH_TOKEN";
@@ -53,16 +54,26 @@ impl Door {
     }
 }
 
-pub fn read() -> Result<Account, String> {
-    let answer = claude().args(["auth", "status", "--json"]).output().map_err(unlaunched)?;
+pub fn read() -> Result<Option<Account>, String> {
+    let Some(answer) = launched(claude().args(["auth", "status", "--json"]).output())? else {
+        return Ok(None);
+    };
 
     let reported: Reported = serde_json::from_slice(&answer.stdout).map_err(|_| {
         let complaint = String::from_utf8_lossy(&answer.stderr);
-        format!("{CLAUDE} no dijo con qué cuenta entra: {}", complaint.trim())
+        let complaint = complaint.trim();
+        said!(
+            en: "{CLAUDE} didn’t say which account it signs in with: {complaint}",
+            es: "{CLAUDE} no dijo con qué cuenta entra: {complaint}",
+            fr: "{CLAUDE} n’a pas indiqué avec quel compte il se connecte : {complaint}",
+            de: "{CLAUDE} hat nicht angegeben, mit welchem Konto es angemeldet ist: {complaint}",
+            ja: "{CLAUDE} がサインインしているアカウントを返しませんでした: {complaint}",
+            zh: "{CLAUDE} 没有说明它用哪个账号登录：{complaint}",
+        )
     })?;
 
     let bearer = std::env::var_os(BEARER).is_some_and(|value| !value.is_empty());
-    Ok(judge(reported, bearer))
+    Ok(Some(judge(reported, bearer)))
 }
 
 fn judge(reported: Reported, bearer: bool) -> Account {
@@ -105,7 +116,14 @@ pub fn version() -> Result<String, String> {
     let version = said.split_whitespace().next().unwrap_or_default();
     match answer.status.success() && !version.is_empty() {
         true => Ok(version.to_string()),
-        false => Err(format!("{CLAUDE} no dijo su versión")),
+        false => Err(said!(
+            en: "{CLAUDE} didn’t report its version",
+            es: "{CLAUDE} no dijo su versión",
+            fr: "{CLAUDE} n’a pas indiqué sa version",
+            de: "{CLAUDE} hat seine Version nicht angegeben",
+            ja: "{CLAUDE} がバージョンを返しませんでした",
+            zh: "{CLAUDE} 没有返回版本号",
+        )),
     }
 }
 
@@ -113,15 +131,31 @@ pub fn sign_in(door: Door) -> Result<(), String> {
     let finished = login_window(door)?.status().map_err(unlaunched)?;
     match finished.success() {
         true => Ok(()),
-        false => Err("no terminaste el inicio de sesión".into()),
+        false => Err(said!(
+            en: "you didn’t finish signing in",
+            es: "no terminaste el inicio de sesión",
+            fr: "vous n’avez pas terminé la connexion",
+            de: "du hast die Anmeldung nicht abgeschlossen",
+            ja: "サインインが完了していません",
+            zh: "登录尚未完成",
+        )),
     }
 }
 
 pub fn sign_out() -> Result<(), String> {
     let answer = claude().args(["auth", "logout"]).output().map_err(unlaunched)?;
+    let complaint = String::from_utf8_lossy(&answer.stderr);
+    let complaint = complaint.trim();
     match answer.status.success() {
         true => Ok(()),
-        false => Err(format!("{CLAUDE} no cerró la sesión: {}", String::from_utf8_lossy(&answer.stderr).trim())),
+        false => Err(said!(
+            en: "{CLAUDE} didn’t sign out: {complaint}",
+            es: "{CLAUDE} no cerró la sesión: {complaint}",
+            fr: "{CLAUDE} ne s’est pas déconnecté : {complaint}",
+            de: "{CLAUDE} hat sich nicht abgemeldet: {complaint}",
+            ja: "{CLAUDE} からサインアウトできませんでした: {complaint}",
+            zh: "{CLAUDE} 未能退出登录：{complaint}",
+        )),
     }
 }
 
@@ -137,7 +171,15 @@ fn login_window(door: Door) -> Result<Command, String> {
 
 #[cfg(not(windows))]
 fn login_window(door: Door) -> Result<Command, String> {
-    Err(format!("abre una terminal y ejecuta {CLAUDE} auth login {}", door.flag()))
+    let flag = door.flag();
+    Err(said!(
+        en: "open a terminal and run {CLAUDE} auth login {flag}",
+        es: "abre una terminal y ejecuta {CLAUDE} auth login {flag}",
+        fr: "ouvrez un terminal et exécutez {CLAUDE} auth login {flag}",
+        de: "öffne ein Terminal und führe {CLAUDE} auth login {flag} aus",
+        ja: "ターミナルを開いて {CLAUDE} auth login {flag} を実行してください",
+        zh: "打开终端并运行 {CLAUDE} auth login {flag}",
+    ))
 }
 
 #[cfg(test)]

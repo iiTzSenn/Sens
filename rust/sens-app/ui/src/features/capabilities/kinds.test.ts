@@ -106,6 +106,14 @@ describe("explore list", () => {
     expect(byName(found)).toEqual(["a", "b", "c", "d"]);
   });
 
+  it("keeps one section when asked, and counts from everything that matched", () => {
+    const list = [listing("sql", { description: "Query your database" }), listing("pay", { description: "Payments and invoices" })];
+    const { matched, found } = exploreList(list, [], "", "all", "all", keep, "finance");
+    expect(byName(matched)).toEqual(["sql", "pay"]);
+    expect(byName(found)).toEqual(["pay"]);
+    expect(byName(exploreList(list, [], "", "all", "all", keep, "home").found)).toEqual(["sql", "pay"]);
+  });
+
   it("only asks skills.sh when skills can show up", () => {
     expect(searchesSkillsSh("all", "all")).toBe(true);
     expect(searchesSkillsSh("skill", "skillsSh")).toBe(true);

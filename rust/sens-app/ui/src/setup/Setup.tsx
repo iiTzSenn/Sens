@@ -1,27 +1,35 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStore } from "zustand";
+import { looks, shared } from "../shared/copy";
+import { LANGUAGES, language, localeNow } from "../shared/i18n";
 import { Icon } from "../shared/Icon";
 import { ICONS } from "../shared/icons.js";
-import { ACCENTS } from "../shared/look";
+import { LanguagePicker } from "../shared/LanguagePicker";
+import { accentName } from "../shared/look";
 import { AccentPicker, ModePicker } from "../shared/LookPicker";
 import { StoneCanvas } from "../shared/StoneCanvas";
 import type { StoneState } from "../shared/stone";
+import { t } from "./copy";
 import { setup, type SetupState } from "./ipc";
 import {
   back,
   cancel,
+  chooseLanguage,
   chooseLook,
   choosing,
   closeApp,
   compare,
   customize,
   installer,
+  leaveLanguage,
   leaveLook,
   openSens,
   pickDir,
   quit,
   run,
+  speaking,
+  toLanguage,
   toLook,
   toggleDetails,
   unattended,
@@ -30,17 +38,16 @@ import {
 } from "./store";
 
 const TAIL = 4;
-const number = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 1 });
 
 function bytes(size: number) {
-  const units = ["B", "KB", "MB", "GB", "TB"];
+  const number = new Intl.NumberFormat(localeNow(), { maximumFractionDigits: 1 });
   let value = size;
   let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
+  while (value >= 1024 && unit < 4) {
     value /= 1024;
     unit += 1;
   }
-  return `${number.format(value >= 100 ? Math.round(value) : value)} ${units[unit]}`;
+  return `${number.format(value >= 100 ? Math.round(value) : value)} ${t.unit(unit)}`;
 }
 
 function stoneFor(screen: Screen, leaving: boolean, opening: boolean): StoneState {
@@ -53,25 +60,25 @@ function stoneFor(screen: Screen, leaving: boolean, opening: boolean): StoneStat
 }
 
 function welcomeWords(info: SetupState): [string, string, string] {
-  if (info.mode === "uninstall") return ["Desinstalar Sens.", "Se quita la aplicación. Tus proyectos y sus sesiones no se tocan.", "Desinstalar"];
+  if (info.mode === "uninstall") return [t.uninstallTitle, t.uninstallLead, t.uninstallGo];
   const had = info.installed;
-  if (!had) return ["Instala Sens.", "Todo empieza con claridad.", "Empezar"];
+  if (!had) return [t.installTitle, t.installLead, t.installGo];
   const order = compare(had.version, info.version);
-  if (order < 0) return ["Actualiza Sens.", `Tienes la ${had.version}. Esta es la ${info.version}.`, "Actualizar Sens"];
-  if (order === 0) return ["Reinstala Sens.", `Ya tienes la ${info.version}.`, "Reinstalar Sens"];
-  return ["Ya tienes una Sens más nueva.", `Tienes la ${had.version}; esta es la ${info.version}.`, "Instalar esta versión"];
+  if (order < 0) return [t.updateTitle, t.updateLead(had.version, info.version), t.updateGo];
+  if (order === 0) return [t.reinstallTitle, t.reinstallLead(info.version), t.reinstallGo];
+  return [t.newerTitle, t.newerLead(had.version, info.version), t.newerGo];
 }
 
 function busyTitle(info: SetupState) {
-  if (info.mode === "uninstall") return "Desinstalando Sens";
-  if (info.mode === "update") return "Actualizando Sens";
-  return "Preparando Sens";
+  if (info.mode === "uninstall") return t.uninstalling;
+  if (info.mode === "update") return t.updating;
+  return t.preparing;
 }
 
 function doneWords(info: SetupState): [string, string] {
-  if (info.mode === "uninstall") return ["Sens se ha desinstalado.", "Tus proyectos y sus sesiones siguen donde estaban."];
-  if (unattended()) return [info.mode === "update" ? "Sens está al día." : "Sens está lista.", info.relaunch ? "Abriendo Sens…" : "Ya puedes abrirla."];
-  return ["Sens está lista.", info.installed ? "Ábrela y sigue donde lo dejaste." : "En un minuto la dejamos a tu gusto."];
+  if (info.mode === "uninstall") return [t.uninstalled, t.stillThere];
+  if (unattended()) return [info.mode === "update" ? t.upToDate : t.ready, info.relaunch ? t.opening : t.canOpen];
+  return [t.ready, info.installed ? t.pickUp : t.tailor];
 }
 
 function useCount(target: number) {
@@ -118,6 +125,11 @@ function Go({
   );
 }
 
+export function Installer() {
+  const current = useStore(language, (s) => s.current);
+  return <Setup key={current} />;
+}
+
 export function Setup() {
   const info = useStore(installer, (s) => s.info);
   const screen = useStore(installer, (s) => s.screen);
@@ -131,6 +143,7 @@ export function Setup() {
         <StoneCanvas state={stoneFor(screen, info.mode === "uninstall", opening)} replay={screen === "look" ? accent : ""} />
       </figure>
       <main className="words" key={screen}>
+        {screen === "language" && <LanguageStep />}
         {screen === "welcome" && <Welcome info={info} />}
         {screen === "custom" && <Custom info={info} />}
         {screen === "look" && <LookStep />}
@@ -151,14 +164,14 @@ function Broken() {
       <Bar />
       <main className="words">
         <section className="screen">
-          <h2>No se pudo abrir el instalador.</h2>
+          <h2>{t.broken}</h2>
           <p className="fault" role="alert">
             <Icon svg={ICONS.info} />
             <span>{fault}</span>
           </p>
           <div className="actions">
             <Go look="plain" focus onClick={() => setup.quit()}>
-              Cerrar
+              {shared.close}
             </Go>
           </div>
         </section>
@@ -174,14 +187,32 @@ function Bar() {
         sens
       </b>
       <div className="win">
-        <button type="button" aria-label="Minimizar" onClick={() => getCurrentWindow().minimize()}>
+        <button type="button" aria-label={t.minimize} onClick={() => getCurrentWindow().minimize()}>
           <Icon svg={ICONS.minimize} />
         </button>
-        <button type="button" className="shut" aria-label="Cerrar" onClick={quit}>
+        <button type="button" className="shut" aria-label={shared.close} onClick={quit}>
           <Icon svg={ICONS.shutWindow} />
         </button>
       </div>
     </header>
+  );
+}
+
+function LanguageStep() {
+  const current = useStore(language, (s) => s.current);
+  return (
+    <section className="screen">
+      <h2>{t.languageTitle}</h2>
+      <p className="lead small">{t.languageLead}</p>
+      <div className="look-field">
+        <LanguagePicker chosen={current} pick={chooseLanguage} />
+      </div>
+      <div className="actions">
+        <Go focus onClick={leaveLanguage}>
+          {t.next}
+        </Go>
+      </div>
+    </section>
   );
 }
 
@@ -196,7 +227,7 @@ function Welcome({ info }: { info: SetupState }) {
       {leaving && (
         <label className="check">
           <input type="checkbox" checked={removeData} onChange={(event) => installer.setState({ removeData: event.target.checked })} />
-          <span>Borrar también mis ajustes, skills y plugins de Sens</span>
+          <span>{t.removeData}</span>
         </label>
       )}
       <div className="actions">
@@ -205,13 +236,13 @@ function Welcome({ info }: { info: SetupState }) {
         </Go>
         {leaving && (
           <button type="button" className="ghost" onClick={() => setup.quit()}>
-            Cancelar
+            {shared.cancel}
           </button>
         )}
       </div>
       {!leaving && (
         <button type="button" className="link" onClick={customize}>
-          Personalizar instalación
+          {t.customize}
         </button>
       )}
     </section>
@@ -224,38 +255,37 @@ function Custom({ info }: { info: SetupState }) {
   const startMenu = useStore(installer, (s) => s.startMenu);
   const place = useStore(installer, (s) => s.place);
   const problem = useStore(installer, (s) => s.placeFault);
-  const free = place?.free != null ? ` · libres ${bytes(place.free)}` : "";
   return (
     <section className="screen">
-      <h2>Personalizar</h2>
+      <h2>{t.custom}</h2>
       <div className="field-row">
-        <span className="label">Carpeta</span>
+        <span className="label">{t.folder}</span>
         <div className="folder">
           <span className="path" title={dir}>
             {dir}
           </span>
           <button type="button" className="ghost small" disabled={Boolean(info.installed)} onClick={pickDir}>
-            Cambiar…
+            {t.change}
           </button>
         </div>
         <p className="hint" data-mood={problem ? "fault" : ""}>
-          {problem || (place ? `Necesita ${bytes(info.size)}${free}` : "")}
+          {problem || (place ? t.needs(bytes(info.size), place.free != null ? bytes(place.free) : "") : "")}
         </p>
       </div>
       <label className="check">
         <input type="checkbox" checked={desktop} onChange={(event) => installer.setState({ desktop: event.target.checked })} />
-        <span>Acceso directo en el escritorio</span>
+        <span>{t.desktop}</span>
       </label>
       <label className="check">
         <input type="checkbox" checked={startMenu} onChange={(event) => installer.setState({ startMenu: event.target.checked })} />
-        <span>Añadir al menú Inicio</span>
+        <span>{t.startMenu}</span>
       </label>
       <div className="actions">
         <Go focus disabled={Boolean(problem)} onClick={choosing() ? toLook : run}>
-          {choosing() ? "Continuar" : "Instalar Sens"}
+          {choosing() ? t.next : t.install}
         </Go>
         <button type="button" className="ghost" onClick={back}>
-          Volver
+          {t.back}
         </button>
       </div>
     </section>
@@ -264,27 +294,26 @@ function Custom({ info }: { info: SetupState }) {
 
 function LookStep() {
   const chosen = useStore(installer, (s) => s.look);
-  const named = ACCENTS.find((one) => one.id === chosen.accent)!.label;
   return (
     <section className="screen">
-      <h2>Elige cómo se ve.</h2>
-      <p className="lead small">Sens se abrirá así. Puedes cambiarlo cuando quieras en Ajustes.</p>
+      <h2>{t.lookTitle}</h2>
+      <p className="lead small">{t.lookLead}</p>
       <div className="look-field">
-        <span className="label">Modo</span>
+        <span className="label">{looks.mode}</span>
         <ModePicker chosen={chosen.mode} pick={(mode) => chooseLook({ ...chosen, mode })} />
       </div>
       <div className="look-field">
         <span className="label">
-          Color <b>{named}</b>
+          {looks.color} <b>{accentName(chosen.accent)}</b>
         </span>
         <AccentPicker chosen={chosen.accent} pick={(accent) => chooseLook({ ...chosen, accent })} />
       </div>
       <div className="actions">
         <Go focus onClick={run}>
-          Instalar Sens
+          {t.install}
         </Go>
         <button type="button" className="ghost" onClick={leaveLook}>
-          Volver
+          {t.back}
         </button>
       </div>
     </section>
@@ -293,7 +322,7 @@ function LookStep() {
 
 function Busy({ info }: { info: SetupState }) {
   const progress = useStore(installer, (s) => s.progress);
-  const status = useStore(installer, (s) => s.status);
+  const step = useStore(installer, (s) => s.step);
   const percent = Math.round(Math.min(Math.max(progress, 0), 1) * 100);
   const shown = useCount(percent);
   return (
@@ -301,13 +330,13 @@ function Busy({ info }: { info: SetupState }) {
       <h2>{busyTitle(info)}</h2>
       {info.mode === "update" && info.installed && <p className="versions">{`${info.installed.version} → ${info.version}`}</p>}
       <div className="meter">
-        <div className="track" role="progressbar" aria-label="Progreso" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+        <div className="track" role="progressbar" aria-label={t.progress} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
           <i style={{ width: `${percent}%` }} />
         </div>
-        <span className="percent">{`${shown} %`}</span>
+        <span className="percent">{t.percent(shown)}</span>
       </div>
       <p className="status" role="status">
-        {status}
+        {t.steps[step]}
       </p>
       <Log />
     </section>
@@ -334,23 +363,24 @@ function Log() {
 
 function Running() {
   const closing = useStore(installer, (s) => s.closing);
+  const closeFault = useStore(installer, (s) => s.closeFault);
   const force = useStore(installer, (s) => s.force);
   return (
     <section className="screen">
-      <h2>Sens está abierta.</h2>
-      <p className="lead small">Ciérrala para seguir. Las sesiones que estén trabajando se detendrán.</p>
+      <h2>{t.open}</h2>
+      <p className="lead small">{t.openLead}</p>
       <div className="actions">
         <Go look="plain" focus onClick={() => closeApp(false)}>
-          Cerrar Sens
+          {t.closeSens}
         </Go>
         {force && (
           <button type="button" className="ghost" onClick={() => closeApp(true)}>
-            Forzar el cierre
+            {t.force}
           </button>
         )}
       </div>
       <p className="hint" role="status">
-        {closing}
+        {closing ? t[closing] : closeFault}
       </p>
     </section>
   );
@@ -370,15 +400,15 @@ function Done({ info }: { info: SetupState }) {
         <div className="actions">
           {leaving ? (
             <Go look="plain" focus onClick={() => setup.quit()}>
-              Cerrar
+              {shared.close}
             </Go>
           ) : (
             <>
               <Go focus busy={opening} onClick={openSens}>
-                {opening ? "Abriendo Sens…" : "Abrir Sens"}
+                {opening ? t.opening : t.openSens}
               </Go>
               <button type="button" className="ghost" disabled={opening} onClick={() => setup.quit()}>
-                Cerrar
+                {shared.close}
               </button>
             </>
           )}
@@ -394,20 +424,31 @@ function Failed() {
   const lines = useStore(installer, (s) => s.lines);
   return (
     <section className="screen">
-      <h2>No se pudo terminar.</h2>
+      <h2>{t.failed}</h2>
       <p className="fault" role="alert">
         <Icon svg={ICONS.info} />
         <span>{fault}</span>
       </p>
       <div className="actions">
         <Go look="plain" focus onClick={run}>
-          Reintentar
+          {shared.retry}
         </Go>
         <button type="button" className="ghost" onClick={() => navigator.clipboard.writeText(lines.join("\n"))}>
-          Copiar registro
+          {t.copyLog}
         </button>
       </div>
     </section>
+  );
+}
+
+function LanguageLink() {
+  const current = useStore(language, (s) => s.current);
+  const { name, tag } = LANGUAGES.find((one) => one.id === current)!;
+  return (
+    <button type="button" className="link small spoken" aria-label={t.languageIs(name)} onClick={toLanguage}>
+      <Icon svg={ICONS.globe} />
+      <span lang={tag}>{name}</span>
+    </button>
   );
 }
 
@@ -415,20 +456,20 @@ function Foot({ info, screen }: { info: SetupState; screen: Screen }) {
   const details = useStore(installer, (s) => s.details);
   const cancelling = useStore(installer, (s) => s.cancelling);
   const cancellable = (screen === "busy" || screen === "running") && info.mode !== "update";
+  const resting = screen === "language" || screen === "welcome" || screen === "custom" || screen === "look";
   return (
     <footer className="foot">
-      {(screen === "welcome" || screen === "custom" || screen === "look") && (
-        <span className="made">{[`Sens para Windows · v${info.version}`, info.demo ? "demo" : ""].filter(Boolean).join(" · ")}</span>
-      )}
+      {resting && <span className="made">{[t.made(info.version), info.demo ? t.demo : ""].filter(Boolean).join(" · ")}</span>}
+      {resting && screen !== "language" && speaking() && <LanguageLink />}
       {screen === "busy" && (
         <button type="button" className="link small" aria-expanded={details} aria-controls="log" onClick={toggleDetails}>
           <Icon svg={ICONS.open} />
-          Ver detalles
+          {t.details}
         </button>
       )}
       {cancellable && (
         <button type="button" className="ghost cancel" disabled={cancelling} onClick={cancel}>
-          {cancelling ? "Cancelando…" : "Cancelar"}
+          {cancelling ? t.cancelling : shared.cancel}
         </button>
       )}
     </footer>

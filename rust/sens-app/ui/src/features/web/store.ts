@@ -8,6 +8,7 @@ import { sheets } from "../../shared/sheets.js";
 import { warn as notice } from "../chat/state";
 import { project } from "../project/store";
 import { settingsSheet } from "../settings/sheet";
+import { t } from "./copy";
 
 export interface Said {
   level: string;
@@ -77,7 +78,7 @@ export function aim(typed: string) {
   if (!text) return;
   if (PLAIN_HTTP.test(text)) return aimSite(`http://${text}`);
   if (WEBBED.test(text)) return aimSite(text);
-  if (SCHEMED.test(text)) return warn("El navegador solo abre direcciones http y https.");
+  if (SCHEMED.test(text)) return warn(t.onlyWeb);
   const first = text.split(/[/\\?#]/)[0];
   if (HOST.test(first) && !PAGE.test(first)) return aimSite(`https://${text}`);
   const { work: root } = project.getState();

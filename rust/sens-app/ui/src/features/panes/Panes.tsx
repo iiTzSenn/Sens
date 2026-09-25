@@ -9,6 +9,7 @@ import { Thread } from "../chat/Thread";
 import { Composer } from "../composer/Composer";
 import { failRail, rail, titleOf } from "../rail/store";
 import { PaneContext } from "./context";
+import { t } from "./copy";
 import { slideShare } from "./motion";
 import { LEAST_WIDTH, SHARE_LEAST, SHARE_MOST, panes, share, type Pane } from "./store";
 import { Snap } from "./Snap";
@@ -71,7 +72,7 @@ function PaneHead({ pane }: { pane: Pane }) {
         {title}
       </span>
       {root && <span className="pane-folder">{stem(root)}</span>}
-      <button className="pane-close" title="Cerrar este panel" aria-label={`Cerrar ${title}`} onClick={() => closePane(pane)}>
+      <button className="pane-close" title={t.closePane} aria-label={t.closeNamed(title)} onClick={() => closePane(pane)}>
         <Icon svg={ICONS.dismiss} />
       </button>
     </header>
@@ -121,11 +122,11 @@ function Divider({ host }: { host: RefObject<HTMLDivElement | null> }) {
       className="split pane-split"
       role="separator"
       aria-orientation="vertical"
-      aria-label="Reparto entre las dos sesiones"
+      aria-label={t.divider}
       aria-valuemin={Math.round(SHARE_LEAST * 100)}
       aria-valuemax={Math.round(SHARE_MOST * 100)}
       aria-valuenow={Math.round(kept * 100)}
-      title="Arrastra para repartir · doble clic para igualar"
+      title={t.dividerHint}
       tabIndex={0}
       onDoubleClick={() => {
         slideShare(kept, 0.5);

@@ -3,10 +3,11 @@ import { createStore } from "zustand/vanilla";
 import { draft } from "../../app/session";
 import { commands, events } from "../../ipc/commands";
 import type { Adopted, Found, FoundProject, Imported } from "../../ipc/types";
-import { plural } from "../../shared/format.js";
+import { languageNow } from "../../shared/i18n";
 import { loadProfile, profile, saveProfileName } from "../profile/store";
 import { loadRail, rail } from "../rail/store";
 import { loadProviders } from "../settings/store";
+import { t } from "./copy";
 
 export type Step = "hello" | "name" | "claude" | "import" | "project" | "ready";
 
@@ -50,6 +51,7 @@ export const welcome = createStore(() => ({
   finished: false,
   adopted: null as Adopted | null,
   imported: null as Imported | null,
+  asksLanguage: false,
 }));
 
 const set = welcome.setState;
@@ -80,6 +82,7 @@ export function openWelcome(step: Step = "hello") {
     lines: [],
     adopted: null,
     imported: null,
+    asksLanguage: window.__SENS_LANGUAGE__ == null,
   });
   if (step === "import") scan();
 }
@@ -92,7 +95,11 @@ export function goTo(step: Step) {
   if (step === "ready") apply();
 }
 
-export const next = () => goTo(STEPS[STEPS.indexOf(welcome.getState().step) + 1] ?? "ready");
+export function next() {
+  const { step, asksLanguage } = welcome.getState();
+  if (step === "hello" && asksLanguage) commands.setLanguage(languageNow()).catch(() => {});
+  goTo(STEPS[STEPS.indexOf(step) + 1] ?? "ready");
+}
 
 export const setName = (name: string) => set({ name });
 
@@ -142,7 +149,7 @@ function settleFirst() {
 export const chooseFirst = (root: string) => set({ first: root });
 
 export async function pickFolder() {
-  const picked = await open({ directory: true, title: "Elige la carpeta del proyecto" });
+  const picked = await open({ directory: true, title: t.pickTitle });
   if (typeof picked !== "string") return;
   const name = picked.split(/[\\/]/).filter(Boolean).pop() ?? picked;
   set({ picked: { root: picked, name, last: Date.now() }, first: picked });
@@ -179,19 +186,19 @@ async function apply() {
   const roots = [...state.roots];
   const servers = [...state.servers];
 
-  await step("name", "Guardando tu nombre…", async () => {
+  await step("name", t.savingName, async () => {
     const name = state.name.trim();
     if (name === profile.getState().person.name.trim()) return null;
     await saveProfileName(name);
-    return { id: "name", said: name ? `Nombre guardado · ${name}` : "Sin nombre", mood: "done" };
+    return { id: "name", said: name ? t.nameSaved(name) : t.noName, mood: "done" };
   });
 
   if (roots.length) {
-    const stop = await events.welcome((done, total) => note({ id: "sessions", said: `Importando sesiones · ${done} de ${total}`, mood: "work" }));
-    await step("sessions", "Importando sesiones…", async () => {
+    const stop = await events.welcome((done, total) => note({ id: "sessions", said: t.importingCount(done, total), mood: "work" }));
+    await step("sessions", t.importing, async () => {
       const adopted = await commands.welcomeAdopt(roots);
       set({ adopted });
-      const said = `${plural(adopted.sessions, "sesión importada", "sesiones importadas")} en ${plural(adopted.projects, "proyecto", "proyectos")}`;
+      const said = t.imported(adopted.sessions, adopted.projects);
       if (!adopted.skipped.length) return { id: "sessions", said, mood: "done" };
       return { id: "sessions", said, mood: "warn", detail: detailOf(adopted.skipped, (one) => one.root) };
     });
@@ -199,11 +206,11 @@ async function apply() {
   }
 
   if (servers.length) {
-    await step("servers", "Añadiendo servidores MCP…", async () => {
+    await step("servers", t.addingServers, async () => {
       const where = [...new Set([...roots, state.first].filter(Boolean))];
       const imported = await commands.welcomeServers(servers, where);
       set({ imported });
-      const said = `${plural(imported.added.length, "servidor MCP añadido", "servidores MCP añadidos")}`;
+      const said = t.serversAdded(imported.added.length);
       if (!imported.skipped.length) return { id: "servers", said, mood: "done" };
       return { id: "servers", said, mood: "warn", detail: detailOf(imported.skipped, (one) => one.name) };
     });

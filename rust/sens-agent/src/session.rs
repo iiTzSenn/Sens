@@ -8,7 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::chat::Event;
+use crate::chat::{self, Event};
+use crate::said;
 
 const TITLE_LIMIT: usize = 56;
 
@@ -137,11 +138,67 @@ fn located(root: &Path, id: &str) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
+pub fn begun() -> String {
+    said!(
+        en: "this session has already started: its working folder can’t change",
+        es: "esta sesión ya empezó: su carpeta de trabajo no puede cambiar",
+        fr: "cette session a déjà commencé : son dossier de travail ne peut plus changer",
+        de: "diese Sitzung hat schon begonnen: ihr Arbeitsordner kann sich nicht mehr ändern",
+        ja: "このセッションはすでに始まっています。作業フォルダーは変更できません",
+        zh: "此会话已经开始：它的工作文件夹无法更改",
+    )
+}
+
+pub fn invalid(id: &str) -> String {
+    said!(
+        en: "{id} isn’t a valid session ID",
+        es: "{id} no es un identificador de sesión válido",
+        fr: "{id} n’est pas un identifiant de session valide",
+        de: "{id} ist keine gültige Sitzungs-ID",
+        ja: "{id} は有効なセッション ID ではありません",
+        zh: "{id} 不是有效的会话 ID",
+    )
+}
+
+fn unfound(id: &str) -> String {
+    said!(
+        en: "can’t find session {id}",
+        es: "no encuentro la sesión {id}",
+        fr: "session {id} introuvable",
+        de: "Sitzung {id} nicht gefunden",
+        ja: "セッション {id} が見つかりません",
+        zh: "找不到会话 {id}",
+    )
+}
+
+fn unwritten(error: std::io::Error) -> String {
+    said!(
+        en: "couldn’t write the session: {error}",
+        es: "no pude escribir la sesión: {error}",
+        fr: "impossible d’écrire la session : {error}",
+        de: "Sitzung konnte nicht geschrieben werden: {error}",
+        ja: "セッションを書き込めませんでした: {error}",
+        zh: "无法写入会话：{error}",
+    )
+}
+
+fn uncreated(folder: &Path, error: std::io::Error) -> String {
+    let folder = folder.display();
+    said!(
+        en: "couldn’t create {folder}: {error}",
+        es: "no pude crear {folder}: {error}",
+        fr: "impossible de créer {folder} : {error}",
+        de: "{folder} konnte nicht erstellt werden: {error}",
+        ja: "{folder} を作成できませんでした: {error}",
+        zh: "无法创建 {folder}：{error}",
+    )
+}
+
 fn named(id: &str) -> Result<(), String> {
     if is_uuid(id) {
         return Ok(());
     }
-    Err(format!("{id} no es un identificador de sesión válido"))
+    Err(invalid(id))
 }
 
 fn plain(id: &str) -> Result<(), String> {
@@ -151,7 +208,7 @@ fn plain(id: &str) -> Result<(), String> {
     if inside {
         return Ok(());
     }
-    Err(format!("{id} no es un identificador de sesión válido"))
+    Err(invalid(id))
 }
 
 pub fn open(root: &Path) -> Result<String, String> {
@@ -189,10 +246,19 @@ pub fn create(root: &Path, id: &str, entries: &[Entry]) -> Result<(), String> {
         .write(true)
         .create_new(true)
         .open(&path)
-        .map_err(|error| format!("no pude crear la sesión {id}: {error}"))?;
+        .map_err(|error| {
+            said!(
+                en: "couldn’t create session {id}: {error}",
+                es: "no pude crear la sesión {id}: {error}",
+                fr: "impossible de créer la session {id} : {error}",
+                de: "Sitzung {id} konnte nicht erstellt werden: {error}",
+                ja: "セッション {id} を作成できませんでした: {error}",
+                zh: "无法创建会话 {id}：{error}",
+            )
+        })?;
     handle.write_all(text.as_bytes()).map_err(|error| {
         let _ = std::fs::remove_file(&path);
-        format!("no pude escribir la sesión: {error}")
+        unwritten(error)
     })
 }
 
@@ -202,8 +268,7 @@ pub fn exists(root: &Path, id: &str) -> bool {
 
 fn prepare(root: &Path) -> Result<(), String> {
     let folder = dir(root);
-    std::fs::create_dir_all(&folder)
-        .map_err(|error| format!("no pude crear {}: {error}", folder.display()))?;
+    std::fs::create_dir_all(&folder).map_err(|error| uncreated(&folder, error))?;
     keep_from_git(root);
     Ok(())
 }
@@ -221,18 +286,34 @@ fn append_to(path: &Path, id: &str, entry: &Entry) -> Result<(), String> {
         .create(true)
         .append(true)
         .open(path)
-        .map_err(|error| format!("no pude abrir la sesión {id}: {error}"))?;
+        .map_err(|error| {
+            said!(
+                en: "couldn’t open session {id}: {error}",
+                es: "no pude abrir la sesión {id}: {error}",
+                fr: "impossible d’ouvrir la session {id} : {error}",
+                de: "Sitzung {id} konnte nicht geöffnet werden: {error}",
+                ja: "セッション {id} を開けませんでした: {error}",
+                zh: "无法打开会话 {id}：{error}",
+            )
+        })?;
 
-    writeln!(handle, "{line}").map_err(|error| format!("no pude escribir la sesión: {error}"))
+    writeln!(handle, "{line}").map_err(unwritten)
 }
 
 pub fn entitle(root: &Path, id: &str, title: &str, by: Namer) -> Result<String, String> {
     plain(id)?;
     let title = shorten(title);
     if title.is_empty() {
-        return Err("el nombre no puede quedar vacío".into());
+        return Err(said!(
+            en: "the name can’t be empty",
+            es: "el nombre no puede quedar vacío",
+            fr: "le nom ne peut pas être vide",
+            de: "der Name darf nicht leer sein",
+            ja: "名前を空にすることはできません",
+            zh: "名称不能为空",
+        ));
     }
-    let path = located(root, id).ok_or_else(|| format!("no encuentro la sesión {id}"))?;
+    let path = located(root, id).ok_or_else(|| unfound(id))?;
     append_to(&path, id, &Entry::Titled { at: now(), title: title.clone(), by })?;
     Ok(title)
 }
@@ -277,7 +358,7 @@ pub fn has_tasks(root: &Path, id: &str) -> bool {
 pub fn isolate(root: &Path, id: &str, isolation: &Isolation) -> Result<(), String> {
     named(id)?;
     if has_tasks(root, id) {
-        return Err("esta sesión ya empezó: su carpeta de trabajo no puede cambiar".into());
+        return Err(begun());
     }
     append(
         root,
@@ -342,26 +423,43 @@ pub fn archive(root: &Path, id: &str, archived: bool) -> Result<(), String> {
         return if to.is_file() {
             Ok(())
         } else {
-            Err(format!("no encuentro la sesión {id}"))
+            Err(unfound(id))
         };
     }
     if let Some(folder) = to.parent() {
-        std::fs::create_dir_all(folder)
-            .map_err(|error| format!("no pude crear {}: {error}", folder.display()))?;
+        std::fs::create_dir_all(folder).map_err(|error| uncreated(folder, error))?;
     }
-    std::fs::rename(&from, &to).map_err(|error| format!("no pude mover la sesión {id}: {error}"))
+    std::fs::rename(&from, &to).map_err(|error| {
+        said!(
+            en: "couldn’t move session {id}: {error}",
+            es: "no pude mover la sesión {id}: {error}",
+            fr: "impossible de déplacer la session {id} : {error}",
+            de: "Sitzung {id} konnte nicht verschoben werden: {error}",
+            ja: "セッション {id} を移動できませんでした: {error}",
+            zh: "无法移动会话 {id}：{error}",
+        )
+    })
 }
 
 pub fn erase(root: &Path, id: &str) -> Result<(), String> {
     plain(id)?;
-    let path = located(root, id).ok_or_else(|| format!("no encuentro la sesión {id}"))?;
-    std::fs::remove_file(path).map_err(|error| format!("no pude eliminar la sesión {id}: {error}"))
+    let path = located(root, id).ok_or_else(|| unfound(id))?;
+    std::fs::remove_file(path).map_err(|error| {
+        said!(
+            en: "couldn’t delete session {id}: {error}",
+            es: "no pude eliminar la sesión {id}: {error}",
+            fr: "impossible de supprimer la session {id} : {error}",
+            de: "Sitzung {id} konnte nicht gelöscht werden: {error}",
+            ja: "セッション {id} を削除できませんでした: {error}",
+            zh: "无法删除会话 {id}：{error}",
+        )
+    })
 }
 
 pub fn summarize(id: &str, entries: &[Entry]) -> Summary {
     let mut summary = Summary {
         id: id.to_string(),
-        title: "Sesión vacía".into(),
+        title: said!(en: "Empty session", es: "Sesión vacía", fr: "Session vide", de: "Leere Sitzung", ja: "空のセッション", zh: "空会话"),
         started_at: 0,
         tasks: 0,
         archived: false,
@@ -371,9 +469,9 @@ pub fn summarize(id: &str, entries: &[Entry]) -> Summary {
     for entry in entries {
         match entry {
             Entry::Opened { at, .. } => summary.started_at = *at,
-            Entry::Task { at, text, .. } => {
+            Entry::Task { at, text, files, images } => {
                 if summary.tasks == 0 {
-                    summary.title = shorten(text);
+                    summary.title = headline(text, files, images);
                     if summary.started_at == 0 {
                         summary.started_at = *at;
                     }
@@ -391,6 +489,23 @@ pub fn summarize(id: &str, entries: &[Entry]) -> Summary {
     summary
 }
 
+fn headline(text: &str, files: &[String], images: &[String]) -> String {
+    let said = shorten(text);
+    if !said.is_empty() {
+        return said;
+    }
+    let named: Vec<&str> = files
+        .iter()
+        .filter_map(|file| file.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next())
+        .filter(|name| !name.is_empty())
+        .collect();
+    match (named.is_empty(), images.is_empty()) {
+        (false, _) => shorten(&named.join(", ")),
+        (true, false) => chat::picture(),
+        (true, true) => said,
+    }
+}
+
 pub fn shorten(text: &str) -> String {
     let clean = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if clean.chars().count() <= TITLE_LIMIT {
@@ -403,6 +518,7 @@ pub fn shorten(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::language::{Language, speaking};
 
     fn temp_root(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!("sens-session-{name}"));
@@ -565,10 +681,37 @@ mod tests {
         let root = temp_root("rename-refused");
         let id = open(&root).unwrap();
 
-        assert!(entitle(&root, &id, "   ", Namer::User).unwrap_err().contains("vacío"));
-        assert!(entitle(&root, &fresh_id(), "x", Namer::User).unwrap_err().contains("no encuentro"));
+        let refused = |id: &str, title: &str| speaking(Language::Es, || entitle(&root, id, title, Namer::User).unwrap_err());
+
+        assert!(refused(&id, "   ").contains("vacío"));
+        assert!(refused(&fresh_id(), "x").contains("no encuentro"));
         assert!(entitle(&root, "../fuera", "x", Namer::User).is_err());
         assert_eq!(read(&root, &id).len(), 1);
+    }
+
+    #[test]
+    fn what_a_session_says_follows_the_language_spoken() {
+        let root = temp_root("spoken");
+        let missing = fresh_id();
+
+        assert_eq!(speaking(Language::Es, || summarize("s", &[]).title), "Sesión vacía");
+        assert_eq!(speaking(Language::En, || summarize("s", &[]).title), "Empty session");
+        assert_eq!(speaking(Language::Es, || erase(&root, &missing)), Err(format!("no encuentro la sesión {missing}")));
+        assert_eq!(speaking(Language::Ja, || erase(&root, &missing)), Err(format!("セッション {missing} が見つかりません")));
+    }
+
+    #[test]
+    fn a_first_message_of_only_files_or_pictures_is_titled_by_what_it_carries() {
+        let task = |text: &str, files: &[&str], images: &[&str]| Entry::Task {
+            at: 1,
+            text: text.into(),
+            files: files.iter().map(|file| file.to_string()).collect(),
+            images: images.iter().map(|image| image.to_string()).collect(),
+        };
+
+        assert_eq!(summarize("s", &[task("", &["docs/informe.pdf", "C:\\datos\\"], &[])]).title, "informe.pdf, datos");
+        assert_eq!(speaking(Language::Es, || summarize("s", &[task(" ", &[], &[".sens/artifacts/s/imagen-1.png"])]).title), "[imagen]");
+        assert_eq!(summarize("s", &[task("revisa esto", &["a.rs"], &[])]).title, "revisa esto");
     }
 
     #[test]

@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Entry } from "../../ipc/types";
+import { showLanguage } from "../../shared/i18n";
 import { noteEdit, project } from "../project/store";
 import { files, forgetTree, loadFiles, revealFile } from "./store";
 import { Tree } from "./Tree";
@@ -29,7 +30,10 @@ beforeEach(() => {
   ipc.commands.openFile.mockReset().mockResolvedValue({ kind: "text", text: "export const app = 1;" });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  showLanguage("es");
+});
 
 const names = () => [...document.querySelectorAll(".filerow .name")].map((name) => name.textContent);
 const row = (name: string) => screen.getByText(name, { selector: ".filerow .name" }).closest("button")!;
@@ -117,5 +121,13 @@ describe("file tree", () => {
     act(() => project.setState({ root: "", work: "" }));
     render(<Tree />);
     expect(screen.getByText("Sin carpeta.")).toBeTruthy();
+  });
+
+  it("speaks the language shown", async () => {
+    showLanguage("de");
+    ipc.commands.folder.mockResolvedValue([]);
+    await open();
+    expect(screen.getByLabelText("Im Ordner suchen").getAttribute("placeholder")).toBe("Im Ordner suchen…");
+    expect(screen.getByText("Leerer Ordner.")).toBeTruthy();
   });
 });

@@ -2,6 +2,8 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Found, ProviderState } from "../../ipc/types";
+import { useStore } from "zustand";
+import { language, languageNow, showLanguage } from "../../shared/i18n";
 import { profile } from "../profile/store";
 import { rail } from "../rail/store";
 import { settings } from "../settings/store";
@@ -18,6 +20,7 @@ const ipc = vi.hoisted(() => ({
     welcomeServers: vi.fn(),
     providersState: vi.fn(),
     workspaces: vi.fn(),
+    setLanguage: vi.fn(),
   },
   heard: { welcome: (_done: number, _total: number) => {} },
   draft: vi.fn(async () => {}),
@@ -43,6 +46,11 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 
 const DAY = 86_400_000;
+
+function Spoken() {
+  const current = useStore(language, (s) => s.current);
+  return <Welcome key={current} />;
+}
 
 const claude = (over: Partial<ProviderState> = {}): ProviderState => ({
   id: "claude",
@@ -100,7 +108,11 @@ beforeEach(() => {
   ipc.commands.welcomeServers.mockResolvedValue({ added: ["linear"], skipped: [] });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  showLanguage("es");
+  delete window.__SENS_LANGUAGE__;
+});
 
 describe("the welcome", () => {
   it("opens only for someone the profile says has not seen it", () => {
@@ -163,7 +175,35 @@ describe("the welcome", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("offers the language on its first step when none was ever chosen, and keeps the one shown", async () => {
+    openWelcome();
+    render(<Spoken />);
+
+    expect(screen.getByRole("radio", { name: "Español" })).toHaveProperty("checked", true);
+    await act(async () => fireEvent.click(screen.getByRole("radio", { name: "English" })));
+    expect(ipc.commands.setLanguage).toHaveBeenCalledWith("en");
+    expect(languageNow()).toBe("en");
+    expect(screen.getByRole("heading", { name: "Welcome." })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "English" })).toHaveProperty("checked", true);
+
+    ipc.commands.setLanguage.mockClear();
+    await press(/Start/);
+    expect(ipc.commands.setLanguage).toHaveBeenCalledWith("en");
+    expect(welcome.getState().step).toBe("name");
+  });
+
+  it("leaves the language to Settings once it was chosen", async () => {
+    window.__SENS_LANGUAGE__ = "es";
+    openWelcome();
+    render(<Welcome />);
+
+    expect(screen.queryByRole("radiogroup", { name: "Idioma" })).toBeNull();
+    await press(/Empezar/);
+    expect(ipc.commands.setLanguage).not.toHaveBeenCalled();
+  });
+
   it("marks itself seen and closes when skipped", async () => {
+
     openWelcome();
     render(<Welcome />);
 

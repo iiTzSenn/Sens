@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shell } from "../../app/shell";
+import { showLanguage } from "../../shared/i18n";
 import { viewer } from "../files/view";
 import { noteEdit, project } from "../project/store";
 import { forgetTasks, noteTask, settleTasks } from "../tasks/store";
@@ -51,6 +52,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   document.body.replaceChildren();
+  showLanguage("es");
 });
 
 const row = (name: string) => screen.getByText(name, { selector: ".change .name" }).closest("details") as HTMLDetailsElement;
@@ -71,7 +73,7 @@ describe("changes panel", () => {
     showChanges();
     expect(screen.getByText("Leyendo cambios…")).toBeTruthy();
     await act(async () => loadChanges());
-    expect(screen.getByText("Esta carpeta no está en un repositorio git.")).toBeTruthy();
+    expect(screen.getByText("Esta carpeta no está en un repositorio Git.")).toBeTruthy();
   });
 
   it("draws the diff when a row opens, and counts a new file once read", async () => {
@@ -116,6 +118,17 @@ describe("changes panel", () => {
     expect(shell.getState()).toMatchObject({ toolsOpen: true, tool: "files" });
     await act(async () => {});
     expect(viewer.getState()).toMatchObject({ title: "src/app.js", opened: "src/app.js" });
+  });
+
+  it("speaks the language shown", async () => {
+    showLanguage("en");
+    showChanges();
+    expect(screen.getByText("Reading changes…")).toBeTruthy();
+    await act(async () => loadChanges());
+    expect(header.textContent).toBe("2 files+1−1");
+    expect(row("app.js").querySelector(".state")?.getAttribute("title")).toBe("Modified");
+    expect(row("app.js").querySelector(".jump")?.getAttribute("aria-label")).toBe("Open in Files");
+    expect(row("notes.md").querySelector(".marks")?.textContent).toBe("new");
   });
 });
 

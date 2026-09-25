@@ -1,9 +1,12 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { code, shared } from "../copy";
 import { Icon } from "../Icon";
 import { ICONS } from "../icons.js";
 import { openOutside } from "../outside";
-import { languageNamed } from "../syntax/languages";
-import { usePainted } from "../syntax/paint";
+import { colored, coloredRuns } from "../syntax/colored";
+import { useCode } from "../syntax/code";
+import { languageNamed, titleOf } from "../syntax/languages";
+import { grammarOf, sessionOf, type SessionLine, type Shell } from "../syntax/shells";
 import { parse, type Block, type Inline, type List } from "./parse";
 
 // Text that just arrived fades in: each stamp says where a new stretch began
@@ -136,7 +139,8 @@ const TONGUES: Record<string, string> = {
   vue: "azure", svelte: "azure", c: "azure", h: "azure", cc: "azure", cpp: "azure", hpp: "azure", cxx: "azure",
   lua: "azure", dart: "azure", r: "azure",
   rs: "ember", rust: "ember", toml: "ember", sh: "ember", bash: "ember", zsh: "ember", fish: "ember",
-  shell: "ember", ps1: "ember", psm1: "ember", powershell: "ember", pwsh: "ember", bat: "ember", cmd: "ember",
+  shell: "ember", ps1: "ember", psm1: "ember", powershell: "ember", pwsh: "ember", ps: "ember", bat: "ember", cmd: "ember",
+  batch: "ember", dos: "ember", nu: "ember", nushell: "ember",
   java: "ember", swift: "ember", scala: "ember", erl: "ember",
   py: "moss", python: "moss", pyi: "moss", ipynb: "moss", go: "moss", sql: "moss", rb: "moss", ruby: "moss",
   clj: "moss", csv: "moss", tsv: "moss",
@@ -148,37 +152,66 @@ const TONGUES: Record<string, string> = {
 
 // A fenced block: its language, a copy button, and its code colored.
 export function CodeBlock({ text, language = "" }: { text: string; language?: string }) {
-  const painted = usePainted(text, languageNamed(language));
+  const session = useMemo(() => sessionOf(text, language), [text, language]);
+  const grammar = languageNamed(language);
+  const painted = useCode(session ? "" : text, grammar);
   const lines = text.split("\n").length;
   const [unfolded, setUnfolded] = useState(false);
   const folded = lines > CODE_FOLD && !unfolded;
+  const tongue = session || grammar === "shellsession" ? "ember" : TONGUES[language.toLowerCase()];
 
   return (
-    <div className="codeblock" data-tongue={TONGUES[language.toLowerCase()]} data-folded={lines > CODE_FOLD ? String(folded) : undefined}>
+    <div className="codeblock" data-tongue={tongue} data-session={session ? "true" : undefined} data-folded={lines > CODE_FOLD ? String(folded) : undefined}>
       <div className="codeblock-head">
         <span className="tongue" />
-        <span>{language || "código"}</span>
+        <span>{labelOf(language, Boolean(session))}</span>
         <CopyButton text={text} />
       </div>
       <pre>
-        <code>
-          {painted
-            ? painted.lines.map((runs, at) => (
-                <Fragment key={at}>
-                  {at > 0 && "\n"}
-                  {runs.map(([piece, look], run) => (look < 0 ? piece : <span key={run} style={painted.looks[look]}>{piece}</span>))}
-                </Fragment>
-              ))
-            : text}
-        </code>
+        <code>{session ? <Session lines={session} /> : painted ? colored(painted) : text}</code>
       </pre>
       {folded && (
         <button className="unfold" type="button" onClick={() => setUnfolded(true)}>
-          Mostrar las {lines} líneas
+          {code.allLines(lines)}
         </button>
       )}
     </div>
   );
+}
+
+const PLAIN = /^(?:text|txt|plain|plaintext)$/i;
+
+function labelOf(language: string, session: boolean) {
+  if (session || languageNamed(language) === "shellsession") return code.console;
+  if (!language.trim()) return code.code;
+  if (PLAIN.test(language.trim())) return code.text;
+  return titleOf(language) ?? language;
+}
+
+function Session({ lines }: { lines: SessionLine[] }) {
+  const typed = (shell: Shell) =>
+    lines
+      .filter((line) => line.shell === shell)
+      .map((line) => line.text)
+      .join("\n");
+  const painted = {
+    bash: useCode(typed("bash"), grammarOf("bash")),
+    powershell: useCode(typed("powershell"), grammarOf("powershell")),
+    cmd: useCode(typed("cmd"), grammarOf("cmd")),
+  };
+  const seen: Record<Shell, number> = { bash: 0, powershell: 0, cmd: 0 };
+  return lines.map((line, at) => {
+    const own = line.shell && painted[line.shell];
+    const runs = line.shell && own ? own.lines[seen[line.shell]] : undefined;
+    if (line.shell) seen[line.shell] += 1;
+    return (
+      <Fragment key={at}>
+        {at > 0 && "\n"}
+        {line.prompt && <span className="prompt">{line.prompt}</span>}
+        {line.shell ? <span className="command">{runs && own ? coloredRuns(runs, own.looks) : line.text}</span> : line.text}
+      </Fragment>
+    );
+  });
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -201,7 +234,7 @@ function CopyButton({ text }: { text: string }) {
   }
 
   return (
-    <button className="copy" type="button" title={fault || "Copiar"} aria-label="Copiar" onClick={copy}>
+    <button className="copy" type="button" title={fault || (copied ? shared.copied : shared.copy)} aria-label={shared.copy} onClick={copy}>
       <Icon svg={copied ? ICONS.check : ICONS.copy} />
     </button>
   );

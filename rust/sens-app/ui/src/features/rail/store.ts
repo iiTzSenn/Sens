@@ -1,6 +1,7 @@
 import { createStore } from "zustand/vanilla";
 import { commands } from "../../ipc/commands";
 import type { SessionSummary, Workspace } from "../../ipc/types";
+import { shared } from "../../shared/copy";
 import { store, stored } from "../../shared/storage.js";
 import { paneOf } from "../panes/store";
 
@@ -57,7 +58,7 @@ export async function loadRail() {
 
 export function titleOf(root: string, session: string) {
   const named = rail.getState().spaces?.find((space) => space.root === root)?.sessions.find((one) => one.id === session)?.title;
-  return named || "Sesión nueva";
+  return named || shared.newSession;
 }
 
 export const oweRail = (reason: unknown) => void (owed = String(reason));

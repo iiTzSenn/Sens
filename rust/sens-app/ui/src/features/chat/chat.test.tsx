@@ -105,11 +105,8 @@ describe("the thread as data", () => {
       { kind: "asking", request: "r1", tool: "Bash", input: { command: "rm x" }, suggestions: null },
       { kind: "finished", ok: true, stopped: true, millis: 4200, turns: 1, tokensIn: 1, tokensOut: 1500, error: "" },
     ]);
-    expect(reply.parts.map((part) => (part.kind === "step" ? part.state : part.kind === "ask" ? part.state : part.kind === "foot" ? part.text : part.kind))).toEqual([
-      "stopped",
-      "expired",
-      "4,2 s · 1,5k tokens · detenido",
-    ]);
+    expect(reply.parts.map((part) => (part.kind === "step" ? part.state : part.kind === "ask" ? part.state : part.kind))).toEqual(["stopped", "expired", "foot"]);
+    expect(reply.parts[2]).toMatchObject({ millis: 4200, tokens: 1500, stopped: true });
     expect(reply.closed).toBe(true);
   });
 
@@ -237,8 +234,9 @@ describe("how full the context is", () => {
 
   it("marks a compaction in the reply, saying whether Claude Code chose it", () => {
     const reply = heard(opening(), { kind: "compacted", before: 154_000, auto: true }, true);
-    expect(reply.parts).toMatchObject([{ kind: "note", text: "Claude Code compactó la conversación · tenía 154k tokens" }]);
-    expect(heard(opening(), { kind: "compacted", before: 0, auto: false }, true).parts).toMatchObject([{ kind: "note", text: "Conversación compactada" }]);
+    render(<Thread />);
+    act(() => focused().chat.setState({ turns: [reply, heard(opening(), { kind: "compacted", before: 0, auto: false }, true)] }));
+    expect([...document.querySelectorAll(".reply-note")].map((note) => note.textContent)).toEqual(["Claude Code compactó la conversación · tenía 154k tokens", "Conversación compactada"]);
   });
 });
 
@@ -258,7 +256,7 @@ describe("the chat", () => {
     expect(ipc.commands.chatSend).toHaveBeenCalledWith("C:/demo", "s1", { text: "Hola", files: ["a.ts"], images: [] }, SETTINGS);
     expect(project.getState().session).toBe("s1");
     expect(screen.getByText("Hola", { selector: ".body-text" })).toBeTruthy();
-    expect(screen.getByText("a.ts", { selector: ".asked-files span" })).toBeTruthy();
+    expect(screen.getByText("a.ts", { selector: ".sent-files .clip-head" })).toBeTruthy();
     expect(focused().chat.getState().busy).toBe(true);
     expect(document.querySelector(".live-said")?.textContent).toBe("Enviando…");
 
@@ -313,10 +311,13 @@ describe("the chat", () => {
     expect(bash.querySelector(".terminal-foot")?.textContent).toBe("Terminó con error");
 
     expect(edit.querySelector(".step-meta")?.textContent).toBe("+1 −1");
+    expect(edit.querySelector(".diff")).toBeNull();
+    fireEvent.click(edit.querySelector("summary")!);
     expect([...edit.querySelectorAll(".diff .row")].map((row) => row.className)).toEqual(["row", "row del", "row add"]);
     expect(project.getState().touched.get("src/app.ts")).toEqual({ add: new Set([4]), plus: 1, minus: 1 });
 
     expect(grep.querySelector(".step-meta")?.textContent).toBe("1 resultado");
+    fireEvent.click(grep.querySelector("summary")!);
     fireEvent.click(within(grep).getByRole("button", { name: /src\/app.ts/ }));
     expect(shell.getState()).toMatchObject({ toolsOpen: true, tool: "files" });
   });
@@ -331,8 +332,13 @@ describe("the chat", () => {
     edited("t1");
     tell({ kind: "finished", ok: true, stopped: false, millis: 1, turns: 1, tokensIn: 1, tokensOut: 1, error: "" });
     edited("t2");
+    const closed = painting.calls;
+    await settle();
+    expect(painting.calls).toBe(closed);
+    for (const summary of document.querySelectorAll("details.step > summary")) fireEvent.click(summary);
     await settle();
     const painted = painting.calls;
+    expect(painted).toBe(closed + 2);
 
     for (const text of ["Un", "a ", "res", "puesta"]) tell({ kind: "delta", thinking: false, text });
     fireEvent.scroll(document.querySelector(".thread")!);

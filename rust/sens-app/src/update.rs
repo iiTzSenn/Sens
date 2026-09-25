@@ -5,18 +5,29 @@ use std::process::Command;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use minisign_verify::{PublicKey, Signature};
+use sens_agent::said;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::web;
+use crate::{files, web};
 
 const RELEASES: &str = "https://api.github.com/repos/iiTzSenn/Sens/releases";
 const PUBLIC_KEY: &str = include_str!("../updater.pub");
 const FOLDER: &str = "updates";
 const INSTALLER_CAP: u64 = 64 * web::MEGABYTE;
 const SIGNATURE_CAP: u64 = web::MEGABYTE;
-const MISMATCH: &str = "la firma no coincide; no se instala";
 pub const INSTALLABLE: bool = !cfg!(debug_assertions);
+
+fn mismatch() -> String {
+    said!(
+        en: "the signature doesn’t match; it won’t be installed",
+        es: "la firma no coincide; no se instala",
+        fr: "la signature ne correspond pas ; rien n’est installé",
+        de: "die Signatur stimmt nicht überein; es wird nicht installiert",
+        ja: "署名が一致しないため、インストールしません",
+        zh: "签名不匹配，因此不会安装",
+    )
+}
 
 pub type Number = (u64, u64, u64);
 
@@ -62,9 +73,25 @@ pub fn check(manual: bool) -> Result<Check, String> {
 
 pub fn install(base: &Path, report: impl Fn(&str, Stage)) -> Result<(), String> {
     if !INSTALLABLE {
-        return Err("esta es una build de desarrollo: comprueba pero no instala".into());
+        return Err(said!(
+            en: "this is a development build: it checks but doesn’t install",
+            es: "esta es una build de desarrollo: comprueba pero no instala",
+            fr: "ceci est une version de développement : elle vérifie mais n’installe pas",
+            de: "das ist eine Entwicklungsversion: sie prüft, installiert aber nicht",
+            ja: "これは開発ビルドです。確認はしますがインストールはしません",
+            zh: "这是开发版本：只检查，不安装",
+        ));
     }
-    let release = latest(current())?.ok_or("ya tienes la última versión")?;
+    let release = latest(current())?.ok_or_else(|| {
+        said!(
+            en: "you already have the latest version",
+            es: "ya tienes la última versión",
+            fr: "vous avez déjà la dernière version",
+            de: "du hast bereits die neueste Version",
+            ja: "すでに最新バージョンです",
+            zh: "已是最新版本",
+        )
+    })?;
     report(&release.version, Stage::Downloading);
     let (installer, signature) = download(&release)?;
     report(&release.version, Stage::Verifying);
@@ -147,40 +174,71 @@ pub fn number(version: &str) -> Option<Number> {
 }
 
 fn verify(key: &str, installer: &[u8], signature: &str, version: &str) -> Result<(), String> {
-    let key = PublicKey::decode(&unpacked(key)?).map_err(|_| "la clave pública de Sens está dañada".to_string())?;
-    let seal = Signature::decode(&unpacked(signature)?).map_err(|_| MISMATCH.to_string())?;
-    key.verify(installer, &seal, false).map_err(|_| MISMATCH.to_string())?;
+    let key = PublicKey::decode(&unpacked(key)?).map_err(|_| {
+        said!(
+            en: "Sens’s public key is damaged",
+            es: "la clave pública de Sens está dañada",
+            fr: "la clé publique de Sens est endommagée",
+            de: "der öffentliche Schlüssel von Sens ist beschädigt",
+            ja: "Sens の公開鍵が壊れています",
+            zh: "Sens 的公钥已损坏",
+        )
+    })?;
+    let seal = Signature::decode(&unpacked(signature)?).map_err(|_| mismatch())?;
+    key.verify(installer, &seal, false).map_err(|_| mismatch())?;
     let claimed = format!("version:{version}");
     if seal.trusted_comment().split('\t').any(|field| field == claimed) {
         Ok(())
     } else {
-        Err(format!("la firma no es de la versión {version}; no se instala"))
+        Err(said!(
+            en: "the signature isn’t for version {version}; it won’t be installed",
+            es: "la firma no es de la versión {version}; no se instala",
+            fr: "la signature ne correspond pas à la version {version} ; rien n’est installé",
+            de: "die Signatur gehört nicht zu Version {version}; es wird nicht installiert",
+            ja: "署名がバージョン {version} のものではないため、インストールしません",
+            zh: "签名不属于版本 {version}，因此不会安装",
+        ))
     }
 }
 
 fn unpacked(text: &str) -> Result<String, String> {
-    let bytes = STANDARD.decode(text.trim()).map_err(|_| MISMATCH.to_string())?;
-    String::from_utf8(bytes).map_err(|_| MISMATCH.to_string())
+    let bytes = STANDARD.decode(text.trim()).map_err(|_| mismatch())?;
+    String::from_utf8(bytes).map_err(|_| mismatch())
 }
 
 fn keep(base: &Path, version: &str, installer: &[u8]) -> Result<PathBuf, String> {
     let folder = base.join(FOLDER);
-    fs::create_dir_all(&folder).map_err(|error| format!("no pude crear {}: {error}", folder.display()))?;
+    fs::create_dir_all(&folder).map_err(|error| files::uncreated(&folder, error))?;
     let path = folder.join(installer_name(version));
-    fs::write(&path, installer).map_err(|error| format!("no pude guardar el instalador: {error}"))?;
+    fs::write(&path, installer).map_err(|error| {
+        said!(
+            en: "couldn’t save the installer: {error}",
+            es: "no pude guardar el instalador: {error}",
+            fr: "impossible d’enregistrer le programme d’installation : {error}",
+            de: "das Installationsprogramm konnte nicht gespeichert werden: {error}",
+            ja: "インストーラーを保存できませんでした: {error}",
+            zh: "无法保存安装程序：{error}",
+        )
+    })?;
     Ok(path)
 }
 
 fn launch(installer: &Path) -> Result<(), String> {
-    Command::new(installer)
-        .args(["/P", "/UPDATE", "/R"])
-        .spawn()
-        .map(drop)
-        .map_err(|error| format!("no pude abrir el instalador: {error}"))
+    Command::new(installer).args(["/P", "/UPDATE", "/R"]).spawn().map(drop).map_err(|error| {
+        said!(
+            en: "couldn’t open the installer: {error}",
+            es: "no pude abrir el instalador: {error}",
+            fr: "impossible d’ouvrir le programme d’installation : {error}",
+            de: "das Installationsprogramm konnte nicht geöffnet werden: {error}",
+            ja: "インストーラーを開けませんでした: {error}",
+            zh: "无法打开安装程序：{error}",
+        )
+    })
 }
 
 #[cfg(test)]
 mod tests {
+    use sens_agent::language::{Language, speaking};
     use serde_json::json;
 
     use super::*;
@@ -272,12 +330,22 @@ mod tests {
     fn an_altered_installer_is_refused() {
         let error = verify(TEST_KEY, b"Sens installer bytes, swapped\n", SIGNATURE, "0.12.1").unwrap_err();
 
-        assert_eq!(error, MISMATCH);
+        assert_eq!(error, mismatch());
+        assert_eq!(error, "the signature doesn’t match; it won’t be installed");
+    }
+
+    #[test]
+    fn a_refused_installer_is_explained_in_the_language_spoken() {
+        let swapped = b"Sens installer bytes, swapped\n";
+
+        assert_eq!(speaking(Language::Es, || verify(TEST_KEY, swapped, SIGNATURE, "0.12.1")), Err("la firma no coincide; no se instala".into()));
+        assert_eq!(speaking(Language::De, || verify(TEST_KEY, swapped, SIGNATURE, "0.12.1")), Err("die Signatur stimmt nicht überein; es wird nicht installiert".into()));
+        assert_eq!(speaking(Language::Es, || verify(TEST_KEY, SIGNED, SIGNATURE, "0.13.0")), Err("la firma no es de la versión 0.13.0; no se instala".into()));
     }
 
     #[test]
     fn a_signature_from_another_key_is_refused() {
-        assert_eq!(verify(OTHER_KEY, SIGNED, SIGNATURE, "0.12.1").unwrap_err(), MISMATCH);
+        assert_eq!(verify(OTHER_KEY, SIGNED, SIGNATURE, "0.12.1").unwrap_err(), mismatch());
     }
 
     #[test]
@@ -289,7 +357,7 @@ mod tests {
 
     #[test]
     fn a_signature_that_is_not_minisign_is_refused() {
-        assert_eq!(verify(TEST_KEY, SIGNED, "no es una firma", "0.12.1").unwrap_err(), MISMATCH);
+        assert_eq!(verify(TEST_KEY, SIGNED, "no es una firma", "0.12.1").unwrap_err(), mismatch());
     }
 
     #[test]

@@ -4,7 +4,6 @@
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type { Capabilities, Found, News } from "../ipc/types";
-import { lookOf } from "../shared/look";
 import { store, stored } from "../shared/storage.js";
 
 const now = Date.now();
@@ -15,6 +14,8 @@ const person = { name: "Demo", checkUpdates: false, welcomed: !asking.has("welco
 const LOOK = "sens.dev.look";
 const asked = new URLSearchParams(location.search).get("look")?.split(".");
 const kept = asked ? { mode: asked[0], accent: asked[1] } : stored(LOOK, null);
+const LANGUAGE = "sens.dev.language";
+const spoken = asking.get("language") ?? stored(LANGUAGE, null);
 const DAY = 24 * HOUR;
 
 const told: News[] = [
@@ -137,16 +138,16 @@ type List = "skills" | "servers" | "plugins";
 const listing = (id: string, kind: string, title: string, badge: string, extra: object = {}) => ({
   id,
   kind,
-  name: id.split("/").pop(),
+  name: id.split(/[:/]/).pop(),
   title,
   description: `${title}, de prueba`,
-  author: "Demo",
+  author: "",
   badge,
   source: "demo",
   category: "",
   version: "1.0.0",
-  homepage: "https://example.com",
-  installs: 1234,
+  homepage: "",
+  installs: null,
   login: false,
   tools: [],
   installable: true,
@@ -154,11 +155,67 @@ const listing = (id: string, kind: string, title: string, badge: string, extra: 
   ...extra,
 });
 
+const about = (description: string, extra: object = {}) => ({ description, ...extra });
+const toolsOf = (count: number) => Array.from({ length: count }, (_, at) => `tool_${at + 1}`);
+const OWN = { author: "Anthropic", source: "official", homepage: "https://github.com/anthropics/claude-plugins-official" };
+
 const listings = [
-  listing("demo/formatter", "plugin", "Formatter", "anthropic", { revision: "r2", tools: ["format"] }),
-  listing("demo/tests", "skill", "Escribir tests", "community"),
-  listing("demo/calendar", "connector", "Calendario", "partner", { login: true, installable: false }),
+  listing("demo/formatter", "plugin", "Formatter", "anthropic", about("Formats code on save with the project's own style.", { ...OWN, revision: "r2" })),
+  listing("official:code-review", "plugin", "Code review", "anthropic", about("Automated code review for pull requests using several specialised agents with confidence-based scoring.", { ...OWN, category: "development" })),
+  listing("official:feature-dev", "plugin", "Feature development", "anthropic", about("A feature workflow with agents for codebase exploration, architecture design and quality review.", { ...OWN, category: "development" })),
+  listing("official:frontend-design", "plugin", "Frontend design", "anthropic", about("Create distinctive, production-grade frontend interfaces with high design quality.", { ...OWN, category: "design" })),
+  listing("official:security-guidance", "plugin", "Security guidance", "anthropic", about("Security review for generated code: pattern-based warnings on every edit.", { ...OWN, category: "security" })),
+  listing("official:pr-review-toolkit", "plugin", "PR review toolkit", "anthropic", about("Review agents for comments, tests, error handling and type design.", { ...OWN, category: "development" })),
+  listing("official:commit-commands", "plugin", "Commit commands", "anthropic", about("Commands for git commit workflows: commit, push and pull request creation.", { ...OWN, category: "development" })),
+  listing("official:typescript-lsp", "plugin", "typescript-lsp", "anthropic", about("TypeScript and JavaScript language server for code intelligence.", { ...OWN, category: "development" })),
+  listing("skills:webapp-testing", "skill", "webapp-testing", "anthropic", about("Toolkit for interacting with and testing local web applications using Playwright.", { author: "Anthropic", source: "skills", homepage: "https://github.com/anthropics/skills" })),
+  listing("skills:mcp-builder", "skill", "mcp-builder", "anthropic", about("Guide for creating high-quality MCP servers that let an LLM use outside services.", { author: "Anthropic", source: "skills", homepage: "https://github.com/anthropics/skills" })),
+  listing("skills:canvas-design", "skill", "canvas-design", "anthropic", about("Create visual art in .png and .pdf documents from a design philosophy.", { author: "Anthropic", source: "skills", homepage: "https://github.com/anthropics/skills" })),
+  listing("official:stripe", "plugin", "Stripe", "partner", about("Payments, subscriptions and invoices through the Stripe API.", { author: "Stripe", source: "official", homepage: "https://github.com/stripe/agent-toolkit" })),
+  listing("official:supabase", "plugin", "Supabase", "partner", about("Manage Postgres databases, auth and storage in your Supabase projects.", { source: "official", category: "database", homepage: "https://supabase.com/docs" })),
+  listing("official:vercel", "plugin", "Vercel", "partner", about("Deploy projects and read build logs on Vercel.", { source: "official", category: "deployment", homepage: "https://vercel.com/docs" })),
+  listing("official:sentry", "plugin", "Sentry", "partner", about("Find and fix errors with the issue context Sentry keeps.", { author: "Sentry", source: "official", category: "monitoring", homepage: "https://sentry.io" })),
+  listing("official:figma", "plugin", "Figma", "partner", about("Turn Figma designs into code with frames, variables and components.", { source: "official", category: "design", homepage: "https://www.figma.com" })),
+  listing("official:semgrep", "plugin", "Semgrep", "partner", about("Static analysis that finds security bugs before they ship.", { source: "official", category: "security", homepage: "https://semgrep.dev" })),
+  listing("official:notion", "plugin", "Notion", "partner", about("Search and update pages and databases in Notion.", { source: "official", category: "productivity", homepage: "https://github.com/makenotion/notion-mcp-server" })),
+  listing("official:slack", "plugin", "Slack", "partner", about("Read channels and send messages in Slack.", { source: "official", category: "productivity", homepage: "https://slack.com" })),
+  listing("official:hubspot", "plugin", "HubSpot Sales", "partner", about("Contacts, deals and sales pipelines in HubSpot CRM.", { author: "HubSpot", source: "official", homepage: "https://www.hubspot.com" })),
+  listing("connectors:com.microsoft/microsoft-learn-mcp", "connector", "Microsoft Learn", "partner", about("Search official Microsoft documentation.", { source: "connectors", author: "learn.microsoft.com", homepage: "https://learn.microsoft.com", tools: toolsOf(3) })),
+  listing("connectors:io.github.antonpk1/excalidraw-mcp-app", "connector", "Excalidraw", "partner", about("Draw hand-drawn diagrams and whiteboards.", { source: "connectors", homepage: "https://excalidraw.com", tools: toolsOf(5) })),
+  listing("connectors:com.mermaidchart/mermaid-mcp", "connector", "Mermaid Chart", "partner", about("Validate and render Mermaid diagrams.", { source: "connectors", author: "mermaid.ai", homepage: "https://docs.mermaidchart.com", tools: toolsOf(1) })),
+  listing("connectors:com.tldraw/tldraw", "connector", "tldraw", "partner", about("Sketch ideas on an infinite canvas.", { source: "connectors", homepage: "https://tldraw.com", tools: toolsOf(6) })),
+  listing("connectors:com.wolfram/wolfram", "connector", "Wolfram", "partner", about("Precise, real-time computation and knowledge.", { source: "connectors", homepage: "https://www.wolfram.com", tools: toolsOf(1) })),
+  listing("connectors:com.claude.mcp.pubmed/pubmed", "connector", "PubMed", "partner", about("Search the biomedical literature in PubMed.", { source: "connectors", author: "pubmed.mcp.claude.com", homepage: "https://pubmed.ncbi.nlm.nih.gov", tools: toolsOf(7) })),
+  listing("connectors:app.linear/linear", "connector", "Linear", "partner", about("Manage issues, projects and team workflows.", { source: "connectors", author: "mcp.linear.app", homepage: "https://linear.app", tools: toolsOf(22), login: true, installable: false })),
+  listing("connectors:com.notion/notion", "connector", "Notion", "partner", about("Search and edit pages in your Notion workspace.", { source: "connectors", author: "mcp.notion.com", homepage: "https://developers.notion.com", tools: toolsOf(13), login: true, installable: false })),
+  listing("connectors:com.booking/booking", "connector", "Booking.com", "partner", about("Find hotels, homes and more.", { source: "connectors", author: "mcp.booking.com", homepage: "https://www.booking.com", tools: toolsOf(1) })),
+  listing("community:statusline", "plugin", "statusline", "community", about("Themeable status line for Claude Code: project, git branch, context usage and rate limits.", { source: "community", homepage: "https://github.com/someone/statusline" })),
+  listing("community:memory-bank", "plugin", "memory-bank", "community", about("Persistent memory for agents across sessions, kept as local Markdown.", { source: "community" })),
+  listing("community:daily-journal", "plugin", "daily-journal", "community", about("Conversational daily journaling for Obsidian vaults.", { source: "community" })),
+  listing("community:ledger", "plugin", "ledger", "community", about("Accounting helpers: invoices, expenses and bookkeeping exports.", { source: "community" })),
+  listing("community:k8s-helper", "plugin", "k8s-helper", "community", about("Kubernetes and Docker helpers to deploy and debug clusters.", { source: "community" })),
+  listing("community:local-seo-audit", "plugin", "local-seo-audit", "community", about("Local business SEO audit: technical SEO, content strategy and rankings.", { source: "community", homepage: "https://myceliumai.co" })),
+  listing("community:flashcards", "plugin", "flashcards", "community", about("Turn notes into flashcards and quiz yourself while you study.", { source: "community" })),
+  listing("community:trip-planner", "plugin", "trip-planner", "community", about("Plan trips with flights, hotels and restaurants.", { source: "community" })),
+  listing("community:bio-research", "plugin", "bio-research", "community", about("Genomics and protein analysis for life sciences research.", { source: "community" })),
+  listing("community:dataink", "plugin", "dataink", "community", about("Data visualisation and dashboards that follow Tufte's principles.", { source: "community" })),
+  listing("community:i-ching", "plugin", "i-ching", "community", about("I Ching divination with the three coins method.", { source: "community" })),
 ];
+
+const noParts = { skills: [], commands: [], agents: [], hooks: [], servers: [], lsp: [], bin: [] };
+
+function installFrom({ root, id }: Record<string, unknown>) {
+  const found = listings.find((one) => one.id === id);
+  if (!found) throw `no encuentro ${id} en el catálogo`;
+  const name = String(found.name);
+  const enabled = Boolean(root);
+  if (found.kind === "connector") caps.servers.push({ name, command: "", args: [], envKeys: [], kind: "http", url: `https://${found.author || "mcp.example.com"}/mcp`, enabled });
+  else if (found.kind === "skill") caps.skills.push({ name, description: found.description, enabled });
+  else caps.plugins.push({ name, description: found.description, version: found.version, enabled });
+  const kind = found.kind === "connector" ? "server" : found.kind;
+  caps.origins[`${kind}:${name}`] = { listing: found.id, revision: found.revision, version: found.version, installedAt: Date.now() };
+  return name;
+}
 
 const setCapability = (list: List) => ({ name, enabled }: Record<string, unknown>) => {
   const item = caps[list].find((one) => one.name === name);
@@ -312,7 +369,7 @@ const SAMPLES: Record<string, string> = {
 const FENCE = "```";
 const agent = (event: Record<string, unknown>) => ({ kind: "agent", at: now - HOUR, event });
 const REPLAY = [
-  { kind: "task", text: "Añade un saludo configurable", files: [], images: [], at: now - HOUR },
+  { kind: "task", text: "Añade un saludo configurable", files: ["src/app.tsx", ".sens/artifacts/demo-1/pasted-text.txt", "docs/"], images: [], at: now - HOUR },
   agent({ kind: "started", model: "demo-model" }),
   agent({
     kind: "tool",
@@ -389,6 +446,24 @@ const entries = (path: string) =>
     return { name: bare, path: path ? `${path}/${bare}` : bare, dir, ignored: bare === "logo.png" };
   });
 
+function planLimits() {
+  const sunday = new Date();
+  sunday.setDate(sunday.getDate() + ((7 - sunday.getDay()) % 7 || 7));
+  sunday.setHours(7, 0, 0, 0);
+  const week = Math.round(sunday.getTime() / 1000);
+  const hours = Math.round((Date.now() + 4 * HOUR + 38 * 60_000) / 1000);
+  return {
+    kind: "limits",
+    status: "allowed_warning",
+    window: "seven_day",
+    utilization: 0.8,
+    resetsAt: week,
+    threshold: 0.75,
+    overage: { status: "", using: false, resetsAt: null, disabled: "" },
+    windows: { five_hour: { utilization: 0.03, resetsAt: hours }, seven_day: { utilization: 0.8, resetsAt: week }, seven_day_fable: { utilization: 0.19, resetsAt: week } },
+  };
+}
+
 const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   last_project: () => ROOT,
   trust_project: ({ root, trusted: sure }) => void (sure ? trusted.add(String(root)) : trusted.delete(String(root))),
@@ -411,6 +486,16 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
       .flatMap(entries)
       .filter((entry) => !entry.dir && entry.name.toLowerCase().includes(String(needle).toLowerCase())),
   changes: () => ({ diff: DIFF, fresh: ["notas/idea.md"] }),
+  attach: ({ paths }) => ({
+    items: (paths as string[]).map((path) => {
+      const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+      if (/[\\/]$/.test(path) || !name.includes(".")) return { kind: "folder", path: `${path.replace(/[\\/]+$/, "")}/`, name, entries: 12, outside: false };
+      if (/\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)$/i.test(name)) return { kind: "picture", path, name, mediaType: "image/svg+xml", data: btoa(decodeURIComponent(SQUARE.slice(SQUARE.indexOf(",") + 1))), bytes: 180, outside: false };
+      return { kind: "file", path, name, bytes: 18_432, outside: /^([a-z]:)?[\\/]/i.test(path) };
+    }),
+    refused: [],
+  }),
+  stage_file: ({ name, data }) => ({ kind: "file", path: `C:/Users/demo/AppData/Roaming/sens/staged/${Date.now()}-0/${name}`, name, bytes: Math.floor((String(data).length * 3) / 4), outside: true }),
   open_file: ({ path }) =>
     String(path).endsWith(".png")
       ? { kind: "picture", data: SQUARE, bytes: 2048 }
@@ -450,28 +535,42 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   remove_server: removeCapability("servers"),
   remove_plugin: removeCapability("plugins"),
   skill_text: ({ name }) => `---\nname: ${name}\n---\n# ${name}\n\nInstrucciones de prueba.`,
-  market: () => ({ listings, sources: [{ id: "demo", label: "Demo", fetchedAt: now - HOUR, error: "" }] }),
-  market_search: ({ query }) => [listing(`skills.sh/${query}`, "skill", `Skill sobre ${query}`, "skillsSh")],
-  market_detail: ({ id }) => ({
-    listing: listings.find((one) => one.id === id) ?? listing(String(id), "skill", String(id), "skillsSh"),
-    readme: "# Léeme\n\nUna ficha **de prueba** con una lista:\n\n- uno\n- dos",
-    license: "MIT",
-    files: [
-      { path: "README.md", size: 1200 },
-      { path: "skills/format/SKILL.md", size: 800 },
-      { path: "hooks/format.sh", size: 90 },
+  market: () => ({
+    listings,
+    sources: [
+      { id: "official", fetchedAt: now - HOUR, error: "" },
+      { id: "community", fetchedAt: now - HOUR, error: "" },
+      { id: "connectors", fetchedAt: now - HOUR, error: "" },
     ],
-    parts: {
-      skills: [{ name: "format", path: "skills/format/SKILL.md", description: "" }],
-      commands: [],
-      agents: [],
-      hooks: [{ event: "PostToolUse", command: "sh hooks/format.sh" }],
-      servers: [],
-      lsp: [],
-      bin: [],
-    },
-    needs: [],
   }),
+  market_search: ({ query }) =>
+    [["vercel-labs/agent-skills", 48210], ["anthropics-community/skills", 3120], ["someone/tools", 87]].map(([repo, installs]) =>
+      listing(`skills.sh:${repo}/${query}-helper`, "skill", `${query}-helper`, "skillsSh", { author: String(repo).split("/")[0], category: repo, installs, homepage: `https://skills.sh/${repo}` }),
+    ),
+  market_detail: ({ id }) => {
+    const found = listings.find((one) => one.id === id) ?? listing(String(id), "skill", String(id).split("/").pop()!, "skillsSh", { description: "" });
+    if (found.kind === "connector") return { listing: found, readme: found.description, license: "", files: [], parts: noParts, needs: [] };
+    const runs = found.id === "demo/formatter" || found.id === "official:security-guidance";
+    return {
+      listing: found,
+      readme: `# ${found.title}\n\n${found.description}\n\n## Qué incluye\n\n- Una skill con instrucciones\n- Un comando para lanzarla`,
+      license: "MIT",
+      files: [
+        { path: "README.md", size: 1200 },
+        { path: "skills/main/SKILL.md", size: 800 },
+        ...(runs ? [{ path: "hooks/check.sh", size: 90 }] : []),
+      ],
+      parts: { ...noParts, skills: [{ name: "main", path: "skills/main/SKILL.md", description: "" }], hooks: runs ? [{ event: "PostToolUse", command: "sh hooks/check.sh" }] : [] },
+      needs: found.id === "official:stripe" ? [{ name: "STRIPE_SECRET_KEY", description: "Clave secreta de la API", secret: true, required: true, default: "" }] : [],
+    };
+  },
+  market_install: installFrom,
+  market_update: ({ id }) => {
+    const found = listings.find((one) => one.id === id);
+    const origin = Object.values(caps.origins).find((one) => one.listing === id);
+    if (found && origin) Object.assign(origin, { revision: found.revision, installedAt: Date.now() });
+    return null;
+  },
   market_file: ({ path }) => (String(path).endsWith(".md") ? `# ${path}\n\nContenido de prueba.` : "echo formatea"),
   workspaces: () => structuredClone(SPACES).map((space) => ({ ...space, trusted: trusted.has(space.root) })),
   rename_session: ({ id, title }) => (sessionOf(id).title = String(title)),
@@ -495,20 +594,52 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
       return;
     }
     const said = `Recibido: «${(message as { text: string }).text}». Te cuento lo que he mirado:\n\n- El **árbol** del proyecto\n- Los ficheros \`src/app.tsx\` y \`main.py\`\n\n${FENCE}ts\nconst listo = true;\n${FENCE}\n\nListo.`;
-    const thought = "Miro primero cómo está montado el proyecto y qué ficheros toca la petición.";
-    const events: [number, unknown][] = [[80, { kind: "started", model: "demo-model" }]];
-    for (let at = 0; at < thought.length; at += 6) events.push([120 + at * 30, { kind: "delta", thinking: true, text: thought.slice(at, at + 6) }]);
-    const start = 200 + thought.length * 30;
+    const thoughts = [
+      "**Leyendo cómo está montado el proyecto**\n\nMiro primero el árbol y qué ficheros toca la petición.",
+      "**Comprobando los tests**\n\nAntes de tocar nada, confirmo que la suite pasa.",
+      "**Aplicando el cambio**\n\nEl cambio es pequeño: una constante en `src/app.tsx`.",
+    ];
+    const edit = { file_path: `${ROOT}/src/app.tsx`, old_string: "const listo = false;", new_string: "const listo = true;" };
+    const ansi = "\u001b[1m\u001b[32m ✓\u001b[0m src/app.test.tsx \u001b[2m(12 tests)\u001b[0m\n\u001b[33mwarning:\u001b[0m unused import in src/main.tsx:3\n\n\u001b[1m Test Files \u001b[0m \u001b[1m\u001b[32m1 passed\u001b[0m\n\u001b[1m      Tests \u001b[0m \u001b[1m\u001b[32m12 passed\u001b[0m";
+    const work: [number, unknown][] = [
+      [0, { kind: "tool", id: "read-1", name: "Read", input: { file_path: `${ROOT}/src/app.tsx` } }],
+      [300, { kind: "toolDone", id: "read-1", output: "", error: false, detail: { file: { numLines: 42 } } }],
+      [400, { kind: "tool", id: "grep-1", name: "Grep", input: { pattern: "listo", path: `${ROOT}/src` } }],
+      [700, { kind: "toolDone", id: "grep-1", output: "src/app.tsx:3:const listo = false;", error: false, detail: null }],
+      [800, "thought-1"],
+      [1500, { kind: "tool", id: "run-1", name: "Bash", input: { command: "npm test -- --reporter=dot 2>&1 | tee test.log" } }],
+      [2600, { kind: "toolDone", id: "run-1", output: "", error: false, detail: { stdout: ansi, stderr: "" } }],
+      [2700, { kind: "tool", id: "ps-1", name: "PowerShell", input: { command: "Get-ChildItem -Path src -Filter *.tsx | Select-Object Name, Length" } }],
+      [3200, { kind: "toolDone", id: "ps-1", output: "", error: true, detail: { stdout: "", stderr: "Get-ChildItem : Cannot find path 'C:\\Proyectos\\demo\\src' because it does not exist." } }],
+      [3300, "thought-2"],
+      [4000, { kind: "tool", id: "edit-1", name: "Edit", input: edit }],
+      [4400, { kind: "toolDone", id: "edit-1", output: "", error: false, detail: null }],
+    ];
+    const events: [number, unknown][] = [[80, { kind: "started", model: "demo-model" }], [120, planLimits()]];
+    let clock = 120;
+    const think = (text: string) => {
+      for (let at = 0; at < text.length; at += 6) events.push([clock + (at / 6) * 40, { kind: "delta", thinking: true, text: text.slice(at, at + 6) }]);
+      clock += (text.length / 6) * 40 + 60;
+      events.push([clock, { kind: "thought", text }]);
+      clock += 60;
+    };
+    think(thoughts[0]);
+    const began = clock;
+    for (const [after, event] of work) {
+      if (event === "thought-1" || event === "thought-2") {
+        clock = Math.max(clock, began + after);
+        think(thoughts[event === "thought-1" ? 1 : 2]);
+        continue;
+      }
+      clock = Math.max(clock, began + after);
+      events.push([clock, event]);
+    }
+    const start = clock + 200;
     for (let at = 0; at < said.length; at += 9) events.push([start + at * 6, { kind: "delta", thinking: false, text: said.slice(at, at + 9) }]);
     const end = start + said.length * 6;
-    const edit = { file_path: `${ROOT}/src/app.tsx`, old_string: "const listo = false;", new_string: "const listo = true;" };
     events.push(
       [end, { kind: "said", text: said }],
-      [end + 100, { kind: "tool", id: "run-1", name: "Bash", input: { command: "npm test" } }],
-      [end + 2500, { kind: "toolDone", id: "run-1", output: "", error: false, detail: { stdout: "✓ 12 tests", stderr: "" } }],
-      [end + 2600, { kind: "tool", id: "edit-1", name: "Edit", input: edit }],
-      [end + 3000, { kind: "toolDone", id: "edit-1", output: "", error: false, detail: null }],
-      [end + 3100, { kind: "finished", ok: true, stopped: false, millis: 2400, turns: 1, tokensIn: 10, tokensOut: 180, context: 31_400, window: 200_000, error: "" }],
+      [end + 100, { kind: "finished", ok: true, stopped: false, millis: end, turns: 1, tokensIn: 10, tokensOut: 180, context: 31_400, window: 200_000, error: "" }],
     );
     for (const [after, event] of events) setTimeout(() => emit("chat", { session, event }), after);
   },
@@ -542,8 +673,8 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   ],
   profile: () => ({ ...person }),
   set_welcomed: ({ on }) => void (person.welcomed = Boolean(on)),
-  look: () => lookOf(stored(LOOK, kept)),
   set_look: ({ look }) => store(LOOK, look),
+  set_language: ({ language }) => store(LANGUAGE, language),
   welcome_scan: () => pause(1400).then(() => found),
   welcome_adopt: ({ roots }) => adopt(roots as string[]),
   welcome_servers: ({ ids }) => pause(500).then(() => ({ added: (ids as string[]).map((id) => id.split(":")[1]), skipped: [] })),
@@ -560,6 +691,7 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
 
 if (!("__TAURI_INTERNALS__" in window)) {
   window.__SENS_LOOK__ = kept;
+  window.__SENS_LANGUAGE__ = spoken;
   window.__SENS_WELCOMED__ = person.welcomed;
   window.__SENS_NEWS__ = asking.has("news");
   mockWindows("main");

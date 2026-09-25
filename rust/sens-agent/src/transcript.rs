@@ -5,6 +5,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::chat::{self, Event};
+use crate::said;
 use crate::session::{self, Entry, Namer};
 
 const IGNORED: [&str; 4] = ["isSidechain", "isMeta", "isCompactSummary", "isVisibleInTranscriptOnly"];
@@ -17,7 +18,6 @@ const TITLES: [(&str, &str, Namer); 4] = [
 const UNSPOKEN: [&str; 3] = ["<local-command-", "<task-notification>", "[Request interrupted by user"];
 const NOTIFICATION: &str = "task-notification";
 const SYNTHETIC: &str = "<synthetic>";
-const PICTURE: &str = "[imagen]";
 const DETAIL: &str = "toolUseResult";
 const TRANSLATED_DETAIL: &str = "tool_use_result";
 
@@ -91,7 +91,14 @@ pub fn adopt(path: &Path) -> Result<Adopted, String> {
         return Ok(Adopted::Already);
     }
     if !folder.is_dir() {
-        return Err(format!("la carpeta {root} ya no existe"));
+        return Err(said!(
+            en: "the folder {root} no longer exists",
+            es: "la carpeta {root} ya no existe",
+            fr: "le dossier {root} n’existe plus",
+            de: "der Ordner {root} existiert nicht mehr",
+            ja: "フォルダー {root} はもう存在しません",
+            zh: "文件夹 {root} 已不存在",
+        ));
     }
     let Some(found) = read(path).filter(|found| turns(&found.entries) > 0) else {
         return Ok(Adopted::Empty);
@@ -144,14 +151,14 @@ impl Reading {
     }
 
     fn ask(&mut self, at: u64, message: &Value) {
-        let Some(text) = prompt(message) else {
+        let Some((text, files)) = prompt(message) else {
             return;
         };
         self.close();
         self.entries.push(Entry::Task {
             at,
             text,
-            files: Vec::new(),
+            files,
             images: Vec::new(),
         });
         self.turn = Some(Turn {
@@ -256,7 +263,7 @@ fn answers_a_tool(message: &Value) -> bool {
         .is_some_and(|blocks| blocks.iter().any(|block| block["type"] == "tool_result"))
 }
 
-fn prompt(message: &Value) -> Option<String> {
+fn prompt(message: &Value) -> Option<(String, Vec<String>)> {
     if message["origin"]["kind"] == NOTIFICATION {
         return None;
     }
@@ -272,7 +279,35 @@ fn prompt(message: &Value) -> Option<String> {
             .join("\n"),
     };
     let pictured = blocks.iter().any(|block| block["type"] == "image");
-    spoken(&text, pictured)
+    let (said, files) = unbriefed(&text);
+    match spoken(&said, pictured) {
+        Some(said) => Some((said, files)),
+        None if !files.is_empty() => Some((String::new(), files)),
+        None => None,
+    }
+}
+
+fn unbriefed(text: &str) -> (String, Vec<String>) {
+    let starts = [0].into_iter().chain(text.match_indices('\n').map(|(at, _)| at + 1));
+    starts
+        .filter(|at| chat::BRIEFS.iter().any(|head| text[*at..].starts_with(head)))
+        .find_map(|at| Some((text[..at].trim_end().to_string(), listed(&text[at..])?)))
+        .unwrap_or_else(|| (text.to_string(), Vec::new()))
+}
+
+fn listed(brief: &str) -> Option<Vec<String>> {
+    let mut files = Vec::new();
+    let mut folders = false;
+    for line in brief.lines().map(str::trim_end) {
+        if let Some(head) = chat::BRIEFS.iter().find(|head| line == **head) {
+            folders = *head == chat::FOLDERS_BRIEF;
+        } else if let Some(file) = line.strip_prefix("- ").filter(|file| !file.trim().is_empty()) {
+            files.push(if folders && !file.ends_with(['/', '\\']) { format!("{file}/") } else { file.to_string() });
+        } else if !line.is_empty() {
+            return None;
+        }
+    }
+    Some(files)
 }
 
 fn spoken(text: &str, pictured: bool) -> Option<String> {
@@ -287,7 +322,7 @@ fn spoken(text: &str, pictured: bool) -> Option<String> {
     }
     match (text.is_empty(), pictured) {
         (false, _) => Some(text.to_string()),
-        (true, true) => Some(PICTURE.to_string()),
+        (true, true) => Some(chat::picture()),
         (true, false) => None,
     }
 }
@@ -355,6 +390,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::language::{Language, speaking};
 
     const ID: &str = "4f1d2c3b-5a69-4e7f-8a1b-2c3d4e5f6a7b";
 
@@ -508,12 +544,42 @@ mod tests {
 
     #[test]
     fn a_picture_without_words_still_opens_a_turn_but_the_picture_stays_behind() {
-        assert_eq!(spoken("", true).as_deref(), Some(PICTURE));
+        assert_eq!(speaking(Language::Es, || spoken("", true)).as_deref(), Some("[imagen]"));
+        assert_eq!(speaking(Language::De, || spoken("", true)).as_deref(), Some("[Bild]"));
         assert_eq!(spoken("  ", false), None);
 
         let place = temp_root("pictures");
         let found = read(&fixture(&place)).unwrap();
         assert!(found.entries.iter().all(|entry| !matches!(entry, Entry::Task { images, .. } if !images.is_empty())));
+    }
+
+    #[test]
+    fn attached_files_come_back_from_the_brief_in_either_language() {
+        let english = "revisa\n\nAttached files (read them before answering):\n- src/a.rs\n- .sens/artifacts/s1/pasted-text.txt\n\nAttached folders (explore them as needed):\n- docs/\n- C:\\otros";
+        assert_eq!(
+            unbriefed(english),
+            ("revisa".into(), vec!["src/a.rs".into(), ".sens/artifacts/s1/pasted-text.txt".into(), "docs/".into(), "C:\\otros/".into()])
+        );
+        let spanish = "mira esto\n\nFicheros adjuntos (léelos antes de responder):\n- b.md";
+        assert_eq!(unbriefed(spanish), ("mira esto".into(), vec!["b.md".into()]));
+        assert_eq!(unbriefed("Attached files (read them before answering):\n- solo.pdf"), (String::new(), vec!["solo.pdf".into()]));
+    }
+
+    #[test]
+    fn words_that_only_look_like_a_brief_stay_as_written() {
+        let quoted = "¿Qué hace esta línea?\nAttached files (read them before answering):\ny sigue el texto";
+        assert_eq!(unbriefed(quoted), (quoted.into(), Vec::new()));
+        let later = "Attached files (read them before answering): es lo que escribe Sens\n\nAttached files (read them before answering):\n- a.rs";
+        assert_eq!(unbriefed(later), ("Attached files (read them before answering): es lo que escribe Sens".into(), vec!["a.rs".into()]));
+    }
+
+    #[test]
+    fn a_message_of_only_files_still_opens_a_turn_with_them() {
+        let place = temp_root("briefed");
+        let only_files = json!({ "type": "user", "message": { "role": "user", "content": "Attached files (read them before answering):\n- informe.pdf" }, "timestamp": "2026-09-20T10:00:00Z" });
+        let found = read(&written(&place, &[only_files, assistant("m", "claude-opus-5-5", "Leído.", "2026-09-20T10:00:01Z")])).unwrap();
+
+        assert!(matches!(&found.entries[1], Entry::Task { text, files, .. } if text.is_empty() && files == &["informe.pdf".to_string()]));
     }
 
     #[test]
@@ -609,7 +675,7 @@ mod tests {
         let path = fixture(&place);
         std::fs::remove_dir_all(place.join("proyecto")).unwrap();
 
-        assert!(adopt(&path).unwrap_err().contains("ya no existe"));
+        assert!(speaking(Language::Es, || adopt(&path)).unwrap_err().contains("ya no existe"));
         assert!(!place.join("proyecto").exists());
     }
 

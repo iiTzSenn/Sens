@@ -1,9 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Icon } from "../../shared/Icon";
-import { ICONS } from "../../shared/icons.js";
 import { Markdown, type Fade } from "../../shared/markdown/Markdown";
 import { mended, parse, splitBlocks, textLength } from "../../shared/markdown/parse";
-import type { Said as SaidPart, Thought as ThoughtPart } from "./turns";
+import type { Said as SaidPart } from "./turns";
 
 // A streamed reply is revealed a little every frame: at least a few
 // characters, more the further behind it is, to the end of a word.
@@ -13,7 +11,7 @@ const WORD_REACH = 24;
 // How long new text takes to fade in.
 const FADE = 150;
 
-const Frozen = memo(function Frozen({ text }: { text: string }) {
+export const Frozen = memo(function Frozen({ text }: { text: string }) {
   return <Markdown text={text} />;
 });
 
@@ -71,17 +69,5 @@ export const Said = memo(function Said({ part }: { part: SaidPart }) {
       ))}
       <Markdown text={writing} fade={{ stamps: at.stamps, now }} />
     </div>
-  );
-});
-
-export const Thought = memo(function Thought({ part }: { part: ThoughtPart }) {
-  return (
-    <details className="thought" data-live={String(!part.done)}>
-      <summary>
-        <Icon svg={ICONS.shut} />
-        <span>{part.done ? "Razonamiento" : "Razonando…"}</span>
-      </summary>
-      <div className="thought-text">{part.text}</div>
-    </details>
   );
 });

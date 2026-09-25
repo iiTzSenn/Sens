@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::process::Command;
 
+use sens_agent::said;
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -63,23 +64,73 @@ pub fn changes(root: &Path) -> Option<Changes> {
 }
 
 pub fn checkout(root: &Path, branch: &str) -> Result<Repo, String> {
-    ran(git(root, &["checkout", branch]), &format!("git no pudo cambiar a {branch}"))?;
-    read(root).ok_or_else(|| format!("{branch} dejó de leerse como repositorio"))
+    let failed = said!(
+        en: "Git couldn’t switch to {branch}",
+        es: "git no pudo cambiar a {branch}",
+        fr: "Git n’a pas pu passer à {branch}",
+        de: "Git konnte nicht zu {branch} wechseln",
+        ja: "git で {branch} に切り替えられませんでした",
+        zh: "git 无法切换到 {branch}",
+    );
+    ran(git(root, &["checkout", branch]), &failed)?;
+    read(root).ok_or_else(|| {
+        said!(
+            en: "{branch} can no longer be read as a repository",
+            es: "{branch} dejó de leerse como repositorio",
+            fr: "{branch} ne se lit plus comme un dépôt",
+            de: "{branch} lässt sich nicht mehr als Repository lesen",
+            ja: "{branch} をリポジトリとして読み取れなくなりました",
+            zh: "{branch} 已无法作为仓库读取",
+        )
+    })
 }
 
 pub fn add_worktree(root: &Path, path: &Path, branch: &str) -> Result<String, String> {
-    let head = say(root, &["rev-parse", "--short", "--verify", "--quiet", "HEAD"]).ok_or("el proyecto no tiene ningún commit del que partir")?;
+    let head = say(root, &["rev-parse", "--short", "--verify", "--quiet", "HEAD"]).ok_or_else(|| {
+        said!(
+            en: "the project has no commit to start from",
+            es: "el proyecto no tiene ningún commit del que partir",
+            fr: "le projet n’a aucun commit d’où partir",
+            de: "das Projekt hat keinen Commit, von dem aus es losgehen kann",
+            ja: "プロジェクトに起点となるコミットがありません",
+            zh: "项目中没有可作为起点的提交",
+        )
+    })?;
     let base = say(root, &["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or(head);
-    ran(git(root, &["worktree", "add", "-b", branch, &path.to_string_lossy(), "HEAD"]), "git no pudo crear el worktree")?;
+    let failed = said!(
+        en: "Git couldn’t create the worktree",
+        es: "git no pudo crear el worktree",
+        fr: "Git n’a pas pu créer le worktree",
+        de: "Git konnte den Worktree nicht erstellen",
+        ja: "git でワークツリーを作成できませんでした",
+        zh: "git 无法创建工作树",
+    );
+    ran(git(root, &["worktree", "add", "-b", branch, &path.to_string_lossy(), "HEAD"]), &failed)?;
     Ok(base)
 }
 
 pub fn remove_worktree(root: &Path, path: &Path) -> Result<(), String> {
-    ran(git(root, &["worktree", "remove", &path.to_string_lossy()]), "git no pudo quitar el worktree")
+    let failed = said!(
+        en: "Git couldn’t remove the worktree",
+        es: "git no pudo quitar el worktree",
+        fr: "Git n’a pas pu supprimer le worktree",
+        de: "Git konnte den Worktree nicht entfernen",
+        ja: "git でワークツリーを削除できませんでした",
+        zh: "git 无法移除工作树",
+    );
+    ran(git(root, &["worktree", "remove", &path.to_string_lossy()]), &failed)
 }
 
 pub fn delete_branch(root: &Path, branch: &str) -> Result<(), String> {
-    ran(git(root, &["branch", "-D", branch]), &format!("git no pudo borrar la rama {branch}"))
+    let failed = said!(
+        en: "Git couldn’t delete the branch {branch}",
+        es: "git no pudo borrar la rama {branch}",
+        fr: "Git n’a pas pu supprimer la branche {branch}",
+        de: "Git konnte den Branch {branch} nicht löschen",
+        ja: "git でブランチ {branch} を削除できませんでした",
+        zh: "git 无法删除分支 {branch}",
+    );
+    ran(git(root, &["branch", "-D", branch]), &failed)
 }
 
 pub fn dirty(root: &Path) -> bool {
@@ -87,7 +138,16 @@ pub fn dirty(root: &Path) -> bool {
 }
 
 fn ran(mut command: Command, failed: &str) -> Result<(), String> {
-    let done = command.output().map_err(|error| format!("no pude lanzar git: {error}"))?;
+    let done = command.output().map_err(|error| {
+        said!(
+            en: "couldn’t launch Git: {error}",
+            es: "no pude lanzar git: {error}",
+            fr: "impossible de lancer Git : {error}",
+            de: "Git konnte nicht gestartet werden: {error}",
+            ja: "git を起動できませんでした: {error}",
+            zh: "无法启动 git：{error}",
+        )
+    })?;
     if done.status.success() {
         return Ok(());
     }

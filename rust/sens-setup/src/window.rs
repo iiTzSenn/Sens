@@ -5,14 +5,16 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::window::Color;
-use tauri::{AppHandle, Emitter, RunEvent, State, Theme, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, RunEvent, State, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
+use crate::demo::Asked;
 use crate::install::{self, Job, Place};
+use crate::language::{self, Language, said};
 use crate::launch::{Launch, Mode};
 use crate::layout::Layout;
 use crate::log::Log;
 use crate::look::{self, Look};
-use crate::progress::Step;
+use crate::progress::{self, CANCELLED, Step};
 use crate::registry::{self, Installed};
 use crate::running::{self, Closing};
 use crate::uninstall::{self, Removal};
@@ -59,6 +61,24 @@ struct Choice {
     start_menu: bool,
     #[serde(default)]
     look: Option<Look>,
+    #[serde(default)]
+    language: Option<Language>,
+}
+
+#[derive(Serialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "camelCase")]
+struct Stopped {
+    cancelled: bool,
+    reason: String,
+}
+
+impl From<String> for Stopped {
+    fn from(reason: String) -> Stopped {
+        Stopped {
+            cancelled: reason == CANCELLED,
+            reason,
+        }
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -100,11 +120,17 @@ fn setup_dir(dir: String) -> Place {
     install::assess(Path::new(dir.trim()), crate::needed(), payload::embedded().is_some())
 }
 
+#[tauri::command]
+fn setup_language(window: WebviewWindow, setup: State<Setup>, language: Language) {
+    language::set(language);
+    let _ = window.set_title(&title(setup.launch.mode));
+}
+
 #[tauri::command(async)]
-fn setup_install(app: AppHandle, setup: State<Setup>, choice: Choice) -> Result<(), String> {
+fn setup_install(app: AppHandle, setup: State<Setup>, choice: Choice) -> Result<(), Stopped> {
     let dir = PathBuf::from(choice.dir.trim());
     if !dir.is_absolute() {
-        return Err("elige una carpeta con su ruta completa".into());
+        return Err(progress::not_absolute().into());
     }
     setup.cancel.store(false, Ordering::SeqCst);
     let layout = {
@@ -114,9 +140,24 @@ fn setup_install(app: AppHandle, setup: State<Setup>, choice: Choice) -> Result<
     };
     let report = reporter(&app, &setup.log);
     let Some(payload) = payload::embedded() else {
-        return demo::install(&dir, choice.start_menu, choice.desktop, choice.look.is_some(), &setup.cancel, &report);
+        let asked = Asked {
+            start_menu: choice.start_menu,
+            desktop: choice.desktop,
+            look: choice.look.is_some(),
+            language: choice.language.is_some(),
+        };
+        return demo::install(&dir, &asked, &setup.cancel, &report).map_err(Stopped::from);
     };
-    let exe = std::env::current_exe().map_err(|error| format!("no encuentro el instalador: {error}"))?;
+    let exe = std::env::current_exe().map_err(|error| {
+        said!(
+            en: "can’t find the installer: {error}",
+            es: "no encuentro el instalador: {error}",
+            fr: "impossible de trouver le programme d’installation : {error}",
+            de: "das Installationsprogramm wurde nicht gefunden: {error}",
+            ja: "インストーラーが見つかりません: {error}",
+            zh: "找不到安装程序：{error}",
+        )
+    })?;
     let ask = || ask_about_the_open_app(&app);
     let waits = setup.launch.passive || setup.launch.mode == Mode::Update;
     let job = Job {
@@ -131,23 +172,24 @@ fn setup_install(app: AppHandle, setup: State<Setup>, choice: Choice) -> Result<
         closing: if waits { Closing::Wait(&ask) } else { Closing::Ask(&ask) },
         cancel: &setup.cancel,
         look: choice.look.as_ref(),
+        language: choice.language,
     };
     install::run(&job, &report).map_err(|failure| {
         if failure.placed {
             *setup.placed.lock().unwrap() = Some(dir.clone());
         }
-        setup.log.write(&format!("Error: {}", failure.reason));
-        failure.reason
+        setup.log.write(&progress::error(&failure.reason));
+        Stopped::from(failure.reason)
     })
 }
 
 #[tauri::command(async)]
-fn setup_uninstall(app: AppHandle, setup: State<Setup>, remove_data: bool) -> Result<(), String> {
+fn setup_uninstall(app: AppHandle, setup: State<Setup>, remove_data: bool) -> Result<(), Stopped> {
     setup.cancel.store(false, Ordering::SeqCst);
     let layout = setup.layout();
     let report = reporter(&app, &setup.log);
     if payload::embedded().is_none() {
-        return demo::uninstall(&layout.dir, remove_data, &report);
+        return demo::uninstall(&layout.dir, remove_data, &report).map_err(Stopped::from);
     }
     let ask = || ask_about_the_open_app(&app);
     let removal = Removal {
@@ -156,7 +198,9 @@ fn setup_uninstall(app: AppHandle, setup: State<Setup>, remove_data: bool) -> Re
         closing: Closing::Ask(&ask),
         cancel: &setup.cancel,
     };
-    uninstall::run(&removal, &report).inspect_err(|reason| setup.log.write(&format!("Error: {reason}")))
+    uninstall::run(&removal, &report)
+        .inspect_err(|reason| setup.log.write(&progress::error(reason)))
+        .map_err(Stopped::from)
 }
 
 #[tauri::command]
@@ -197,9 +241,31 @@ fn ask_about_the_open_app(app: &AppHandle) {
     let _ = app.emit("setup-running", Running { running: true });
 }
 
+fn title(mode: Mode) -> String {
+    match mode {
+        Mode::Uninstall => said!(
+            en: "Uninstall Sens",
+            es: "Desinstalar Sens",
+            fr: "Désinstaller Sens",
+            de: "Sens deinstallieren",
+            ja: "Sens をアンインストール",
+            zh: "卸载 Sens",
+        ),
+        Mode::Install | Mode::Update => said!(
+            en: "Install Sens",
+            es: "Instalar Sens",
+            fr: "Installer Sens",
+            de: "Sens installieren",
+            ja: "Sens をインストール",
+            zh: "安装 Sens",
+        ),
+    }
+}
+
 pub fn run(launch: Launch, layout: Layout, log: Log) {
     let webview = std::env::temp_dir().join(format!("sens-setup-webview-{}", std::process::id()));
-    let title = if launch.mode == Mode::Uninstall { "Desinstalar Sens" } else { "Instalar Sens" };
+    let title = title(launch.mode);
+    let spoken = language::script(language::read(&layout.settings));
     let data_directory = webview.clone();
     let setup = Setup {
         launch,
@@ -224,12 +290,14 @@ pub fn run(launch: Launch, layout: Layout, log: Log) {
                 .background_color(BACKGROUND)
                 .theme(Some(Theme::Dark))
                 .data_directory(data_directory)
+                .initialization_script(spoken)
                 .build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             setup_state,
             setup_dir,
+            setup_language,
             setup_install,
             setup_uninstall,
             setup_cancel,
@@ -244,4 +312,40 @@ pub fn run(launch: Launch, layout: Layout, log: Log) {
                 crate::sweep(&[&webview]);
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::language::speaking;
+
+    #[test]
+    fn a_cancelled_run_says_so_with_a_flag_and_not_with_words() {
+        assert_eq!(
+            Stopped::from(CANCELLED.to_string()),
+            Stopped {
+                cancelled: true,
+                reason: CANCELLED.into()
+            }
+        );
+        let failed = speaking(Language::Es, progress::not_absolute);
+        assert_eq!(Stopped::from(failed.clone()), Stopped { cancelled: false, reason: failed });
+        assert_eq!(serde_json::to_string(&Stopped::from("disk full".to_string())).unwrap(), r#"{"cancelled":false,"reason":"disk full"}"#);
+    }
+
+    #[test]
+    fn the_window_is_titled_in_the_language_spoken() {
+        assert_eq!(title(Mode::Install), "Install Sens");
+        assert_eq!(speaking(Language::Fr, || title(Mode::Uninstall)), "Désinstaller Sens");
+        assert_eq!(speaking(Language::Ja, || title(Mode::Update)), "Sens をインストール");
+    }
+
+    #[test]
+    fn a_choice_from_an_older_page_carries_no_look_and_no_language() {
+        let choice: Choice = serde_json::from_str(r#"{"dir":"C:/Sens","desktop":true,"startMenu":false}"#).unwrap();
+
+        assert!(choice.look.is_none() && choice.language.is_none());
+        let chosen: Choice = serde_json::from_str(r#"{"dir":"C:/Sens","desktop":true,"startMenu":true,"look":null,"language":"de"}"#).unwrap();
+        assert_eq!(chosen.language, Some(Language::De));
+    }
 }

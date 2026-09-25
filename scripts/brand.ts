@@ -131,12 +131,13 @@ h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacin
 section { margin-bottom: 32px; }
 .row { display: flex; align-items: flex-end; gap: 32px; flex-wrap: wrap; padding: 28px; border: 1px solid var(--sens-border); border-radius: 12px; background: var(--sens-surface); }
 .row.dark { background: var(--sens-carbon-950); border-color: var(--sens-carbon-700); }
+.row.bone { background: var(--sens-bone-50); border-color: var(--sens-bone-200); }
 figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 figcaption { font-size: 11px; color: var(--sens-text-muted); font-family: ${fontMono}; }
 .row.dark figcaption { color: var(--sens-alloy-400); }
 </style></head><body>
 <h1>the cut</h1><p class="lede">one compact carbon body, one precise S-shaped incision.</p>
-<section><h2>primary on bone</h2><div class="row">${[160, 96, 64, 48, 32, 24].map((s) => sample(`${s} px`, markSvg({ size: s, id: `p${s}` }))).join("")}</div></section>
+<section><h2>primary on bone</h2><div class="row bone">${[160, 96, 64, 48, 32, 24].map((s) => sample(`${s} px`, markSvg({ size: s, id: `p${s}` }))).join("")}</div></section>
 <section><h2>micro cut · 16–24 px</h2><div class="row">${[32, 24, 16].map((s) => sample(`${s} px`, markSvg({ size: s, micro: true, id: `m${s}` }))).join("")}</div></section>
 <section><h2>dark ui</h2><div class="row dark">${[160, 64, 32].map((s) => sample(`${s} px`, markSvg({ size: s, body: hex("carbon-800"), id: `d${s}` }))).join("")}</div></section>
 <section><h2>one color · negative space</h2><div class="row">${[160, 64, 32, 16].map((s) => sample(`${s} px`, `<span style="color:${hex("carbon-950")}">${markMonoSvg({ size: s, id: `o${s}` })}</span>`)).join("")}</div></section>

@@ -2,11 +2,12 @@ use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::fs::DirEntry;
 use std::path::{Component, Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use sens_agent::chat::Event;
+use sens_agent::said;
 use sens_agent::session::{self, Entry};
 use serde::Serialize;
 
@@ -23,6 +24,14 @@ const DOCUMENTS: [&str; 16] = [
 const TRAILING: &[char] = &['.', ',', ';', ':', '!', '?'];
 const PICTURE_CAP: usize = 5 * 1024 * 1024;
 const OUTSIDE_CAP: u64 = 20 * MEGABYTE;
+const RAW_PICTURE_CAP: u64 = 25 * MEGABYTE;
+const FOLDER_COUNT: usize = 10_000;
+const STAGED_FOR: Duration = Duration::from_secs(24 * 60 * 60);
+const UNSAFE: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+const VERBATIM: &str = r"\\?\";
+const VERBATIM_SHARE: &str = r"\\?\UNC\";
+const NAME_CAP: usize = 120;
+const RESERVED: [&str; 6] = ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"];
 const PASTEABLE: [(&str, &str); 4] = [
     ("image/png", "png"),
     ("image/jpeg", "jpg"),
@@ -39,18 +48,41 @@ pub enum Attached {
         bytes: u64,
         outside: bool,
     },
+    Folder {
+        path: String,
+        name: String,
+        entries: u64,
+        outside: bool,
+    },
     Picture {
+        path: String,
         name: String,
         media_type: String,
         data: String,
         bytes: u64,
+        outside: bool,
     },
+}
+
+#[derive(Serialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum Why {
+    Missing,
+    Unreadable,
+    TooBig,
+    Project,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Refused {
+    pub name: String,
+    pub why: Why,
 }
 
 #[derive(Serialize, Default, Debug)]
 pub struct Attachments {
     pub items: Vec<Attached>,
-    pub refused: Vec<String>,
+    pub refused: Vec<Refused>,
 }
 const IMAGES: [(&str, &str); 9] = [
     ("png", "image/png"),
@@ -213,15 +245,34 @@ fn shelf(root: &Path) -> PathBuf {
 
 fn session_shelf(root: &Path, session: &str) -> Result<PathBuf, String> {
     if session.is_empty() || !session.chars().all(|letter| letter.is_ascii_alphanumeric() || letter == '-') {
-        return Err(format!("la sesión {session} no tiene un nombre válido"));
+        return Err(said!(
+            en: "the session {session} doesn’t have a valid name",
+            es: "la sesión {session} no tiene un nombre válido",
+            fr: "la session {session} n’a pas de nom valide",
+            de: "die Sitzung {session} hat keinen gültigen Namen",
+            ja: "セッション {session} の名前が無効です",
+            zh: "会话 {session} 的名称无效",
+        ));
     }
     Ok(shelf(root).join(session))
 }
 
 fn made(root: &Path, folder: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(folder).map_err(|error| format!("no pude crear {}: {error}", folder.display()))?;
+    std::fs::create_dir_all(folder).map_err(|error| files::uncreated(folder, error))?;
     session::keep_from_git(root);
     Ok(())
+}
+
+fn too_big(name: &str, cap: u64) -> String {
+    said!(
+        en: "{name} is over {cap} MB",
+        es: "{name} pasa de {cap} MB",
+        fr: "{name} dépasse {cap} Mo",
+        de: "{name} ist größer als {cap} MB",
+        ja: "{name} が {cap} MB を超えています",
+        zh: "{name} 超过 {cap} MB",
+        cap = cap / MEGABYTE,
+    )
 }
 
 fn slashed(path: &Path) -> String {
@@ -233,30 +284,52 @@ pub fn keep_picture(root: &Path, session: &str, at: usize, media_type: &str, dat
         .iter()
         .find(|(mime, _)| *mime == media_type)
         .map(|(_, extension)| *extension)
-        .ok_or_else(|| format!("no admito imágenes {media_type}: usa PNG, JPEG, GIF o WebP"))?;
+        .ok_or_else(|| {
+            said!(
+                en: "{media_type} pictures aren’t supported: use PNG, JPEG, GIF or WebP",
+                es: "no admito imágenes {media_type}: usa PNG, JPEG, GIF o WebP",
+                fr: "les images {media_type} ne sont pas prises en charge : utilisez PNG, JPEG, GIF ou WebP",
+                de: "Bilder im Format {media_type} werden nicht unterstützt: nutze PNG, JPEG, GIF oder WebP",
+                ja: "{media_type} の画像には対応していません。PNG、JPEG、GIF、WebP を使ってください",
+                zh: "不支持 {media_type} 图片：请使用 PNG、JPEG、GIF 或 WebP",
+            )
+        })?;
     let folder = session_shelf(root, session)?;
-    let bytes = STANDARD
-        .decode(data)
-        .map_err(|error| format!("la imagen llegó rota: {error}"))?;
+    let bytes = STANDARD.decode(data).map_err(|error| {
+        said!(
+            en: "the picture arrived corrupted: {error}",
+            es: "la imagen llegó rota: {error}",
+            fr: "l’image est arrivée corrompue : {error}",
+            de: "das Bild kam beschädigt an: {error}",
+            ja: "画像が壊れた状態で届きました: {error}",
+            zh: "图片已损坏：{error}",
+        )
+    })?;
     if bytes.len() > PICTURE_CAP {
-        return Err(format!("la imagen pasa de {} MB", PICTURE_CAP / 1024 / 1024));
+        return Err(said!(
+            en: "the picture is over {cap} MB",
+            es: "la imagen pasa de {cap} MB",
+            fr: "l’image dépasse {cap} Mo",
+            de: "das Bild ist größer als {cap} MB",
+            ja: "画像が {cap} MB を超えています",
+            zh: "图片超过 {cap} MB",
+            cap = PICTURE_CAP / 1024 / 1024,
+        ));
     }
 
     made(root, &folder)?;
     let name = format!("imagen-{}-{at}.{extension}", session::now());
-    std::fs::write(folder.join(&name), bytes).map_err(|error| format!("no pude guardar la imagen: {error}"))?;
+    std::fs::write(folder.join(&name), bytes).map_err(|error| {
+        said!(
+            en: "couldn’t save the picture: {error}",
+            es: "no pude guardar la imagen: {error}",
+            fr: "impossible d’enregistrer l’image : {error}",
+            de: "das Bild konnte nicht gespeichert werden: {error}",
+            ja: "画像を保存できませんでした: {error}",
+            zh: "无法保存图片：{error}",
+        )
+    })?;
     Ok(format!(".sens/artifacts/{session}/{name}"))
-}
-
-fn picture_type(path: &Path) -> Option<&'static str> {
-    let extension = path.extension()?.to_string_lossy().to_lowercase();
-    match extension.as_str() {
-        "png" => Some("image/png"),
-        "jpg" | "jpeg" => Some("image/jpeg"),
-        "gif" => Some("image/gif"),
-        "webp" => Some("image/webp"),
-        _ => None,
-    }
 }
 
 fn within(root: &Path, full: &Path) -> Option<String> {
@@ -264,71 +337,218 @@ fn within(root: &Path, full: &Path) -> Option<String> {
     full.strip_prefix(base).ok().map(slashed)
 }
 
+fn plain(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    match text.strip_prefix(VERBATIM_SHARE) {
+        Some(share) => format!(r"\\{share}"),
+        None => text.strip_prefix(VERBATIM).unwrap_or(&text).to_string(),
+    }
+}
+
+fn as_folder(path: &str) -> String {
+    format!("{}/", path.trim_end_matches(['/', '\\']))
+}
+
 pub fn attach(root: &Path, paths: &[String]) -> Attachments {
     let mut found = Attachments::default();
     for given in paths {
         match attached(root, given) {
             Ok(item) => found.items.push(item),
-            Err(reason) => found.refused.push(reason),
+            Err(refused) => found.refused.push(refused),
         }
     }
     found
 }
 
-fn attached(root: &Path, given: &str) -> Result<Attached, String> {
+fn last_part(given: &str) -> String {
+    let part = given.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next().unwrap_or_default();
+    if part.is_empty() { given.to_string() } else { part.to_string() }
+}
+
+fn attached(root: &Path, given: &str) -> Result<Attached, Refused> {
+    let refused = |name: &str, why: Why| Refused { name: name.to_string(), why };
     let full = root
         .join(given)
         .canonicalize()
-        .map_err(|_| format!("{given} no existe"))?;
-    let meta = full.metadata().map_err(|error| format!("no pude leer {given}: {error}"))?;
+        .map_err(|_| refused(&last_part(given), Why::Missing))?;
     let name = full
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| given.to_string());
+        .unwrap_or_else(|| last_part(given));
+    let meta = full.metadata().map_err(|_| refused(&name, Why::Unreadable))?;
+    let inside = within(root, &full);
+    let outside = inside.is_none();
+
+    if meta.is_dir() {
+        let path = match inside {
+            Some(inside) if inside.is_empty() => return Err(refused(&name, Why::Project)),
+            Some(inside) => inside,
+            None => plain(&full),
+        };
+        let entries = std::fs::read_dir(&full).map_or(0, |read| read.take(FOLDER_COUNT).count() as u64);
+        return Ok(Attached::Folder { path: as_folder(&path), name, entries, outside });
+    }
     if !meta.is_file() {
-        return Err(format!("{name} no es un fichero"));
+        return Err(refused(&name, Why::Unreadable));
     }
 
-    if let Some(media_type) = picture_type(&full).filter(|_| meta.len() <= PICTURE_CAP as u64) {
-        let bytes = std::fs::read(&full).map_err(|error| format!("no pude leer {name}: {error}"))?;
+    let path = inside.unwrap_or_else(|| plain(&full));
+    if let Some(media_type) = mime_of(&full).filter(|_| meta.len() <= RAW_PICTURE_CAP) {
+        let bytes = files::bounded(&full, RAW_PICTURE_CAP).ok().flatten().ok_or_else(|| refused(&name, Why::Unreadable))?;
         return Ok(Attached::Picture {
+            path,
             name,
             media_type: media_type.to_string(),
             data: STANDARD.encode(bytes),
             bytes: meta.len(),
+            outside,
         });
     }
 
-    let inside = within(root, &full);
-    if inside.is_none() && meta.len() > OUTSIDE_CAP {
-        return Err(format!("{name} pasa de {} MB", OUTSIDE_CAP / MEGABYTE));
+    if outside && meta.len() > OUTSIDE_CAP {
+        return Err(refused(&name, Why::TooBig));
     }
+    Ok(Attached::File { path, name, bytes: meta.len(), outside })
+}
+
+pub fn stage(folder: &Path, name: &str, data: &str) -> Result<Attached, String> {
+    if data.len() as u64 > OUTSIDE_CAP.div_ceil(3) * 4 {
+        return Err(too_big(name, OUTSIDE_CAP));
+    }
+    let bytes = STANDARD.decode(data).map_err(|error| {
+        said!(
+            en: "{name} arrived corrupted: {error}",
+            es: "{name} llegó roto: {error}",
+            fr: "{name} est arrivé corrompu : {error}",
+            de: "{name} kam beschädigt an: {error}",
+            ja: "{name} が壊れた状態で届きました: {error}",
+            zh: "{name} 已损坏：{error}",
+        )
+    })?;
+    if bytes.len() as u64 > OUTSIDE_CAP {
+        return Err(too_big(name, OUTSIDE_CAP));
+    }
+    let clean = safe_name(name);
+    sweep(folder, SystemTime::now());
+    std::fs::create_dir_all(folder).map_err(|error| files::uncreated(folder, error))?;
+    let place = fresh_place(folder, session::now())?;
+    let target = place.join(&clean);
+    std::fs::write(&target, &bytes).map_err(|error| {
+        said!(
+            en: "couldn’t save {clean}: {error}",
+            es: "no pude guardar {clean}: {error}",
+            fr: "impossible d’enregistrer {clean} : {error}",
+            de: "{clean} konnte nicht gespeichert werden: {error}",
+            ja: "{clean} を保存できませんでした: {error}",
+            zh: "无法保存 {clean}：{error}",
+        )
+    })?;
     Ok(Attached::File {
-        outside: inside.is_none(),
-        path: inside.unwrap_or_else(|| full.to_string_lossy().into_owned()),
-        name,
-        bytes: meta.len(),
+        path: plain(&target),
+        name: clean,
+        bytes: bytes.len() as u64,
+        outside: true,
     })
+}
+
+fn fresh_place(folder: &Path, stamp: u64) -> Result<PathBuf, String> {
+    let mut copy = 0;
+    loop {
+        let place = folder.join(format!("{stamp}-{copy}"));
+        match std::fs::create_dir(&place) {
+            Ok(()) => return Ok(place),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => copy += 1,
+            Err(error) => return Err(files::uncreated(&place, error)),
+        }
+    }
+}
+
+fn safe_name(name: &str) -> String {
+    let clean: String = name
+        .chars()
+        .map(|letter| if UNSAFE.contains(&letter) || letter.is_control() { '_' } else { letter })
+        .collect();
+    let clean = clean.trim_matches(|letter: char| letter == '.' || letter.is_whitespace());
+    let clean = shortened(if clean.is_empty() { "file" } else { clean });
+    if reserved(&clean) { format!("_{clean}") } else { clean }
+}
+
+fn shortened(name: &str) -> String {
+    if name.chars().count() <= NAME_CAP {
+        return name.to_string();
+    }
+    let extension = name
+        .rsplit_once('.')
+        .map(|(_, extension)| extension)
+        .filter(|extension| extension.chars().count() < NAME_CAP / 4)
+        .map_or_else(String::new, |extension| format!(".{extension}"));
+    let stem: String = name.chars().take(NAME_CAP - extension.chars().count()).collect();
+    format!("{}{extension}", stem.trim_end_matches(|letter: char| letter == '.' || letter.is_whitespace()))
+}
+
+fn reserved(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or_default().trim_end().to_ascii_uppercase();
+    let numbered = stem
+        .strip_prefix("COM")
+        .or_else(|| stem.strip_prefix("LPT"))
+        .is_some_and(|rest| rest.chars().count() == 1 && rest.chars().all(|digit| digit.is_ascii_digit() || "¹²³".contains(digit)));
+    numbered || RESERVED.contains(&stem.as_str())
+}
+
+fn sweep(folder: &Path, now: SystemTime) {
+    for entry in std::fs::read_dir(folder).into_iter().flatten().filter_map(Result::ok) {
+        let old = entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .is_some_and(|age| age > STAGED_FOR);
+        if old {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 pub fn keep_file(root: &Path, work: &Path, session: &str, given: &str) -> Result<String, String> {
     if !Path::new(given).is_absolute() {
         return Ok(given.to_string());
     }
-    let full = Path::new(given).canonicalize().map_err(|_| format!("{given} ya no existe"))?;
+    let full = Path::new(given).canonicalize().map_err(|_| {
+        said!(
+            en: "{given} no longer exists",
+            es: "{given} ya no existe",
+            fr: "{given} n’existe plus",
+            de: "{given} existiert nicht mehr",
+            ja: "{given} はもう存在しません",
+            zh: "{given} 已不存在",
+        )
+    })?;
+    let folder = full.is_dir();
     if let Some(inside) = within(work, &full) {
-        return Ok(inside);
+        return Ok(if folder { as_folder(&inside) } else { inside });
     }
-    let size = full.metadata().map_err(|error| format!("no pude leer {given}: {error}"))?.len();
+    if folder {
+        return Ok(as_folder(&plain(&full)));
+    }
+    let size = full.metadata().map_err(|error| files::unread(given, error))?.len();
     if size > OUTSIDE_CAP {
-        return Err(format!("{given} pasa de {} MB", OUTSIDE_CAP / MEGABYTE));
+        return Err(too_big(given, OUTSIDE_CAP));
     }
 
     let folder = session_shelf(root, session)?;
     made(root, &folder)?;
     let original = full.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
     let target = unused(&folder, &original);
-    std::fs::copy(&full, &target).map_err(|error| format!("no pude copiar {given}: {error}"))?;
+    std::fs::copy(&full, &target).map_err(|error| {
+        said!(
+            en: "couldn’t copy {given}: {error}",
+            es: "no pude copiar {given}: {error}",
+            fr: "impossible de copier {given} : {error}",
+            de: "{given} konnte nicht kopiert werden: {error}",
+            ja: "{given} をコピーできませんでした: {error}",
+            zh: "无法复制 {given}：{error}",
+        )
+    })?;
     let name = target.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
     let kept = format!(".sens/artifacts/{session}/{name}");
     Ok(match work == root {
@@ -403,25 +623,48 @@ pub fn mime_of(path: &Path) -> Option<&'static str> {
 pub fn vetted(registry: &Registry, path: &str) -> Result<PathBuf, String> {
     let given = Path::new(path);
     if given.components().any(|part| part == Component::ParentDir) {
-        return Err(format!("{path} intenta salir de la carpeta de artefactos"));
+        return Err(said!(
+            en: "{path} tries to leave the artifacts folder",
+            es: "{path} intenta salir de la carpeta de artefactos",
+            fr: "{path} tente de sortir du dossier des artefacts",
+            de: "{path} versucht, den Artefaktordner zu verlassen",
+            ja: "{path} はアーティファクトのフォルダーの外を指しています",
+            zh: "{path} 试图跳出工件文件夹",
+        ));
     }
     let full = given
         .canonicalize()
-        .map_err(|_| format!("{path} no existe"))?;
+        .map_err(|_| files::missing(path))?;
     let held = registry.projects.iter().any(|known| {
         shelf(Path::new(&known.root))
             .canonicalize()
             .is_ok_and(|base| full.starts_with(base))
     });
     if !held || !full.is_file() {
-        return Err(format!("{path} no es un artefacto de ningún proyecto"));
+        return Err(said!(
+            en: "{path} isn’t an artifact of any project",
+            es: "{path} no es un artefacto de ningún proyecto",
+            fr: "{path} n’est un artefact d’aucun projet",
+            de: "{path} ist kein Artefakt eines Projekts",
+            ja: "{path} はどのプロジェクトのアーティファクトでもありません",
+            zh: "{path} 不是任何项目的工件",
+        ));
     }
     Ok(full)
 }
 
 pub fn data(registry: &Registry, path: &str) -> Result<String, String> {
     let full = vetted(registry, path)?;
-    let mime = mime_of(&full).ok_or_else(|| format!("{path} no es una imagen"))?;
+    let mime = mime_of(&full).ok_or_else(|| {
+        said!(
+            en: "{path} isn’t a picture",
+            es: "{path} no es una imagen",
+            fr: "{path} n’est pas une image",
+            de: "{path} ist kein Bild",
+            ja: "{path} は画像ではありません",
+            zh: "{path} 不是图片",
+        )
+    })?;
     let bytes = capped(&full, path, IMAGE_CAP)?;
     Ok(data_url(mime, &bytes))
 }
@@ -432,13 +675,22 @@ pub fn data_url(mime: &str, bytes: &[u8]) -> String {
 
 pub fn text(registry: &Registry, path: &str) -> Result<String, String> {
     let bytes = capped(&vetted(registry, path)?, path, TEXT_CAP)?;
-    String::from_utf8(bytes).map_err(|_| format!("{path} no es texto UTF-8"))
+    String::from_utf8(bytes).map_err(|_| {
+        said!(
+            en: "{path} isn’t UTF-8 text",
+            es: "{path} no es texto UTF-8",
+            fr: "{path} n’est pas du texte UTF-8",
+            de: "{path} ist kein UTF-8-Text",
+            ja: "{path} は UTF-8 のテキストではありません",
+            zh: "{path} 不是 UTF-8 文本",
+        )
+    })
 }
 
 fn capped(full: &Path, path: &str, cap: u64) -> Result<Vec<u8>, String> {
     files::bounded(full, cap)
-        .map_err(|error| format!("no pude leer {path}: {error}"))?
-        .ok_or_else(|| format!("{path} pasa de {} MB", cap / MEGABYTE))
+        .map_err(|error| files::unread(path, error))?
+        .ok_or_else(|| too_big(path, cap))
 }
 
 pub fn destination(registry: &Registry, target: &str) -> Result<Outside, String> {
@@ -446,7 +698,14 @@ pub fn destination(registry: &Registry, target: &str) -> Result<Outside, String>
         return Ok(Outside::Web(target.to_string()));
     }
     if target.contains("://") {
-        return Err(format!("solo abro enlaces http y https, no {target}"));
+        return Err(said!(
+            en: "only http and https links can be opened, not {target}",
+            es: "solo abro enlaces http y https, no {target}",
+            fr: "seuls les liens http et https peuvent être ouverts, pas {target}",
+            de: "nur http- und https-Links lassen sich öffnen, nicht {target}",
+            ja: "開けるのは http と https のリンクだけです（{target} は開けません）",
+            zh: "只能打开 http 和 https 链接，无法打开 {target}",
+        ));
     }
     let full = vetted(registry, target)?;
     if is_document(&full) {
@@ -473,6 +732,7 @@ fn is_web(target: &str) -> bool {
 mod tests {
     use super::*;
     use crate::projects::Known;
+    use sens_agent::language::{Language, speaking};
 
     fn temp_root(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!("sens-artifacts-{name}"));
@@ -642,7 +902,9 @@ mod tests {
 
         let refused = vetted(&registry, &climbing.to_string_lossy()).unwrap_err();
 
-        assert!(refused.contains("salir"));
+        assert!(refused.contains("tries to leave the artifacts folder"), "{refused}");
+        assert!(speaking(Language::Es, || vetted(&registry, &climbing.to_string_lossy())).unwrap_err().contains("intenta salir"));
+        assert!(speaking(Language::De, || vetted(&registry, &climbing.to_string_lossy())).unwrap_err().contains("Artefaktordner"));
     }
 
     #[test]
@@ -716,7 +978,7 @@ mod tests {
 
         assert!(keep_picture(&root, "s1", 0, "image/svg+xml", &fine).unwrap_err().contains("PNG"));
         assert!(keep_picture(&root, "../fuera", 0, "image/png", &fine).is_err());
-        assert!(keep_picture(&root, "s1", 0, "image/png", "esto no es base64").unwrap_err().contains("rota"));
+        assert!(keep_picture(&root, "s1", 0, "image/png", "esto no es base64").unwrap_err().contains("corrupted"));
         let huge = STANDARD.encode(vec![0u8; PICTURE_CAP + 1]);
         assert!(keep_picture(&root, "s1", 0, "image/png", &huge).unwrap_err().contains("5 MB"));
         assert!(!shelf(&root).exists());
@@ -735,10 +997,47 @@ mod tests {
         let found = attach(&root, &[full(&elsewhere.join("captura.PNG"))]);
 
         assert!(found.refused.is_empty());
-        assert_eq!(
-            found.items,
-            vec![Attached::Picture { name: "captura.PNG".into(), media_type: "image/png".into(), data: STANDARD.encode(b"png"), bytes: 3 }]
-        );
+        let Attached::Picture { path, name, media_type, data, bytes, outside } = &found.items[0] else { panic!("{found:?}") };
+        assert_eq!((name.as_str(), media_type.as_str(), *bytes, *outside), ("captura.PNG", "image/png", 3, true));
+        assert_eq!(data, &STANDARD.encode(b"png"));
+        assert!(Path::new(path).is_absolute() && !path.starts_with(VERBATIM), "{path}");
+    }
+
+    #[test]
+    fn any_picture_the_window_can_draw_comes_back_as_a_picture_to_be_converted() {
+        let root = temp_root("attach-formats");
+        put(&root.join("icono.ico"), b"ico");
+        put(&root.join("dibujo.svg"), b"<svg/>");
+        put(&root.join("foto.avif"), b"avif");
+        put(&root.join("mapa.bmp"), b"bmp");
+
+        let found = attach(&root, &["icono.ico".into(), "dibujo.svg".into(), "foto.avif".into(), "mapa.bmp".into()]);
+
+        let kinds: Vec<(&str, &str)> = found
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Attached::Picture { path, media_type, .. } => Some((path.as_str(), media_type.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(kinds, vec![("icono.ico", "image/x-icon"), ("dibujo.svg", "image/svg+xml"), ("foto.avif", "image/avif"), ("mapa.bmp", "image/bmp")]);
+    }
+
+    #[test]
+    fn a_folder_is_attached_for_claude_to_explore_with_what_it_holds() {
+        let root = temp_root("attach-folder");
+        let elsewhere = temp_root("attach-folder-elsewhere");
+        put(&root.join("src").join("a.rs"), b"x");
+        put(&root.join("src").join("b.rs"), b"y");
+        put(&elsewhere.join("docs").join("c.md"), b"z");
+
+        let found = attach(&root, &["src".into(), full(&elsewhere.join("docs"))]);
+
+        assert_eq!(found.items[0], Attached::Folder { path: "src/".into(), name: "src".into(), entries: 2, outside: false });
+        let Attached::Folder { path, entries, outside, .. } = &found.items[1] else { panic!("{found:?}") };
+        assert!(path.ends_with("docs/") && Path::new(path).is_absolute(), "{path}");
+        assert_eq!((*entries, *outside), (1, true));
     }
 
     #[test]
@@ -767,9 +1066,9 @@ mod tests {
     }
 
     #[test]
-    fn a_picture_too_big_to_send_inline_is_attached_as_a_file_instead() {
+    fn a_picture_too_big_even_to_convert_is_attached_as_a_file_instead() {
         let root = temp_root("attach-big-picture");
-        put(&root.join("enorme.png"), &vec![0u8; PICTURE_CAP + 1]);
+        put(&root.join("enorme.png"), &vec![0u8; RAW_PICTURE_CAP as usize + 1]);
 
         let found = attach(&root, &["enorme.png".into()]);
 
@@ -779,14 +1078,117 @@ mod tests {
     #[test]
     fn what_cannot_be_attached_says_why_without_stopping_the_rest() {
         let root = temp_root("attach-refused");
+        let elsewhere = temp_root("attach-refused-elsewhere");
         put(&root.join("bien.txt"), b"x");
+        put(&elsewhere.join("enorme.zip"), &vec![0u8; OUTSIDE_CAP as usize + 1]);
 
-        let found = attach(&root, &["nada.txt".into(), full(&root), "bien.txt".into()]);
+        let found = attach(&root, &["nada.txt".into(), full(&root), "bien.txt".into(), full(&elsewhere.join("enorme.zip"))]);
 
         assert_eq!(found.items.len(), 1);
-        assert_eq!(found.refused.len(), 2);
-        assert!(found.refused[0].contains("no existe"));
-        assert!(found.refused[1].contains("no es un fichero"));
+        let reasons: Vec<(&str, Why)> = found.refused.iter().map(|refused| (refused.name.as_str(), refused.why)).collect();
+        let project = root.file_name().unwrap().to_string_lossy().into_owned();
+        assert_eq!(reasons, vec![("nada.txt", Why::Missing), (project.as_str(), Why::Project), ("enorme.zip", Why::TooBig)]);
+    }
+
+    #[test]
+    fn a_pasted_file_waits_in_the_staging_folder_under_its_own_name() {
+        let staging = temp_root("stage");
+
+        let first = stage(&staging, "informe.pdf", &STANDARD.encode(b"%PDF")).unwrap();
+        let second = stage(&staging, "informe.pdf", &STANDARD.encode(b"%PDF-2")).unwrap();
+
+        let (Attached::File { path: one, name, bytes, outside }, Attached::File { path: other, .. }) = (&first, &second) else { panic!("{first:?}") };
+        assert_eq!((name.as_str(), *bytes, *outside), ("informe.pdf", 4, true));
+        assert_ne!(one, other);
+        assert_eq!(std::fs::read(one).unwrap(), b"%PDF");
+        assert_eq!(std::fs::read(other).unwrap(), b"%PDF-2");
+        assert!(Path::new(one).starts_with(&staging));
+    }
+
+    #[test]
+    fn a_staged_name_cannot_climb_out_and_what_is_broken_or_huge_is_refused() {
+        let staging = temp_root("stage-refused");
+
+        let Attached::File { path, name, .. } = stage(&staging, "../../fuera:mal?.txt", &STANDARD.encode(b"x")).unwrap() else { panic!() };
+        assert_eq!(name, "_.._fuera_mal_.txt");
+        assert!(Path::new(&path).starts_with(&staging));
+        assert!(matches!(stage(&staging, "..", &STANDARD.encode(b"x")).unwrap(), Attached::File { name, .. } if name == "file"));
+        assert!(stage(&staging, "roto.bin", "esto no es base64").unwrap_err().contains("corrupted"));
+        let huge = STANDARD.encode(vec![0u8; OUTSIDE_CAP as usize + 1]);
+        assert_eq!(stage(&staging, "enorme.bin", &huge).unwrap_err(), "enorme.bin is over 20 MB");
+        assert_eq!(speaking(Language::Es, || stage(&staging, "enorme.bin", &huge)).unwrap_err(), "enorme.bin pasa de 20 MB");
+        assert_eq!(speaking(Language::Fr, || stage(&staging, "enorme.bin", &huge)).unwrap_err(), "enorme.bin dépasse 20 Mo");
+    }
+
+    #[test]
+    fn a_staged_name_windows_keeps_for_a_device_or_too_long_to_hold_is_made_safe() {
+        assert_eq!(safe_name("CON"), "_CON");
+        assert_eq!(safe_name("nul.txt"), "_nul.txt");
+        assert_eq!(safe_name("Com1.tar.gz"), "_Com1.tar.gz");
+        assert_eq!(safe_name("lpt¹"), "_lpt¹");
+        assert_eq!(safe_name("console.log"), "console.log");
+        assert_eq!(safe_name("COM10.txt"), "COM10.txt");
+        assert_eq!(safe_name(" . notas . "), "notas");
+        assert_eq!(safe_name(" . . "), "file");
+
+        let long = safe_name(&format!("{}.pdf", "a".repeat(400)));
+        assert_eq!(long.chars().count(), NAME_CAP);
+        assert!(long.ends_with("a.pdf"), "{long}");
+        let staging = temp_root("stage-long");
+        let Attached::File { path, .. } = stage(&staging, &"é".repeat(300), &STANDARD.encode(b"x")).unwrap() else { panic!() };
+        assert_eq!(std::fs::read(&path).unwrap(), b"x");
+    }
+
+    #[test]
+    fn files_staged_at_the_same_moment_never_share_a_place() {
+        let staging = temp_root("stage-together");
+
+        let staged: Vec<String> = (0..8)
+            .map(|each| {
+                let staging = staging.clone();
+                std::thread::spawn(move || stage(&staging, "captura.png", &STANDARD.encode([each])).unwrap())
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|thread| match thread.join().unwrap() {
+                Attached::File { path, .. } => path,
+                other => panic!("{other:?}"),
+            })
+            .collect();
+
+        let places: HashSet<&String> = staged.iter().collect();
+        assert_eq!(places.len(), 8);
+        let mut kept: Vec<u8> = staged.iter().map(|path| std::fs::read(path).unwrap()[0]).collect();
+        kept.sort_unstable();
+        assert_eq!(kept, (0..8).collect::<Vec<u8>>());
+    }
+
+    #[test]
+    fn a_payload_too_long_to_fit_is_refused_before_it_is_decoded() {
+        let staging = temp_root("stage-precheck");
+        let oversized = "*".repeat(OUTSIDE_CAP.div_ceil(3) as usize * 4 + 4);
+
+        assert_eq!(stage(&staging, "enorme.bin", &oversized).unwrap_err(), "enorme.bin is over 20 MB");
+        assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_path_outside_is_handed_over_without_the_verbatim_prefix() {
+        assert_eq!(plain(Path::new(r"\\?\C:\Users\ana\notas.md")), r"C:\Users\ana\notas.md");
+        assert_eq!(plain(Path::new(r"\\?\UNC\servidor\compartido\informe.pdf")), r"\\servidor\compartido\informe.pdf");
+        assert_eq!(plain(Path::new("/home/ana/notas.md")), "/home/ana/notas.md");
+    }
+
+    #[test]
+    fn staged_files_left_for_a_day_are_swept_away() {
+        let staging = temp_root("stage-sweep");
+        put(&staging.join("1-0").join("viejo.txt"), b"x");
+
+        sweep(&staging, SystemTime::now());
+        assert!(staging.join("1-0").exists());
+
+        sweep(&staging, SystemTime::now() + STAGED_FOR + Duration::from_secs(60));
+        assert!(!staging.join("1-0").exists());
     }
 
     #[test]
@@ -805,6 +1207,20 @@ mod tests {
         assert_eq!(keep_file(&root, &root, "s1", "src/a.rs").unwrap(), "src/a.rs");
         assert_eq!(keep_file(&root, &root, "s1", &full(&root.join("src").join("a.rs"))).unwrap(), "src/a.rs");
         assert!(keep_file(&root, &root, "../fuera", &full(&elsewhere.join("notas.md"))).is_err());
+    }
+
+    #[test]
+    fn a_folder_is_handed_over_by_its_path_and_never_copied() {
+        let root = temp_root("keep-folder");
+        let elsewhere = temp_root("keep-folder-elsewhere");
+        put(&root.join("src").join("a.rs"), b"x");
+        put(&elsewhere.join("docs").join("b.md"), b"y");
+
+        assert_eq!(keep_file(&root, &root, "s1", "src/").unwrap(), "src/");
+        assert_eq!(keep_file(&root, &root, "s1", &format!("{}/", full(&root.join("src")))).unwrap(), "src/");
+        let outside = keep_file(&root, &root, "s1", &full(&elsewhere.join("docs"))).unwrap();
+        assert!(outside.ends_with("docs/") && Path::new(&outside).is_absolute(), "{outside}");
+        assert!(!shelf(&root).exists());
     }
 
     #[test]

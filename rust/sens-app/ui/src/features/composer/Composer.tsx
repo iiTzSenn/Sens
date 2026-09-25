@@ -1,17 +1,40 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useEffect, useLayoutEffect, useRef, useState, type AnimationEvent, type CSSProperties, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type AnimationEvent, type CSSProperties, type KeyboardEvent, type RefObject } from "react";
 import { useStore } from "zustand";
+import { openPicture } from "../../app/Dialog";
 import { chooseFolder } from "../../app/session";
-import { stem, weigh } from "../../shared/format.js";
+import { stem } from "../../shared/format.js";
+import { localeNow } from "../../shared/i18n";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { useSheet, type Sheet } from "../../shared/useSheet";
 import { halt } from "../chat/store";
+import { showFile } from "../files/view";
 import { useIds, usePane } from "../panes/context";
 import { panes } from "../panes/store";
-import { ContextMeter, Effort, ModelPicker, ModePicker, Think } from "./Knobs";
+import { ClipCard, PictureTile, pictureTitle, shownOfFile } from "./Clip";
+import { t } from "./copy";
+import { onEdge, recall } from "./history";
+import { ContextMeter } from "../models/ContextMeter";
+import { Effort, ModelPicker, ModePicker, Think } from "./Knobs";
 import { Suggestions, useSuggestions } from "./Suggestions";
-import { attachPaths, canSend, composer, dropFile, dropPicture, fileLabel, send, switchTo, takePictures, toggleIsolate, warm, writeMessage } from "./store";
+import {
+  attachPaths,
+  canSend,
+  composer,
+  dropFile,
+  dropPicture,
+  inlineText,
+  pasteText,
+  send,
+  switchTo,
+  takeFiles,
+  toggleIsolate,
+  tooLong,
+  warm,
+  writeMessage,
+  type File,
+} from "./store";
 
 // Where you write to Claude: the folder and branch, what goes attached, the
 // message, and the knobs of the next turn under it.
@@ -20,7 +43,6 @@ export function Composer() {
     <div className="composer">
       <div className="composer-inner">
         <Workspace />
-        <Clips />
         <Box />
         <div className="under">
           <div className="knobs">
@@ -45,13 +67,13 @@ function Workspace() {
   const busy = useStore(pane.chat, (s) => s.busy);
   const repo = useStore(pane.desk, (s) => s.repo);
   const sheet = useSheet();
-  const pending = repo && (repo.dirty === 1 ? "1 fichero sin confirmar" : `${repo.dirty} ficheros sin confirmar`);
+  const pending = repo && t.uncommitted(repo.dirty);
 
   return (
     <div className="workspace">
-      <button className="chipbtn" id={id("folder")} title={root || "Elegir carpeta de trabajo"} disabled={busy} onClick={() => chooseFolder()}>
+      <button className="chipbtn" id={id("folder")} title={root || t.chooseFolderTitle} disabled={busy} onClick={() => chooseFolder()}>
         <Icon svg={ICONS.folderSmall} />
-        <span id={id("root")}>{root ? stem(root) : "Elegir carpeta…"}</span>
+        <span id={id("root")}>{root ? stem(root) : t.chooseFolder}</span>
       </button>
       {repo && (
         <button
@@ -61,7 +83,7 @@ function Workspace() {
           aria-haspopup="true"
           aria-expanded={sheet.open}
           disabled={busy}
-          title={[repo.detached ? `HEAD suelto en ${repo.branch}` : repo.branch, repo.dirty ? pending : ""].filter(Boolean).join(" · ")}
+          title={[repo.detached ? t.detached(repo.branch) : repo.branch, repo.dirty ? pending : ""].filter(Boolean).join(" · ")}
           onClick={sheet.toggle}
         >
           <Icon svg={ICONS.branch} />
@@ -75,8 +97,6 @@ function Workspace() {
   );
 }
 
-const ISOLATE_HELP = "Trabaja en una copia aparte del repositorio, en una rama nueva: lo que haga Claude no toca tu carpeta hasta que lo fusiones.";
-
 function WorktreeChip() {
   const pane = usePane();
   const id = useIds();
@@ -87,16 +107,16 @@ function WorktreeChip() {
   const busy = useStore(pane.chat, (s) => s.busy);
   if (worktree)
     return (
-      <span className="chipbtn worktree-chip" id={id("worktree")} title={`Trabaja en un worktree aparte, en la rama ${worktree.branch} (creada desde ${worktree.base}): ${worktree.path}`}>
+      <span className="chipbtn worktree-chip" id={id("worktree")} title={t.worktreeTitle(worktree.branch, worktree.base, worktree.path)}>
         <Icon svg={ICONS.fork} />
-        <span>worktree</span>
+        <span>{t.worktreeChip}</span>
       </span>
     );
   if (!repo || session) return null;
   return (
-    <button className="chipbtn" id={id("isolate")} aria-pressed={isolate} disabled={busy} title={ISOLATE_HELP} onClick={() => toggleIsolate(pane)}>
+    <button className="chipbtn" id={id("isolate")} aria-pressed={isolate} disabled={busy} title={t.isolateHelp} onClick={() => toggleIsolate(pane)}>
       <Icon svg={ICONS.fork} />
-      <span>Worktree</span>
+      <span>{t.worktreeToggle}</span>
     </button>
   );
 }
@@ -128,43 +148,45 @@ function Branches({ sheet }: { sheet: Sheet }) {
       <div id={id("branch-here")}>{row(repo.branch, true)}</div>
       <div className="seek">
         <Icon svg={ICONS.find} />
-        <input className="field" id={id("branch-filter")} placeholder="Buscar ramas…" autoComplete="off" spellCheck={false} value={needle} onChange={(event) => setNeedle(event.target.value)} />
+        <input className="field" id={id("branch-filter")} placeholder={t.searchBranches} autoComplete="off" spellCheck={false} value={needle} onChange={(event) => setNeedle(event.target.value)} />
       </div>
       <div className="rows" id={id("branch-rows")}>
         {shown.map((name) => row(name, false))}
-        {!shown.length && <p className="none">{wanted ? "Ninguna rama coincide." : "No hay más ramas."}</p>}
+        {!shown.length && <p className="none">{wanted ? t.noBranchMatch : t.noOtherBranch}</p>}
       </div>
     </div>
   );
 }
 
-function Clips() {
+const openerOf = (file: File) => (file.outside || (file.kind ?? "file") !== "file" ? undefined : () => void showFile(file.path));
+
+function Clips({ inlined }: { inlined: () => void }) {
   const pane = usePane();
   const id = useIds();
   const attached = useStore(pane.desk, (s) => s.attached);
   const pasted = useStore(pane.desk, (s) => s.pasted);
   if (!attached.length && !pasted.length) return null;
   return (
-    <div className="clips" id={id("clips")}>
-      {pasted.map((picture) => (
-        <Clip key={picture.url} label={picture.name} weight={weigh(picture.bytes)} picture={picture.url} forget={() => dropPicture(picture, pane)} />
+    <div className="clips" id={id("clips")} role="list" aria-label={t.attachments}>
+      {pasted.map((picture, at) => (
+        <PictureTile
+          key={`${at}-${picture.name}`}
+          src={picture.url}
+          name={picture.name}
+          title={pictureTitle(picture)}
+          open={(from) => openPicture(picture.name, picture.url, from)}
+          remove={() => dropPicture(picture, pane)}
+        />
       ))}
       {attached.map((file) => (
-        <Clip key={file.path} label={fileLabel(file)} weight={weigh(file.bytes)} forget={() => dropFile(file.path, pane)} />
+        <ClipCard
+          key={file.path}
+          shown={shownOfFile(file)}
+          open={openerOf(file)}
+          remove={() => dropFile(file.path, pane)}
+          inline={file.kind === "text" ? () => (inlineText(file, pane), inlined()) : undefined}
+        />
       ))}
-    </div>
-  );
-}
-
-function Clip({ label, weight, picture, forget }: { label: string; weight: string; picture?: string; forget: () => void }) {
-  return (
-    <div className={picture ? "clip picture" : "clip"}>
-      {picture && <img src={picture} alt="" />}
-      <span>{label}</span>
-      <b>{weight}</b>
-      <button title={`Quitar ${label}`} aria-label={`Quitar ${label}`} onClick={forget}>
-        <Icon svg={ICONS.remove} />
-      </button>
     </div>
   );
 }
@@ -178,7 +200,7 @@ function Box() {
   const root = useStore(pane.desk, (s) => s.root);
   const busy = useStore(pane.chat, (s) => s.busy);
   const stopping = useStore(pane.chat, (s) => s.stopping);
-  const pasted = useStore(pane.desk, (s) => s.pasted.length);
+  const clips = useStore(pane.desk, (s) => s.pasted.length + s.attached.length);
   const provider = useStore(pane.desk, (s) => s.choice.provider);
   const here = useStore(panes, (s) => s.focus === pane.id);
   const dropping = useStore(composer, (s) => s.dropping) && here;
@@ -186,6 +208,7 @@ function Box() {
   const setText = (next: string) => writeMessage(next, pane);
   const field = useRef<HTMLTextAreaElement>(null);
   const grown = useRef(0);
+  const toEnd = useRef(false);
   const lap = useLap(busy);
   const dictation = useDictation(text, setText, field);
   const suggest = useSuggestions(pane, text, field, id("suggest"));
@@ -205,8 +228,17 @@ function Box() {
     grown.current = wanted;
   }, [text]);
 
-  const ready = Boolean(root && provider && (text.trim() || pasted));
-  const label = busy ? (stopping ? "Parando…" : "Parar") : "Enviar";
+  useLayoutEffect(() => {
+    const box = field.current;
+    if (!box || !toEnd.current) return;
+    toEnd.current = false;
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+    box.scrollTop = box.scrollHeight;
+  }, [text]);
+
+  const ready = Boolean(root && provider && (text.trim() || clips));
+  const label = busy ? (stopping ? t.stopping : t.stop) : t.send;
 
   async function go() {
     if (busy || !canSend(text, pane)) return;
@@ -215,17 +247,42 @@ function Box() {
     await send(said, pane);
   }
 
+  function toTheEnd() {
+    toEnd.current = true;
+    const box = field.current;
+    if (box && box.value === pane.desk.getState().text) {
+      toEnd.current = false;
+      box.focus();
+      box.setSelectionRange(box.value.length, box.value.length);
+    }
+  }
+
+  function walk(event: KeyboardEvent<HTMLTextAreaElement>) {
+    const older = event.key === "ArrowUp";
+    if (!older && event.key !== "ArrowDown") return false;
+    if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing || suggest.open) return false;
+    if (!onEdge(event.currentTarget, older)) return false;
+    const shown = recall(pane, older);
+    if (shown === null) return false;
+    event.preventDefault();
+    suggest.hush(shown);
+    setText(shown);
+    toTheEnd();
+    return true;
+  }
+
   return (
     <div className="box" data-busy={String(busy)} data-stopping={String(stopping)} data-drop={dropping ? "true" : undefined} style={lap.style} onAnimationIteration={lap.next}>
       <Suggestions suggest={suggest} />
+      <Clips inlined={toTheEnd} />
       <button
         className="round"
         id={id("attach")}
-        title="Adjuntar ficheros"
-        aria-label="Adjuntar ficheros"
+        title={t.attach}
+        aria-label={t.attach}
         disabled={!root || busy}
         onClick={async () => {
-          const picked = await open({ multiple: true, title: "Adjuntar ficheros o imágenes", defaultPath: root });
+          const picked = await open({ multiple: true, title: t.attachDialog, defaultPath: root });
           if (picked) await attachPaths(Array.isArray(picked) ? picked : [picked], pane);
         }}
       >
@@ -234,8 +291,8 @@ function Box() {
       <button
         className="round"
         id={id("dictate")}
-        title={dictation.able ? "Dictar" : "Este sistema no trae dictado en el WebView"}
-        aria-label={dictation.able ? "Dictar" : "Este sistema no trae dictado en el WebView"}
+        title={dictation.able ? t.dictate : t.noDictation}
+        aria-label={dictation.able ? t.dictate : t.noDictation}
         aria-pressed={dictation.listening}
         disabled={!dictation.able}
         onClick={dictation.toggle}
@@ -246,8 +303,8 @@ function Box() {
         ref={field}
         id={id("task")}
         rows={1}
-        placeholder="Pide lo que necesites · @ para un fichero, / para un comando"
-        aria-label="Mensaje para Claude"
+        placeholder={t.placeholder}
+        aria-label={t.messageLabel}
         aria-autocomplete="list"
         aria-expanded={suggest.open}
         aria-controls={suggest.open ? suggest.listId : undefined}
@@ -264,16 +321,24 @@ function Box() {
         onFocus={suggest.focus}
         onBlur={suggest.blur}
         onKeyDown={(event) => {
-          if (suggest.keyDown(event)) return;
+          if (suggest.keyDown(event) || walk(event)) return;
           if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
           event.preventDefault();
           go();
         }}
         onPaste={(event) => {
-          const pictures = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/"));
-          if (!pictures.length) return;
-          if (!event.clipboardData.getData("text/plain")) event.preventDefault();
-          takePictures(pictures, pane);
+          const files = [...(event.clipboardData?.files || [])];
+          const said = event.clipboardData?.getData("text/plain") ?? "";
+          if (files.length && !said) {
+            event.preventDefault();
+            takeFiles(files, pane);
+            return;
+          }
+          const pictures = files.filter((file) => file.type.startsWith("image/"));
+          if (pictures.length) takeFiles(pictures, pane);
+          if (!tooLong(said)) return;
+          event.preventDefault();
+          pasteText(said, pane);
         }}
       />
       <button className="round send" id={id("send")} title={label} aria-label={label} disabled={busy ? stopping : !ready} onClick={() => (busy ? halt(pane) : go())}>
@@ -284,6 +349,12 @@ function Box() {
           <Icon svg={ICONS.stopSquare} />
         </span>
       </button>
+      {dropping && (
+        <div className="drop-hint">
+          <Icon svg={ICONS.paperclip} />
+          <span>{t.dropHere}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -327,8 +398,6 @@ function useLap(busy: boolean) {
   };
 }
 
-// Dictation in Spanish, while the WebView has it: what is heard follows what
-// was written before, and the message takes the focus back at the end.
 type Recognition = { lang: string; continuous: boolean; interimResults: boolean; start(): void; stop(): void; addEventListener(kind: string, heard: (event: never) => void): void };
 const speech = window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
 const Dictation = speech.SpeechRecognition || speech.webkitSpeechRecognition;
@@ -340,7 +409,7 @@ function useDictation(text: string, setText: (text: string) => void, field: RefO
     if (!Dictation) return;
     if (listening) return listening.stop();
     const heard = new Dictation();
-    heard.lang = "es-ES";
+    heard.lang = localeNow();
     heard.continuous = true;
     heard.interimResults = true;
     const before = text.trim();

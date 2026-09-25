@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use sens_agent::session;
+use sens_agent::{said, session};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -30,7 +30,28 @@ const SEEN_FILE: &str = "skills-sh.json";
 const HOST_VARIABLES: [&str; 3] = ["CLAUDE_PLUGIN_ROOT", "CLAUDE_PLUGIN_DATA", "CLAUDE_PROJECT_DIR"];
 const METADATA_KEYS: [&str; 7] = ["description", "version", "author", "homepage", "repository", "license", "keywords"];
 const LICENSE_CAP: usize = 80;
-const LOGIN_NEEDED: &str = "este conector pide iniciar sesión y Sens aún no puede hacerlo por ti";
+
+fn login_needed() -> String {
+    said!(
+        en: "this connector asks you to sign in, and Sens can’t do that for you yet",
+        es: "este conector pide iniciar sesión y Sens aún no puede hacerlo por ti",
+        fr: "ce connecteur demande de se connecter, et Sens ne peut pas encore le faire pour vous",
+        de: "dieser Connector verlangt eine Anmeldung, und das kann Sens noch nicht für dich erledigen",
+        ja: "このコネクタはサインインが必要ですが、Sens はまだ代わりにサインインできません",
+        zh: "此连接器需要登录，而 Sens 目前还无法替你登录",
+    )
+}
+
+fn fallen() -> String {
+    said!(
+        en: "the request failed",
+        es: "la consulta se cayó",
+        fr: "la requête a échoué",
+        de: "die Abfrage ist fehlgeschlagen",
+        ja: "リクエストが異常終了しました",
+        zh: "请求意外中断",
+    )
+}
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase")]
@@ -89,7 +110,6 @@ struct Cached {
 #[serde(rename_all = "camelCase")]
 pub struct SourceState {
     pub id: &'static str,
-    pub label: &'static str,
     pub fetched_at: u64,
     pub error: String,
 }
@@ -158,38 +178,32 @@ enum Feed {
 
 struct Source {
     id: &'static str,
-    label: &'static str,
     feed: Feed,
 }
 
 const SOURCES: [Source; 7] = [
     Source {
         id: "official",
-        label: "Plugins oficiales de Anthropic",
         feed: Feed::Plugins { repo: "anthropics/claude-plugins-official", badge: Badge::Partner, official: true },
     },
     Source {
         id: "knowledge-work",
-        label: "Anthropic · Knowledge Work",
         feed: Feed::Plugins { repo: "anthropics/knowledge-work-plugins", badge: Badge::Anthropic, official: false },
     },
     Source {
         id: "financial-services",
-        label: "Anthropic · Financial Services",
         feed: Feed::Plugins { repo: "anthropics/financial-services-plugins", badge: Badge::Anthropic, official: false },
     },
     Source {
         id: "life-sciences",
-        label: "Anthropic · Life Sciences",
         feed: Feed::Plugins { repo: "anthropics/life-sciences", badge: Badge::Anthropic, official: false },
     },
     Source {
         id: "community",
-        label: "Comunidad revisada por Anthropic",
         feed: Feed::Plugins { repo: "anthropics/claude-plugins-community", badge: Badge::Community, official: false },
     },
-    Source { id: "skills", label: "Skills de Anthropic", feed: Feed::Skills },
-    Source { id: "connectors", label: "Conectores de Anthropic", feed: Feed::Connectors },
+    Source { id: "skills", feed: Feed::Skills },
+    Source { id: "connectors", feed: Feed::Connectors },
 ];
 
 fn catalogs(base: &Path) -> PathBuf {
@@ -224,7 +238,7 @@ pub fn market(base: &Path, refresh: bool) -> Market {
             .collect();
         asked
             .into_iter()
-            .map(|answer| answer.join().unwrap_or_else(|_| (Cached::default(), "la consulta se cayó".into())))
+            .map(|answer| answer.join().unwrap_or_else(|_| (Cached::default(), fallen())))
             .collect()
     });
 
@@ -233,7 +247,7 @@ pub fn market(base: &Path, refresh: bool) -> Market {
     let sources = SOURCES
         .iter()
         .zip(gathered)
-        .map(|(source, (kept, error))| SourceState { id: source.id, label: source.label, fetched_at: kept.fetched_at, error })
+        .map(|(source, (kept, error))| SourceState { id: source.id, fetched_at: kept.fetched_at, error })
         .collect();
     Market { listings, sources }
 }
@@ -340,15 +354,33 @@ fn fetch_skills() -> Result<Cached, String> {
                 let sha = sha.as_str();
                 scope.spawn(move || {
                     let text = web::text(&raw(SKILLS_REPO, sha, &format!("{path}/{SKILL_FILE}")), web::MEGABYTE)?;
-                    skill_item(path, &text, sha).ok_or_else(|| format!("{path} no tiene cabecera válida"))
+                    skill_item(path, &text, sha).ok_or_else(|| {
+                        said!(
+                            en: "{path} has no valid header",
+                            es: "{path} no tiene cabecera válida",
+                            fr: "{path} n’a pas d’en-tête valide",
+                            de: "{path} hat keinen gültigen Kopf",
+                            ja: "{path} に有効なヘッダーがありません",
+                            zh: "{path} 没有有效的头部",
+                        )
+                    })
                 })
             })
             .collect();
-        asked.into_iter().map(|answer| answer.join().unwrap_or_else(|_| Err("la consulta se cayó".into()))).collect()
+        asked.into_iter().map(|answer| answer.join().unwrap_or_else(|_| Err(fallen()))).collect()
     });
     let items: Vec<Item> = read.iter().filter_map(|found| found.as_ref().ok().cloned()).collect();
     if items.is_empty() {
-        let reason = read.into_iter().find_map(Result::err).unwrap_or_else(|| "no encontré skills".into());
+        let reason = read.into_iter().find_map(Result::err).unwrap_or_else(|| {
+            said!(
+                en: "no skills found",
+                es: "no encontré skills",
+                fr: "aucune skill trouvée",
+                de: "keine Skills gefunden",
+                ja: "スキルが見つかりませんでした",
+                zh: "没有找到技能",
+            )
+        });
         return Err(reason);
     }
     Ok(Cached { fetched_at: 0, repo: SKILLS_REPO.into(), sha, items })
@@ -402,7 +434,14 @@ fn fetch_connectors() -> Result<Cached, String> {
         }
     }
     if items.is_empty() {
-        return Err("Anthropic no devolvió conectores".into());
+        return Err(said!(
+            en: "Anthropic returned no connectors",
+            es: "Anthropic no devolvió conectores",
+            fr: "Anthropic n’a renvoyé aucun connecteur",
+            de: "Anthropic hat keine Connectors geliefert",
+            ja: "Anthropic からコネクタが返されませんでした",
+            zh: "Anthropic 没有返回任何连接器",
+        ));
     }
     Ok(Cached { fetched_at: 0, repo: String::new(), sha: String::new(), items })
 }
@@ -542,7 +581,16 @@ struct Found {
 }
 
 fn find(base: &Path, id: &str) -> Result<Found, String> {
-    let missing = || format!("no encuentro {id} en el catálogo; actualízalo");
+    let missing = || {
+        said!(
+            en: "can’t find {id} in the catalog; refresh it",
+            es: "no encuentro {id} en el catálogo; actualízalo",
+            fr: "{id} est introuvable dans le catalogue ; actualisez-le",
+            de: "{id} ist nicht im Katalog; aktualisiere ihn",
+            ja: "カタログに {id} が見つかりません。カタログを更新してください",
+            zh: "目录中找不到 {id}；请刷新目录",
+        )
+    };
     if id.starts_with(&format!("{SKILLS_SH}:")) {
         let listing = seen(base).remove(id).ok_or_else(missing)?;
         return Ok(Found { item: Item { listing, entry: Value::Null }, repo: String::new(), sha: String::new() });
@@ -576,7 +624,16 @@ fn locate(base: &Path, found: &Found) -> Result<Located, String> {
             Ok(Located { root, definition, revision })
         }
         Kind::Skill if listing.source == SKILLS_SH => {
-            let (owner_repo, slug) = listing.id.trim_start_matches(&format!("{SKILLS_SH}:")).rsplit_once('/').ok_or("id de skills.sh raro")?;
+            let (owner_repo, slug) = listing.id.trim_start_matches(&format!("{SKILLS_SH}:")).rsplit_once('/').ok_or_else(|| {
+                said!(
+                    en: "unexpected skills.sh ID",
+                    es: "id de skills.sh raro",
+                    fr: "identifiant skills.sh inattendu",
+                    de: "unerwartete skills.sh-ID",
+                    ja: "skills.sh の ID が不正です",
+                    zh: "skills.sh 的 ID 异常",
+                )
+            })?;
             let page = web::json(&format!("{DOWNLOAD_URL}/{owner_repo}/{slug}"), &[])?;
             let files: Vec<(String, String)> = page["files"]
                 .as_array()
@@ -585,7 +642,15 @@ fn locate(base: &Path, found: &Found) -> Result<Located, String> {
                 .filter_map(|file| Some((file["path"].as_str()?.to_string(), file["contents"].as_str()?.to_string())))
                 .collect();
             if !files.iter().any(|(path, _)| path == SKILL_FILE) {
-                return Err(format!("skills.sh no devolvió el {SKILL_FILE} de {}", listing.name));
+                return Err(said!(
+                    en: "skills.sh didn’t return the {SKILL_FILE} of {name}",
+                    es: "skills.sh no devolvió el {SKILL_FILE} de {name}",
+                    fr: "skills.sh n’a pas renvoyé le {SKILL_FILE} de {name}",
+                    de: "skills.sh hat die {SKILL_FILE} von {name} nicht geliefert",
+                    ja: "skills.sh から {name} の {SKILL_FILE} が返されませんでした",
+                    zh: "skills.sh 没有返回 {name} 的 {SKILL_FILE}",
+                    name = listing.name,
+                ));
             }
             let root = snapshot::ensure_files(base, &listing.id, &files)?;
             let revision = root.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
@@ -596,7 +661,14 @@ fn locate(base: &Path, found: &Found) -> Result<Located, String> {
             let root = inside(snapshot::ensure(base, &catalog)?, text_of(&found.item.entry, "path"))?;
             Ok(Located { root, definition: None, revision: found.sha.clone() })
         }
-        Kind::Connector => Err("un conector no tiene ficheros".into()),
+        Kind::Connector => Err(said!(
+            en: "a connector has no files",
+            es: "un conector no tiene ficheros",
+            fr: "un connecteur n’a pas de fichiers",
+            de: "ein Connector hat keine Dateien",
+            ja: "コネクタにはファイルがありません",
+            zh: "连接器没有文件",
+        )),
     }
 }
 
@@ -604,7 +676,7 @@ fn inside(folder: PathBuf, path: &str) -> Result<PathBuf, String> {
     let root = folder.join(snapshot::inner_path(path)?);
     match root.is_dir() {
         true => Ok(root),
-        false => Err(format!("no existe {path} en el repositorio")),
+        false => Err(snapshot::not_in_repository(path)),
     }
 }
 
@@ -873,7 +945,14 @@ fn server_needs(servers: &BTreeMap<String, Value>) -> Vec<Need> {
             }
             let secret = ["TOKEN", "KEY", "SECRET", "PASSWORD"].iter().any(|word| name.to_uppercase().contains(word));
             needs.push(Need {
-                description: format!("La usa el servidor {server}"),
+                description: said!(
+                    en: "Used by the server {server}",
+                    es: "La usa el servidor {server}",
+                    fr: "Utilisée par le serveur {server}",
+                    de: "Wird vom Server {server} verwendet",
+                    ja: "サーバー {server} が使用します",
+                    zh: "由服务器 {server} 使用",
+                ),
                 required: default.is_none(),
                 default: default.unwrap_or_default(),
                 secret,
@@ -972,7 +1051,17 @@ fn vetted(needs: &[Need], values: &BTreeMap<String, String>) -> Result<BTreeMap<
             (Some(value), _) => {
                 kept.insert(need.name.clone(), value.to_string());
             }
-            (None, true) => return Err(format!("falta {}", need.name)),
+            (None, true) => {
+                return Err(said!(
+                    en: "{name} is missing",
+                    es: "falta {name}",
+                    fr: "il manque {name}",
+                    de: "{name} fehlt",
+                    ja: "{name} が入力されていません",
+                    zh: "缺少 {name}",
+                    name = need.name,
+                ));
+            }
             (None, false) => {}
         }
     }
@@ -1021,13 +1110,22 @@ pub fn install(base: &Path, root: &str, id: &str, values: &BTreeMap<String, Stri
     let listing = found.item.listing.clone();
     if !listing.installable {
         return Err(match listing.login {
-            true => LOGIN_NEEDED.to_string(),
-            false => snapshot::UNSUPPORTED.to_string(),
+            true => login_needed(),
+            false => snapshot::unsupported(),
         });
     }
     match listing.kind {
         Kind::Connector => {
-            let remote = remote_of(&found.item.entry["server"]).ok_or("el conector no dice su dirección")?;
+            let remote = remote_of(&found.item.entry["server"]).ok_or_else(|| {
+                said!(
+                    en: "the connector doesn’t give its address",
+                    es: "el conector no dice su dirección",
+                    fr: "le connecteur n’indique pas son adresse",
+                    de: "der Connector nennt seine Adresse nicht",
+                    ja: "コネクタのアドレスが指定されていません",
+                    zh: "该连接器没有提供其地址",
+                )
+            })?;
             let chosen = vetted(&remote_needs(remote), values)?;
             capabilities::add_remote(base, root, &listing.name, remote_config(remote, &chosen))?;
             capabilities::record_server(base, &listing.name, provenance(&listing, listing.revision.clone()))?;
@@ -1072,6 +1170,7 @@ pub fn update(base: &Path, id: &str, name: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sens_agent::language::{Language, speaking};
 
     fn temp_root(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!("sens-market-{name}"));
@@ -1204,7 +1303,9 @@ mod tests {
         let made = remote_config(&remote, &vetted(&needs, &values).unwrap());
         assert_eq!((made.kind.as_str(), made.url.as_str()), ("http", "https://eu.x.com/mcp"));
         assert_eq!(made.headers.get("Authorization").map(String::as_str), Some("Bearer k"));
-        assert_eq!(vetted(&needs, &BTreeMap::new()).unwrap_err(), "falta api_host");
+        assert_eq!(vetted(&needs, &BTreeMap::new()).unwrap_err(), "api_host is missing");
+        assert_eq!(speaking(Language::Es, || vetted(&needs, &BTreeMap::new())).unwrap_err(), "falta api_host");
+        assert_eq!(speaking(Language::Fr, || vetted(&needs, &BTreeMap::new())).unwrap_err(), "il manque api_host");
     }
 
     #[test]
@@ -1217,6 +1318,8 @@ mod tests {
         let needs = server_needs(&servers);
         let names: Vec<(&str, bool, &str, bool)> = needs.iter().map(|need| (need.name.as_str(), need.required, need.default.as_str(), need.secret)).collect();
         assert_eq!(names, vec![("GITHUB_TOKEN", true, "", true), ("API_KEY", true, "", true), ("REGION", false, "eu", false)]);
+        assert_eq!(needs[0].description, "Used by the server github");
+        assert_eq!(speaking(Language::Es, || server_needs(&servers))[0].description, "La usa el servidor github");
     }
 
     #[test]
@@ -1303,7 +1406,7 @@ mod tests {
 
         let found = find(&base, "official:a").unwrap();
         assert_eq!((found.repo.as_str(), found.item.listing.name.as_str()), ("anthropics/claude-plugins-official", "a"));
-        assert!(find(&base, "official:nadie").err().unwrap().contains("actualízalo"));
+        assert!(find(&base, "official:nadie").err().unwrap().contains("refresh it"));
         assert!(find(&base, "skills.sh:o/r/s").is_err());
         let hit = searched(&json!({ "skills": [{ "id": "o/r/s", "skillId": "s", "name": "s", "source": "o/r" }] })).remove(0);
         store::store(&catalogs(&base), SEEN_FILE, &BTreeMap::from([(hit.id.clone(), hit)])).unwrap();
@@ -1317,7 +1420,9 @@ mod tests {
         let kept = Cached { fetched_at: session::now(), items: vec![locked], ..Cached::default() };
         store::store(&catalogs(&base), "connectors.json", &kept).unwrap();
 
-        assert_eq!(install(&base, "", "connectors:ai.tickettailor/mcp", &BTreeMap::new()).unwrap_err(), LOGIN_NEEDED);
+        assert_eq!(install(&base, "", "connectors:ai.tickettailor/mcp", &BTreeMap::new()).unwrap_err(), login_needed());
+        let spoken = speaking(Language::Es, || install(&base, "", "connectors:ai.tickettailor/mcp", &BTreeMap::new()));
+        assert_eq!(spoken.unwrap_err(), "este conector pide iniciar sesión y Sens aún no puede hacerlo por ti");
     }
 
     #[test]

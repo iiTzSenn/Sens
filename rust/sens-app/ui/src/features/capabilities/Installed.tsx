@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
-import type { Capabilities } from "../../ipc/types";
+import type { Capabilities, Listing, Server } from "../../ipc/types";
 import { EmptyView } from "../../shared/EmptyView";
 import { stem } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
@@ -9,9 +9,12 @@ import { useSheet } from "../../shared/useSheet";
 import { CountTabs, ProjectFocus, ViewSeek } from "../../shared/ViewParts";
 import { plain } from "../market/search.js";
 import { project } from "../project/store";
+import { t } from "./copy";
+import { Face, ListingFace } from "./Face";
+import { siteOfUrl } from "./faces";
 import { confirmRemoval } from "./forms";
-import { CAP_TABS, CAP_TAB_LIST, entriesOf, matching, tallyOf, type CapTab, type Entry, type Item, type Spec } from "./kinds";
-import { capabilities, openDetail, openSkill, pickTab, toggle } from "./store";
+import { CAP_TABS, capTabList, entriesOf, matching, tallyOf, type CapTab, type Entry, type Item, type Spec } from "./kinds";
+import { capabilities, openDetail, openSkill, pickTab, toggle, updateInstalled, type Where } from "./store";
 
 export function Installed({ hidden }: { hidden: boolean }) {
   const caps = useStore(capabilities, (s) => s.caps);
@@ -23,17 +26,12 @@ export function Installed({ hidden }: { hidden: boolean }) {
 
   return (
     <div id="caps-installed" role="tabpanel" aria-labelledby="caps-mode-installed" hidden={hidden}>
-      <ProjectFocus
-        prefix="caps"
-        tally={() => tallyOf(caps)}
-        unopened="Abre un proyecto para activar capacidades."
-        note="El agente las carga a partir de tu próximo mensaje en este proyecto."
-      />
+      <ProjectFocus prefix="caps" tally={() => tallyOf(caps)} unopened={t.unopened} note={t.loadsNote} />
       <div className="view-head">
         <CountTabs
           prefix="caps"
-          label="Tipos de capacidad"
-          tabs={CAP_TAB_LIST}
+          label={t.kindTabs}
+          tabs={capTabList()}
           at={tab}
           count={(id) => entries.filter(CAP_TABS[id].keeps).length}
           pick={pickTab}
@@ -42,8 +40,8 @@ export function Installed({ hidden }: { hidden: boolean }) {
       <ViewSeek
         id="caps-seek"
         input="caps-search"
-        label="Buscar una skill, plugin o servidor"
-        placeholder="Buscar una skill, plugin o servidor…"
+        label={t.seekInstalled}
+        placeholder={t.seekInstalledHint}
         value={search}
         change={setSearch}
         hidden={!entries.length}
@@ -66,58 +64,90 @@ export function Installed({ hidden }: { hidden: boolean }) {
       </div>
       <p className="view-foot" id="caps-foot">
         <Icon svg={ICONS.shieldCheck} />
-        Tú decides qué se activa en cada proyecto.
+        {t.yourChoice}
       </p>
     </div>
   );
 }
 
 function CapList({ caps, entries, tab, search }: { caps: Capabilities; entries: Entry[]; tab: CapTab; search: string }) {
+  const root = useStore(project, (s) => s.root);
+  const market = useStore(capabilities, (s) => s.market);
+  const byId = useMemo(() => new Map((market?.listings || []).map((listing) => [listing.id, listing])), [market]);
   if (!entries.length) {
-    const [lead, said] = CAP_TABS[tab].empty;
+    const [lead, said] = CAP_TABS[tab].empty();
     return <EmptyView art={ICONS.capabilities} lead={lead} said={said} />;
   }
   const needle = plain(search.trim());
   const shown = needle ? entries.filter(matching(needle)) : entries;
-  if (!shown.length) return <p className="none">Nada coincide.</p>;
+  if (!shown.length) return <p className="none">{t.nothingMatches}</p>;
+  const row = (entry: Entry) => {
+    const origin = caps.origins[`${entry.spec.origin}:${entry.item.name}`];
+    return <CapRow key={`${entry.spec.origin}:${entry.item.name}`} {...entry} listing={origin ? byId.get(origin.listing) || null : null} caps={caps} />;
+  };
+  if (!root) return <CapGroup id="installed" title={t.installedGroup} rows={shown.map(row)} />;
+  const on = shown.filter(({ item }) => item.enabled);
+  const off = shown.filter(({ item }) => !item.enabled);
   return (
-    <div className="card-grid" role="list">
-      {shown.map(({ spec, item }) => (
-        <CapCard key={`${spec.origin}:${item.name}`} spec={spec} item={item} caps={caps} />
-      ))}
-    </div>
+    <>
+      {on.length > 0 && <CapGroup id="on" title={t.groupOn(stem(root))} rows={on.map(row)} />}
+      {off.length > 0 && <CapGroup id="off" title={t.groupOff(stem(root))} rows={off.map(row)} />}
+    </>
   );
 }
 
-function CapCard({ spec, item, caps }: Entry & { caps: Capabilities }) {
+function CapGroup({ id, title, rows }: { id: string; title: string; rows: ReactNode[] }) {
+  return (
+    <section className="cap-group" data-group={id} aria-labelledby={`cap-group-${id}`}>
+      <h3 className="label" id={`cap-group-${id}`}>
+        {title} <span className="count">{rows.length}</span>
+      </h3>
+      <div className="cap-rows" role="list">
+        {rows}
+      </div>
+    </section>
+  );
+}
+
+const serverSite = (item: Item) => siteOfUrl((item as Server).url || "");
+
+function CapRow({ spec, item, caps, listing }: Entry & { caps: Capabilities; listing: Listing | null }) {
   const detail = spec.detail(item);
   const origin = caps.origins[`${spec.origin}:${item.name}`];
-  const opens = origin ? () => openDetail(origin.listing) : spec.readable ? () => openSkill(item.name) : null;
+  const opens = origin ? () => openDetail(origin.listing, listing) : spec.readable ? () => openSkill(item.name) : null;
+  const stale = Boolean(origin && listing?.revision && listing.revision !== origin.revision);
+  const facts = [spec.label(), listing ? listing.title !== item.name && listing.title : "", origin ? origin.version && `v${origin.version}` : t.local].filter(Boolean);
   const text = (
     <>
-      <span className="name">{item.name}</span>
-      <span className={spec.mono ? "sub mono" : "sub"}>{detail}</span>
+      <span className="cap-row-name">{item.name}</span>
+      {detail && <span className={spec.mono ? "cap-row-said mono" : "cap-row-said"}>{detail}</span>}
     </>
   );
   return (
-    <div className={opens ? "card opens" : "card"} role="listitem">
-      <div className="card-top">
-        <span className="card-art">
-          <Icon svg={spec.icon} />
+    <div className="cap-row" role="listitem" data-on={item.enabled}>
+      {listing ? <ListingFace listing={listing} /> : <Face title={item.name} site={serverSite(item)} icon={spec.icon} />}
+      <div className="cap-row-body">
+        {opens ? (
+          <button className="cap-row-main" title={detail} onClick={opens}>
+            {text}
+          </button>
+        ) : (
+          <div className="cap-row-main" title={detail}>
+            {text}
+          </div>
+        )}
+        <span className="cap-row-facts">
+          {facts.join(" · ")}
+          {stale && (
+            <span className="cap-stale">
+              <Icon svg={ICONS.updateReady} />
+              {t.updateReady}
+            </span>
+          )}
         </span>
-        <span className="label">{spec.label}</span>
       </div>
-      {opens ? (
-        <button className="card-main" title={detail} onClick={opens}>
-          {text}
-        </button>
-      ) : (
-        <div className="card-main" title={detail}>
-          {text}
-        </div>
-      )}
-      <div className="card-controls">
-        <CapMore spec={spec} item={item} />
+      <div className="cap-row-controls">
+        <CapMore spec={spec} item={item} listing={stale ? listing : null} opens={origin ? opens : null} />
         <CapSwitch spec={spec} item={item} />
       </div>
     </div>
@@ -125,7 +155,7 @@ function CapCard({ spec, item, caps }: Entry & { caps: Capabilities }) {
 }
 
 // A second click while Rust is still answering the first is ignored.
-export function CapSwitch({ spec, item, where }: { spec: Spec; item: Item; where?: "listFault" | "detailFault" }) {
+export function CapSwitch({ spec, item, where }: { spec: Spec; item: Item; where?: Where }) {
   const root = useStore(project, (s) => s.root);
   const waiting = useRef(false);
 
@@ -140,7 +170,8 @@ export function CapSwitch({ spec, item, where }: { spec: Spec; item: Item; where
     <button
       className="switch"
       role="switch"
-      aria-label={root ? `Activar ${item.name} en ${stem(root)}` : `Activar ${item.name}`}
+      aria-label={root ? t.enableIn(item.name, stem(root)) : t.enable(item.name)}
+      title={root ? t.enableIn(item.name, stem(root)) : t.openToEnable}
       disabled={!root}
       aria-disabled={!root}
       aria-checked={item.enabled}
@@ -149,33 +180,31 @@ export function CapSwitch({ spec, item, where }: { spec: Spec; item: Item; where
   );
 }
 
-function CapMore({ spec, item }: { spec: Spec; item: Item }) {
+function CapMore({ spec, item, listing, opens }: { spec: Spec; item: Item; listing: Listing | null; opens: (() => void) | null }) {
   const menu = useSheet();
-  const title = `Acciones de ${item.name}`;
+  const title = t.actionsOf(item.name);
+  const pick = (then: () => unknown) => {
+    menu.shut();
+    then();
+  };
   return (
     <span className="card-more">
-      <button
-        className="round"
-        ref={menu.anchor}
-        title={title}
-        aria-label={title}
-        aria-haspopup="menu"
-        aria-expanded={menu.open}
-        onClick={menu.toggle}
-      >
+      <button className="round" ref={menu.anchor} title={title} aria-label={title} aria-haspopup="menu" aria-expanded={menu.open} onClick={menu.toggle}>
         <Icon svg={ICONS.ellipsis} />
       </button>
       <div className="sheet menu drop" role="menu" aria-label={title} {...menu.sheet}>
-        <button
-          className="menu-item"
-          role="menuitem"
-          tabIndex={-1}
-          onClick={() => {
-            menu.shut();
-            confirmRemoval(spec, item.name, menu.anchor.current!);
-          }}
-        >
-          Quitar
+        {opens && (
+          <button className="menu-item" role="menuitem" tabIndex={-1} onClick={() => pick(opens)}>
+            {t.details}
+          </button>
+        )}
+        {listing && (
+          <button className="menu-item" role="menuitem" tabIndex={-1} onClick={() => pick(() => updateInstalled(listing, item.name, "listFault"))}>
+            {t.update}
+          </button>
+        )}
+        <button className="menu-item" role="menuitem" tabIndex={-1} onClick={() => pick(() => confirmRemoval(spec, item.name, menu.anchor.current!))}>
+          {opens ? t.uninstall : t.remove}
         </button>
       </div>
     </span>

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "zustand";
+import { shared } from "../shared/copy";
 import { Icon } from "../shared/Icon";
 import { ICONS } from "../shared/icons.js";
 import { closeDialog, closed, dialog, openDialog } from "./modal";
@@ -39,7 +40,7 @@ export function Dialog() {
     >
       <div className="panel-head">
         <h2 id="panel-title">{title}</h2>
-        <button className="icon-btn" id="panel-close" title="Cerrar" aria-label="Cerrar" onClick={closeDialog}>
+        <button className="icon-btn" id="panel-close" title={shared.close} aria-label={shared.close} onClick={closeDialog}>
           <Icon svg={ICONS.dismiss} />
         </button>
       </div>

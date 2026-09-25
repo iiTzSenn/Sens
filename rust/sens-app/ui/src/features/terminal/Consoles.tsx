@@ -6,14 +6,15 @@ import { stem } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { project } from "../project/store";
+import { t } from "./copy";
 import { closeConsole, consoles, nameOf, openConsole, screenOf, settle, shareConsole, showConsole, type Console } from "./store";
 
 export function ConsoleTabs() {
   const open = useStore(consoles, (s) => s.open);
   const shown = useStore(consoles, (s) => s.shown);
-  if (!open.length) return <span className="tool-name">Terminal</span>;
+  if (!open.length) return <span className="tool-name">{t.terminal}</span>;
   return (
-    <div className="console-tabs" role="tablist" aria-label="Terminales">
+    <div className="console-tabs" role="tablist" aria-label={t.terminals}>
       {open.map((one) => (
         <div key={one.id} className="console-tab" data-ended={one.ended ? "true" : undefined} title={`${one.shell} · ${one.root || "~"}`}>
           <button
@@ -28,7 +29,7 @@ export function ConsoleTabs() {
             <Icon svg={ICONS.terminal} />
             <span>{nameOf(one)}</span>
           </button>
-          <button type="button" className="console-shut" title="Cerrar esta terminal" aria-label={`Cerrar la terminal ${nameOf(one)}`} onClick={() => closeConsole(one.id)}>
+          <button type="button" className="console-shut" title={t.closeThis} aria-label={t.closeNamed(nameOf(one))} onClick={() => closeConsole(one.id)}>
             <Icon svg={ICONS.dismiss} />
           </button>
         </div>
@@ -41,14 +42,14 @@ export function ConsoleTools() {
   const root = useStore(project, (s) => s.work);
   const opening = useStore(consoles, (s) => s.opening);
   const shown = useStore(consoles, (s) => s.shown);
-  const label = root ? `Nueva terminal en ${stem(root)}` : "Nueva terminal";
+  const label = root ? t.newIn(stem(root)) : t.newOne;
   return (
     <>
       <button
         className="icon-btn"
         id="console-share"
-        title="Añadir al mensaje lo seleccionado, o lo que se ve si no hay selección"
-        aria-label="Añadir al mensaje"
+        title={t.shareTitle}
+        aria-label={t.share}
         disabled={!shown}
         onClick={shareConsole}
       >
@@ -95,10 +96,10 @@ export function ConsolePanel() {
       ))}
       {!open.length && (
         <div className="console-none">
-          <p className="none">{opening ? "Abriendo la terminal…" : "No hay ninguna terminal abierta."}</p>
+          <p className="none">{opening ? t.opening : t.none}</p>
           {!opening && (
             <button type="button" className="quiet" onClick={() => openConsole()}>
-              {root ? `Abrir una en ${stem(root)}` : "Abrir una"}
+              {root ? t.openIn(stem(root)) : t.openOne}
             </button>
           )}
         </div>

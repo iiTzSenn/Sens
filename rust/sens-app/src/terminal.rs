@@ -8,12 +8,33 @@ use std::time::{Duration, Instant};
 
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use sens_agent::process::Family;
+use sens_agent::said;
 use serde::Serialize;
 
 const CHUNK: usize = 16 * 1024;
-const BROKEN: &str = "el registro de terminales se rompió";
-const GONE: &str = "esa terminal ya se cerró";
 const ENDING: Duration = Duration::from_secs(3);
+
+fn broken() -> String {
+    said!(
+        en: "the list of terminals broke",
+        es: "el registro de terminales se rompió",
+        fr: "la liste des terminaux est corrompue",
+        de: "die Liste der Terminals ist beschädigt",
+        ja: "ターミナルの一覧が壊れました",
+        zh: "终端列表已损坏",
+    )
+}
+
+fn gone() -> String {
+    said!(
+        en: "that terminal is already closed",
+        es: "esa terminal ya se cerró",
+        fr: "ce terminal est déjà fermé",
+        de: "dieses Terminal ist bereits geschlossen",
+        ja: "そのターミナルはすでに閉じています",
+        zh: "该终端已关闭",
+    )
+}
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -73,7 +94,7 @@ impl Consoles {
             killer: child.clone_killer(),
             family: family(child.as_ref()),
         };
-        self.open.lock().map_err(|_| BROKEN)?.insert(id, console);
+        self.open.lock().map_err(|_| broken())?.insert(id, console);
 
         let (ended, code) = mpsc::channel();
         let open = self.open.clone();
@@ -88,25 +109,37 @@ impl Consoles {
     }
 
     pub fn write(&self, id: u32, data: &str) -> Result<(), String> {
-        let input = self.open.lock().map_err(|_| BROKEN)?.get(&id).ok_or(GONE)?.input.clone();
-        let mut input = input.lock().map_err(|_| BROKEN)?;
-        input
-            .write_all(data.as_bytes())
-            .and_then(|()| input.flush())
-            .map_err(|error| format!("la terminal no acepta lo que escribes: {error}"))
+        let input = self.open.lock().map_err(|_| broken())?.get(&id).ok_or_else(gone)?.input.clone();
+        let mut input = input.lock().map_err(|_| broken())?;
+        input.write_all(data.as_bytes()).and_then(|()| input.flush()).map_err(|error| {
+            said!(
+                en: "the terminal won’t take what you type: {error}",
+                es: "la terminal no acepta lo que escribes: {error}",
+                fr: "le terminal n’accepte pas ce que vous saisissez : {error}",
+                de: "das Terminal nimmt deine Eingabe nicht an: {error}",
+                ja: "ターミナルが入力を受け付けません: {error}",
+                zh: "终端不接受你的输入：{error}",
+            )
+        })
     }
 
     pub fn resize(&self, id: u32, cols: u16, rows: u16) -> Result<(), String> {
-        let open = self.open.lock().map_err(|_| BROKEN)?;
-        let console = open.get(&id).ok_or(GONE)?;
-        console
-            .master
-            .resize(size(cols, rows))
-            .map_err(|error| format!("no pude ajustar la terminal: {error}"))
+        let open = self.open.lock().map_err(|_| broken())?;
+        let console = open.get(&id).ok_or_else(gone)?;
+        console.master.resize(size(cols, rows)).map_err(|error| {
+            said!(
+                en: "couldn’t resize the terminal: {error}",
+                es: "no pude ajustar la terminal: {error}",
+                fr: "impossible de redimensionner le terminal : {error}",
+                de: "die Größe des Terminals konnte nicht angepasst werden: {error}",
+                ja: "ターミナルのサイズを変更できませんでした: {error}",
+                zh: "无法调整终端大小：{error}",
+            )
+        })
     }
 
     pub fn close(&self, id: u32) -> Result<(), String> {
-        if let Some(console) = self.open.lock().map_err(|_| BROKEN)?.get_mut(&id) {
+        if let Some(console) = self.open.lock().map_err(|_| broken())?.get_mut(&id) {
             console.end();
         }
         Ok(())
@@ -140,7 +173,14 @@ impl Consoles {
 }
 
 fn failed(error: impl std::fmt::Display) -> String {
-    format!("no pude abrir la terminal: {error}")
+    said!(
+        en: "couldn’t open the terminal: {error}",
+        es: "no pude abrir la terminal: {error}",
+        fr: "impossible d’ouvrir le terminal : {error}",
+        de: "das Terminal konnte nicht geöffnet werden: {error}",
+        ja: "ターミナルを開けませんでした: {error}",
+        zh: "无法打开终端：{error}",
+    )
 }
 
 fn size(cols: u16, rows: u16) -> PtySize {
@@ -253,6 +293,7 @@ fn complete(bytes: &[u8]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sens_agent::language::{Language, speaking};
     use std::time::{Duration, Instant};
 
     const ASKS_WHERE: &str = "\x1b[6n";
@@ -342,7 +383,7 @@ mod tests {
 
         consoles.close_within(&base);
 
-        assert_eq!(consoles.write(within.id, "x"), Err(GONE.to_string()));
+        assert_eq!(consoles.write(within.id, "x"), Err(gone()));
         if cfg!(windows) {
             let asked = heard_until(&heard, |all| said(all).contains(ASKS_WHERE));
             assert!(!asked.is_empty());
@@ -375,6 +416,15 @@ mod tests {
         consoles.close(opened.id).unwrap();
         let rest = heard_until(&heard, ended);
         assert!(ended(&rest));
-        assert_eq!(consoles.write(opened.id, "x"), Err(GONE.to_string()));
+        assert_eq!(consoles.write(opened.id, "x"), Err(gone()));
+    }
+
+    #[test]
+    fn a_terminal_already_closed_is_said_in_the_language_spoken() {
+        let consoles = Consoles::default();
+
+        assert_eq!(consoles.write(7, "x"), Err("that terminal is already closed".into()));
+        assert_eq!(speaking(Language::Es, || consoles.resize(7, 80, 24)), Err("esa terminal ya se cerró".into()));
+        assert_eq!(speaking(Language::Fr, || consoles.write(7, "x")), Err("ce terminal est déjà fermé".into()));
     }
 }

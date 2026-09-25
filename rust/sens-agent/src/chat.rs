@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 use crate::catalog::{self, Thinking};
 use crate::process::{self, Family, hidden, unlaunched};
+use crate::said;
 use crate::session::{self, Entry};
 
 pub const BYPASS: &str = "bypassPermissions";
@@ -41,10 +42,54 @@ const DESCRIPTION_CAP: usize = 160;
 const OFFER_PATIENCE: Duration = Duration::from_secs(10);
 const GREETING: &str = "sens-initialize";
 const SEARCHED: &str = "Web search results for query:";
-const DENIED: &str = "El usuario lo rechazó.";
-const HALTED: &str = "El usuario paró la tarea.";
-pub const BUSY: &str = "Claude sigue trabajando en esta sesión.";
-const GONE: &str = "Esa sesión ya no está en marcha.";
+
+fn denied() -> String {
+    said!(
+        en: "The user declined it.",
+        es: "El usuario lo rechazó.",
+        fr: "L’utilisateur l’a refusé.",
+        de: "Der Nutzer hat es abgelehnt.",
+        ja: "ユーザーが拒否しました。",
+        zh: "用户拒绝了。",
+    )
+}
+
+fn halted() -> String {
+    said!(
+        en: "The user stopped the task.",
+        es: "El usuario paró la tarea.",
+        fr: "L’utilisateur a arrêté la tâche.",
+        de: "Der Nutzer hat die Aufgabe gestoppt.",
+        ja: "ユーザーがタスクを停止しました。",
+        zh: "用户停止了任务。",
+    )
+}
+
+pub fn still_working() -> String {
+    said!(
+        en: "Claude is still working in this session.",
+        es: "Claude sigue trabajando en esta sesión.",
+        fr: "Claude travaille encore dans cette session.",
+        de: "Claude arbeitet noch in dieser Sitzung.",
+        ja: "Claude はこのセッションでまだ作業中です。",
+        zh: "Claude 仍在这个会话中工作。",
+    )
+}
+
+fn gone() -> String {
+    said!(
+        en: "That session is no longer running.",
+        es: "Esa sesión ya no está en marcha.",
+        fr: "Cette session n’est plus en cours.",
+        de: "Diese Sitzung läuft nicht mehr.",
+        ja: "そのセッションはもう実行されていません。",
+        zh: "该会话已不在运行。",
+    )
+}
+
+pub fn picture() -> String {
+    said!(en: "[picture]", es: "[imagen]", fr: "[image]", de: "[Bild]", ja: "[画像]", zh: "[图片]")
+}
 
 pub type Sink = Arc<dyn Fn(&str, &Event) + Send + Sync>;
 
@@ -89,7 +134,16 @@ pub enum Event {
         answers: Value,
     },
     Limits {
-        windows: Value,
+        #[serde(default)]
+        status: String,
+        #[serde(default)]
+        window: String,
+        utilization: Option<f64>,
+        resets_at: Option<u64>,
+        threshold: Option<f64>,
+        overage: Option<Overage>,
+        #[serde(default)]
+        windows: BTreeMap<String, Window>,
     },
     Consulted {
         tool: String,
@@ -146,6 +200,22 @@ pub struct Slash {
     pub name: String,
     pub description: String,
     pub hint: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Window {
+    pub utilization: Option<f64>,
+    pub resets_at: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Overage {
+    pub status: String,
+    pub using: bool,
+    pub resets_at: Option<u64>,
+    pub disabled: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -226,16 +296,37 @@ pub struct Image {
 
 impl Settings {
     pub fn vet(&self) -> Result<(), String> {
-        catalog::provider(self.provider.trim())
-            .ok_or_else(|| format!("no conozco el proveedor {}", self.provider))?;
-        if !catalog::plausible(self.model.trim()) {
-            return Err(format!("{} no parece un modelo", self.model));
+        let Settings { provider, model, effort, mode, .. } = self;
+        catalog::provider(provider.trim()).ok_or_else(|| catalog::unknown(provider))?;
+        if !catalog::plausible(model.trim()) {
+            return Err(said!(
+                en: "{model} doesn’t look like a model",
+                es: "{model} no parece un modelo",
+                fr: "{model} ne ressemble pas à un modèle",
+                de: "{model} sieht nicht wie ein Modell aus",
+                ja: "{model} はモデル名ではないようです",
+                zh: "{model} 似乎不是有效的模型名称",
+            ));
         }
-        if !self.effort.is_empty() && !catalog::EFFORTS.contains(&self.effort.as_str()) {
-            return Err(format!("no conozco el esfuerzo {}", self.effort));
+        if !effort.is_empty() && !catalog::EFFORTS.contains(&effort.as_str()) {
+            return Err(said!(
+                en: "unknown effort {effort}",
+                es: "no conozco el esfuerzo {effort}",
+                fr: "effort inconnu : {effort}",
+                de: "unbekannter Aufwand: {effort}",
+                ja: "不明な推論の強さです: {effort}",
+                zh: "未知的推理强度：{effort}",
+            ));
         }
-        if !MODES.contains(&self.mode.as_str()) {
-            return Err(format!("no conozco el modo {}", self.mode));
+        if !MODES.contains(&mode.as_str()) {
+            return Err(said!(
+                en: "unknown mode {mode}",
+                es: "no conozco el modo {mode}",
+                fr: "mode inconnu : {mode}",
+                de: "unbekannter Modus: {mode}",
+                ja: "不明なモードです: {mode}",
+                zh: "未知的模式：{mode}",
+            ));
         }
         Ok(())
     }
@@ -306,10 +397,19 @@ impl Live {
     }
 
     fn write(&self, message: &Value) -> Result<(), String> {
-        let mut input = self.input.lock().map_err(|_| "la tubería con Claude Code se rompió")?;
+        let mut input = self.input.lock().map_err(|_| {
+            said!(
+                en: "the pipe to Claude Code broke",
+                es: "la tubería con Claude Code se rompió",
+                fr: "la liaison avec Claude Code est rompue",
+                de: "die Verbindung zu Claude Code ist abgerissen",
+                ja: "Claude Code との接続が切れました",
+                zh: "与 Claude Code 的管道已断开",
+            )
+        })?;
         writeln!(input, "{message}")
             .and_then(|_| input.flush())
-            .map_err(|error| format!("no pude hablar con Claude Code: {error}"))
+            .map_err(|error| process::unheard("Claude Code", error))
     }
 
     fn control(&self, request: Value) -> Result<(), String> {
@@ -468,12 +568,19 @@ impl Engine {
 
     pub fn send(&self, root: &Path, session: &str, message: &Message, settings: Settings, sink: Sink) -> Result<(), String> {
         settings.vet()?;
-        if message.text.trim().is_empty() && message.images.is_empty() {
-            return Err("no hay nada que enviar".into());
+        if message.text.trim().is_empty() && message.images.is_empty() && message.files.is_empty() {
+            return Err(said!(
+                en: "there is nothing to send",
+                es: "no hay nada que enviar",
+                fr: "il n’y a rien à envoyer",
+                de: "es gibt nichts zu senden",
+                ja: "送信する内容がありません",
+                zh: "没有可发送的内容",
+            ));
         }
         let live = self.ready(root, session, settings, sink)?;
         if live.busy.swap(true, Ordering::SeqCst) {
-            return Err(BUSY.into());
+            return Err(still_working());
         }
         live.stopping.store(false, Ordering::SeqCst);
         {
@@ -499,7 +606,7 @@ impl Engine {
     }
 
     pub fn stop(&self, session: &str) -> Result<(), String> {
-        let live = self.live(session).ok_or(GONE)?;
+        let live = self.live(session).ok_or_else(gone)?;
         if !live.busy.load(Ordering::SeqCst) {
             return Ok(());
         }
@@ -510,7 +617,7 @@ impl Engine {
             .map(|mut pending| pending.drain().map(|(request, _)| request).collect())
             .unwrap_or_default();
         for request in waiting {
-            live.reply(&request, json!({ "behavior": "deny", "message": HALTED, "interrupt": true }))?;
+            live.reply(&request, json!({ "behavior": "deny", "message": halted(), "interrupt": true }))?;
             live.keep(Event::Answered {
                 request,
                 allowed: false,
@@ -521,13 +628,31 @@ impl Engine {
     }
 
     pub fn answer(&self, session: &str, request: &str, decision: &Decision) -> Result<(), String> {
-        let live = self.live(session).ok_or(GONE)?;
+        let live = self.live(session).ok_or_else(gone)?;
         let pending = live
             .pending
             .lock()
-            .map_err(|_| "no pude leer las preguntas pendientes")?
+            .map_err(|_| {
+                said!(
+                    en: "couldn’t read the pending questions",
+                    es: "no pude leer las preguntas pendientes",
+                    fr: "impossible de lire les questions en attente",
+                    de: "die offenen Fragen konnten nicht gelesen werden",
+                    ja: "保留中の質問を読み取れませんでした",
+                    zh: "无法读取待回答的问题",
+                )
+            })?
             .remove(request)
-            .ok_or("esa pregunta ya tiene respuesta")?;
+            .ok_or_else(|| {
+                said!(
+                    en: "that question has already been answered",
+                    es: "esa pregunta ya tiene respuesta",
+                    fr: "cette question a déjà une réponse",
+                    de: "diese Frage wurde schon beantwortet",
+                    ja: "その質問にはすでに回答済みです",
+                    zh: "这个问题已经有回答了",
+                )
+            })?;
 
         live.reply(request, respond(&pending, decision))?;
         if let Some(mode) = mode_after(&pending, decision)
@@ -562,7 +687,7 @@ impl Engine {
     }
 
     pub fn stop_task(&self, session: &str, task: &str) -> Result<(), String> {
-        let live = self.live(session).ok_or(GONE)?;
+        let live = self.live(session).ok_or_else(gone)?;
         live.control(json!({ "subtype": "stop_task", "task_id": task }))
     }
 
@@ -590,7 +715,16 @@ impl Engine {
     }
 
     fn ready(&self, root: &Path, session: &str, settings: Settings, sink: Sink) -> Result<Arc<Live>, String> {
-        let mut lives = self.lives.lock().map_err(|_| "el registro de sesiones se rompió")?;
+        let mut lives = self.lives.lock().map_err(|_| {
+            said!(
+                en: "the session registry broke",
+                es: "el registro de sesiones se rompió",
+                fr: "le registre des sessions est endommagé",
+                de: "das Sitzungsregister ist beschädigt",
+                ja: "セッションの登録情報が壊れました",
+                zh: "会话注册表已损坏",
+            )
+        })?;
         if let Some(live) = lives.get(session).cloned() {
             let same = live.settings.lock().is_ok_and(|kept| *kept == settings);
             if same && live.alive() {
@@ -600,7 +734,7 @@ impl Engine {
                 return Ok(live);
             }
             if live.busy.load(Ordering::SeqCst) {
-                return Err(BUSY.into());
+                return Err(still_working());
             }
             live.kill();
             lives.remove(session);
@@ -643,9 +777,18 @@ impl Engine {
             .spawn()
             .map_err(unlaunched)?;
 
-        let input = child.stdin.take().ok_or("Claude Code no acepta entrada")?;
-        let output = child.stdout.take().ok_or("Claude Code no da salida")?;
-        let complaints = child.stderr.take().ok_or("Claude Code no da errores")?;
+        let input = child.stdin.take().ok_or_else(process::no_input)?;
+        let output = child.stdout.take().ok_or_else(process::no_output)?;
+        let complaints = child.stderr.take().ok_or_else(|| {
+            said!(
+                en: "Claude Code gives no error output",
+                es: "Claude Code no da errores",
+                fr: "Claude Code ne renvoie pas sa sortie d’erreur",
+                de: "Claude Code liefert keine Fehlerausgabe",
+                ja: "Claude Code のエラー出力を取得できません",
+                zh: "无法获取 Claude Code 的错误输出",
+            )
+        })?;
 
         let live = Arc::new(Live {
             root: root.to_path_buf(),
@@ -719,8 +862,22 @@ fn listen(live: Arc<Live>, output: ChildStdout, heard: Arc<Mutex<String>>, lives
         let said = heard.lock().map(|text| text.trim().to_string()).unwrap_or_default();
         let event = Event::Failed {
             reason: match said.is_empty() {
-                true => "Claude Code se cerró sin terminar el turno.".into(),
-                false => format!("Claude Code se cerró: {said}"),
+                true => said!(
+                    en: "Claude Code closed before finishing its turn.",
+                    es: "Claude Code se cerró sin terminar el turno.",
+                    fr: "Claude Code s’est fermé avant de terminer son tour.",
+                    de: "Claude Code wurde beendet, bevor die Antwort fertig war.",
+                    ja: "Claude Code が応答を終える前に終了しました。",
+                    zh: "Claude Code 在完成本轮之前关闭了。",
+                ),
+                false => said!(
+                    en: "Claude Code closed: {said}",
+                    es: "Claude Code se cerró: {said}",
+                    fr: "Claude Code s’est fermé : {said}",
+                    de: "Claude Code wurde beendet: {said}",
+                    ja: "Claude Code が終了しました: {said}",
+                    zh: "Claude Code 已关闭：{said}",
+                ),
             },
         };
         live.keep(event.clone());
@@ -771,15 +928,27 @@ pub fn claude_id(session: &str) -> String {
     session::uuid_from((hashed(1) << 64) | hashed(2))
 }
 
+pub const FILES_BRIEF: &str = "Attached files (read them before answering):";
+pub const FOLDERS_BRIEF: &str = "Attached folders (explore them as needed):";
+pub const BRIEFS: [&str; 3] = [FILES_BRIEF, FOLDERS_BRIEF, "Ficheros adjuntos (léelos antes de responder):"];
+
 fn briefed(text: &str, files: &[String]) -> String {
-    if files.is_empty() {
-        return text.to_string();
+    let (folders, files): (Vec<&String>, Vec<&String>) = files.iter().partition(|file| file.ends_with(['/', '\\']));
+    let mut said = text.to_string();
+    for (head, listed) in [(FILES_BRIEF, files), (FOLDERS_BRIEF, folders)] {
+        if listed.is_empty() {
+            continue;
+        }
+        if !said.trim().is_empty() {
+            said.push_str("\n\n");
+        }
+        said.push_str(head);
+        for file in listed {
+            said.push_str("\n- ");
+            said.push_str(file);
+        }
     }
-    let listed: Vec<String> = files.iter().map(|file| format!("- {file}")).collect();
-    format!(
-        "{text}\n\nFicheros adjuntos (léelos antes de responder):\n{}",
-        listed.join("\n")
-    )
+    said
 }
 
 fn user_message(message: &Message) -> Value {
@@ -813,7 +982,7 @@ fn respond(pending: &Pending, decision: &Decision) -> Value {
         let message = decision.message.trim();
         return json!({
             "behavior": "deny",
-            "message": if message.is_empty() { DENIED } else { message }
+            "message": if message.is_empty() { denied() } else { message.to_string() }
         });
     }
 
@@ -1028,7 +1197,7 @@ fn flatten(content: &Value) -> String {
             .iter()
             .filter_map(|part| match part["type"].as_str()? {
                 "text" => part["text"].as_str().map(str::to_string),
-                "image" => Some("[imagen]".to_string()),
+                "image" => Some(picture()),
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -1103,10 +1272,42 @@ fn ending(status: &Value) -> String {
 }
 
 fn limits(message: &Value) -> Option<Event> {
-    let windows = &message["rate_limit_info"]["unifiedWindows"];
-    windows.is_object().then(|| Event::Limits {
-        windows: windows.clone(),
+    let info = message["rate_limit_info"].as_object()?;
+    let field = |key: &str| info.get(key).unwrap_or(&Value::Null);
+    let window = text_of(field("rateLimitType"));
+    let mut windows: BTreeMap<String, Window> = entries(field("unifiedWindows"))
+        .map(|(key, one)| (key.clone(), Window { utilization: one["utilization"].as_f64(), resets_at: moment(&one["resetsAt"]) }))
+        .collect();
+    let utilization = field("utilization").as_f64();
+    let resets_at = moment(field("resetsAt"));
+    if !window.is_empty() && window != "overage" && (utilization.is_some() || resets_at.is_some()) {
+        windows.entry(window.clone()).or_insert(Window { utilization, resets_at });
+    }
+    let overage = OVERAGE.iter().any(|key| !field(key).is_null()).then(|| Overage {
+        status: text_of(field("overageStatus")),
+        using: field("isUsingOverage").as_bool().unwrap_or_default(),
+        resets_at: moment(field("overageResetsAt")),
+        disabled: text_of(field("overageDisabledReason")),
+    });
+    Some(Event::Limits {
+        status: text_of(field("status")),
+        window,
+        utilization,
+        resets_at,
+        threshold: field("surpassedThreshold").as_f64(),
+        overage,
+        windows,
     })
+}
+
+const OVERAGE: &[&str] = &["overageStatus", "isUsingOverage", "overageResetsAt", "overageDisabledReason"];
+
+fn entries(value: &Value) -> impl Iterator<Item = (&String, &Value)> {
+    value.as_object().into_iter().flatten()
+}
+
+fn moment(value: &Value) -> Option<u64> {
+    value.as_u64().or_else(|| value.as_f64().filter(|at| at.is_finite() && *at > 0.0).map(|at| at.round() as u64)).filter(|at| *at > 0)
 }
 
 fn read_in(usage: &Value) -> u64 {
@@ -1148,7 +1349,15 @@ fn complaint(message: &Value) -> String {
     if !listed.is_empty() {
         return listed.join(" · ");
     }
-    format!("Claude Code terminó con {}", text_of(&message["subtype"]))
+    let subtype = text_of(&message["subtype"]);
+    said!(
+        en: "Claude Code ended with {subtype}",
+        es: "Claude Code terminó con {subtype}",
+        fr: "Claude Code s’est terminé avec {subtype}",
+        de: "Claude Code endete mit {subtype}",
+        ja: "Claude Code が {subtype} で終了しました",
+        zh: "Claude Code 以 {subtype} 结束",
+    )
 }
 
 fn slim(value: &Value) -> Value {
@@ -1177,6 +1386,7 @@ fn capped(text: &str, cap: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::language::{Language, speaking};
 
     fn opus(mode: &str) -> Settings {
         Settings {
@@ -1348,8 +1558,35 @@ mod tests {
 
     #[test]
     fn the_subscription_windows_are_passed_along() {
-        let Event::Limits { windows } = one(r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","unifiedWindows":{"five_hour":{"utilization":0.47,"resetsAt":1790167200}}}}"#) else { panic!() };
-        assert_eq!(windows["five_hour"]["utilization"], 0.47);
+        let Event::Limits { windows, .. } = one(r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","unifiedWindows":{"five_hour":{"utilization":0.47,"resetsAt":1790167200}}}}"#) else { panic!() };
+        assert_eq!(windows["five_hour"], Window { utilization: Some(0.47), resets_at: Some(1_790_167_200) });
+    }
+
+    #[test]
+    fn the_limits_say_which_window_warns_and_every_window_of_the_plan() {
+        let heard = one(
+            r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1790485200,"rateLimitType":"seven_day","utilization":0.8,"isUsingOverage":false,"surpassedThreshold":0.75,"unifiedWindows":{"five_hour":{"utilization":0.03,"resetsAt":1790356200},"seven_day":{"utilization":0.8,"resetsAt":1790485200},"seven_day_opus":{"utilization":0.19,"resetsAt":1790485200.0}}}}"#,
+        );
+        let Event::Limits { status, window, utilization, resets_at, threshold, overage, windows } = heard else { panic!() };
+        assert_eq!((status.as_str(), window.as_str(), utilization, resets_at, threshold), ("allowed_warning", "seven_day", Some(0.8), Some(1_790_485_200), Some(0.75)));
+        assert_eq!(overage, Some(Overage { status: String::new(), using: false, resets_at: None, disabled: String::new() }));
+        assert_eq!(windows.keys().collect::<Vec<_>>(), ["five_hour", "seven_day", "seven_day_opus"]);
+        assert_eq!(windows["seven_day_opus"].resets_at, Some(1_790_485_200));
+    }
+
+    #[test]
+    fn a_limit_named_only_at_the_top_still_reads_as_a_window() {
+        let Event::Limits { windows, overage, .. } = one(r#"{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1790356200,"rateLimitType":"five_hour","overageStatus":"rejected","overageDisabledReason":"out_of_credits"}}"#) else { panic!() };
+        assert_eq!(windows["five_hour"], Window { utilization: None, resets_at: Some(1_790_356_200) });
+        assert_eq!(overage.map(|one| (one.status, one.disabled)), Some(("rejected".into(), "out_of_credits".into())));
+        assert!(translate(r#"{"type":"rate_limit_event"}"#).is_empty());
+    }
+
+    #[test]
+    fn the_limits_travel_to_the_app_in_camel_case() {
+        let sent = serde_json::to_value(one(r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1790356200,"unifiedWindows":{"five_hour":{"utilization":0.1,"resetsAt":1790356200}}}}"#)).unwrap();
+        assert_eq!((sent["kind"].as_str(), sent["resetsAt"].as_u64(), sent["windows"]["five_hour"]["resetsAt"].as_u64()), (Some("limits"), Some(1_790_356_200), Some(1_790_356_200)));
+        assert!(sent["overage"].is_null());
     }
 
     #[test]
@@ -1526,7 +1763,9 @@ mod tests {
     #[test]
     fn a_refusal_tells_claude_why() {
         let asked = pending(json!({ "command": "rm -rf build" }), json!([]));
-        assert_eq!(respond(&asked, &Decision::default()), json!({ "behavior": "deny", "message": DENIED }));
+        assert_eq!(respond(&asked, &Decision::default()), json!({ "behavior": "deny", "message": denied() }));
+        assert_eq!(speaking(Language::Es, || respond(&asked, &Decision::default()))["message"], "El usuario lo rechazó.");
+        assert_eq!(speaking(Language::En, || respond(&asked, &Decision::default()))["message"], "The user declined it.");
 
         let redirected = Decision { message: "Borra solo dist".into(), ..Decision::default() };
         assert_eq!(respond(&asked, &redirected)["message"], "Borra solo dist");
@@ -1634,8 +1873,10 @@ mod tests {
     fn attached_files_are_named_for_claude_to_read() {
         assert_eq!(briefed("hola", &[]), "hola");
         let with = briefed("revisa", &["src/a.rs".into(), "b.md".into()]);
-        assert!(with.starts_with("revisa\n\nFicheros adjuntos"));
-        assert!(with.ends_with("- src/a.rs\n- b.md"));
+        assert_eq!(with, "revisa\n\nAttached files (read them before answering):\n- src/a.rs\n- b.md");
+        let both = briefed("mira", &["src/".into(), "a.rs".into(), "C:\\docs\\".into()]);
+        assert_eq!(both, "mira\n\nAttached files (read them before answering):\n- a.rs\n\nAttached folders (explore them as needed):\n- src/\n- C:\\docs\\");
+        assert_eq!(briefed("", &["notas.txt".into()]), "Attached files (read them before answering):\n- notas.txt");
     }
 
     #[test]
@@ -1648,7 +1889,7 @@ mod tests {
     #[test]
     fn only_what_happened_is_written_down() {
         assert!(!Event::Delta { thinking: false, text: "a".into() }.lasting());
-        assert!(!Event::Limits { windows: Value::Null }.lasting());
+        assert!(!Event::Limits { status: String::new(), window: String::new(), utilization: None, resets_at: None, threshold: None, overage: None, windows: BTreeMap::new() }.lasting());
         assert!(Event::Said { text: "a".into() }.lasting());
         assert!(Event::Finished { ok: true, stopped: false, millis: 0, turns: 0, tokens_in: 0, tokens_out: 0, context: 0, window: 0, error: String::new() }.lasting());
         assert!(Event::Compacted { before: 1, auto: true }.lasting());

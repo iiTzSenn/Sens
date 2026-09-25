@@ -4,9 +4,11 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use sens_agent::said;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::files;
 use crate::snapshot;
 use crate::store;
 
@@ -26,7 +28,6 @@ const SKILL_FILE: &str = "SKILL.md";
 const SERVERS_FILE: &str = "mcp.json";
 const STATE_FILE: &str = "capabilities.json";
 const STAGING: &str = ".importando-";
-const NO_PROJECT: &str = "abre un proyecto para activar capacidades";
 const FENCE: &str = "---";
 const NAME_CAP: usize = 64;
 const DESCRIPTION_CAP: usize = 1024;
@@ -359,7 +360,14 @@ fn update(base: &Path, change: impl FnOnce(&mut State)) -> Result<(), String> {
 
 fn switch(base: &Path, root: &str, kind: Kind, name: &str, enabled: bool) -> Result<(), String> {
     if root.is_empty() {
-        return Err(NO_PROJECT.into());
+        return Err(said!(
+            en: "open a project to enable capabilities",
+            es: "abre un proyecto para activar capacidades",
+            fr: "ouvrez un projet pour activer des capacités",
+            de: "öffne ein Projekt, um Fähigkeiten zu aktivieren",
+            ja: "機能を有効にするにはプロジェクトを開いてください",
+            zh: "请先打开一个项目以启用能力",
+        ));
     }
     kind.present(base, name)?;
     update(base, |kept| {
@@ -478,29 +486,62 @@ fn transport(entry: &Entry) -> &'static str {
 
 fn skill_folder(base: &Path, name: &str) -> Result<PathBuf, String> {
     if !is_skill_name(name) {
-        return Err(format!(
-            "nombre de skill no válido: «{name}». Usa minúsculas, números y guiones, hasta {NAME_CAP}, sin empezar por guion"
+        return Err(said!(
+            en: "invalid skill name: “{name}”. Use lowercase letters, numbers and hyphens, up to {NAME_CAP} characters, not starting with a hyphen",
+            es: "nombre de skill no válido: «{name}». Usa minúsculas, números y guiones, hasta {NAME_CAP}, sin empezar por guion",
+            fr: "nom de skill non valide : « {name} ». Utilisez des minuscules, des chiffres et des traits d’union, {NAME_CAP} caractères au plus, sans commencer par un trait d’union",
+            de: "ungültiger Skill-Name: „{name}“. Nutze Kleinbuchstaben, Ziffern und Bindestriche, höchstens {NAME_CAP} Zeichen, ohne Bindestrich am Anfang",
+            ja: "スキル名が無効です: 「{name}」。英小文字、数字、ハイフンを使い、{NAME_CAP} 文字以内で、先頭にハイフンを付けないでください",
+            zh: "技能名称无效：“{name}”。请使用小写字母、数字和连字符，最多 {NAME_CAP} 个字符，且不能以连字符开头",
         ));
     }
     Ok(shelf(base).join(name))
 }
 
 fn missing_skill(name: &str) -> String {
-    format!("no existe la skill {name}")
+    said!(
+        en: "the skill {name} doesn’t exist",
+        es: "no existe la skill {name}",
+        fr: "la skill {name} n’existe pas",
+        de: "den Skill {name} gibt es nicht",
+        ja: "スキル {name} は存在しません",
+        zh: "技能 {name} 不存在",
+    )
 }
 
 fn missing_server(name: &str) -> String {
-    format!("no existe el servidor {name}")
+    said!(
+        en: "the server {name} doesn’t exist",
+        es: "no existe el servidor {name}",
+        fr: "le serveur {name} n’existe pas",
+        de: "den Server {name} gibt es nicht",
+        ja: "サーバー {name} は存在しません",
+        zh: "服务器 {name} 不存在",
+    )
 }
 
 fn missing_plugin(name: &str) -> String {
-    format!("no existe el plugin {name}")
+    said!(
+        en: "the plugin {name} doesn’t exist",
+        es: "no existe el plugin {name}",
+        fr: "le plugin {name} n’existe pas",
+        de: "das Plugin {name} gibt es nicht",
+        ja: "プラグイン {name} は存在しません",
+        zh: "插件 {name} 不存在",
+    )
 }
 
 fn unclaimed(base: &Path, name: &str) -> Result<PathBuf, String> {
     let folder = skill_folder(base, name)?;
     if folder.symlink_metadata().is_ok() {
-        return Err(format!("ya existe una skill llamada {name}"));
+        return Err(said!(
+            en: "a skill called {name} already exists",
+            es: "ya existe una skill llamada {name}",
+            fr: "une skill nommée {name} existe déjà",
+            de: "es gibt bereits einen Skill namens {name}",
+            ja: "{name} という名前のスキルはすでにあります",
+            zh: "已存在名为 {name} 的技能",
+        ));
     }
     Ok(folder)
 }
@@ -508,23 +549,77 @@ fn unclaimed(base: &Path, name: &str) -> Result<PathBuf, String> {
 fn vetted_description(description: &str) -> Result<&str, String> {
     let description = description.trim();
     if description.is_empty() {
-        return Err("la descripción es obligatoria".into());
+        return Err(said!(
+            en: "the description is required",
+            es: "la descripción es obligatoria",
+            fr: "la description est obligatoire",
+            de: "die Beschreibung ist erforderlich",
+            ja: "説明は必須です",
+            zh: "必须填写描述",
+        ));
     }
     if description.contains(['\n', '\r']) {
-        return Err("la descripción tiene que ir en una sola línea".into());
+        return Err(said!(
+            en: "the description has to fit on a single line",
+            es: "la descripción tiene que ir en una sola línea",
+            fr: "la description doit tenir sur une seule ligne",
+            de: "die Beschreibung muss in eine einzige Zeile passen",
+            ja: "説明は 1 行で書いてください",
+            zh: "描述必须写在一行内",
+        ));
     }
     if description.chars().count() > DESCRIPTION_CAP {
-        return Err(format!("la descripción pasa de {DESCRIPTION_CAP} caracteres"));
+        return Err(said!(
+            en: "the description is over {DESCRIPTION_CAP} characters",
+            es: "la descripción pasa de {DESCRIPTION_CAP} caracteres",
+            fr: "la description dépasse {DESCRIPTION_CAP} caractères",
+            de: "die Beschreibung ist länger als {DESCRIPTION_CAP} Zeichen",
+            ja: "説明が {DESCRIPTION_CAP} 文字を超えています",
+            zh: "描述超过 {DESCRIPTION_CAP} 个字符",
+        ));
     }
     Ok(description)
 }
 
 fn unreadable(path: &Path) -> impl Fn(std::io::Error) -> String {
-    move |error| format!("no pude leer {}: {error}", path.display())
+    move |error| files::unread(path.display(), error)
 }
 
 fn unwritable(path: &Path) -> impl Fn(std::io::Error) -> String {
-    move |error| format!("no pude escribir {}: {error}", path.display())
+    move |error| files::unwritten(path, error)
+}
+
+fn unsaved_skill(name: &str, error: impl std::fmt::Display) -> String {
+    said!(
+        en: "couldn’t save the skill {name}: {error}",
+        es: "no pude guardar la skill {name}: {error}",
+        fr: "impossible d’enregistrer la skill {name} : {error}",
+        de: "der Skill {name} konnte nicht gespeichert werden: {error}",
+        ja: "スキル {name} を保存できませんでした: {error}",
+        zh: "无法保存技能 {name}：{error}",
+    )
+}
+
+fn unretired(name: &str, error: std::io::Error) -> String {
+    said!(
+        en: "couldn’t set aside the previous version of {name}: {error}",
+        es: "no pude apartar la versión anterior de {name}: {error}",
+        fr: "impossible de mettre de côté la version précédente de {name} : {error}",
+        de: "die vorherige Version von {name} konnte nicht beiseitegelegt werden: {error}",
+        ja: "{name} の以前のバージョンを退避できませんでした: {error}",
+        zh: "无法移开 {name} 的旧版本：{error}",
+    )
+}
+
+fn unreplaced(name: &str, error: std::io::Error) -> String {
+    said!(
+        en: "couldn’t save the new version of {name}: {error}",
+        es: "no pude guardar la versión nueva de {name}: {error}",
+        fr: "impossible d’enregistrer la nouvelle version de {name} : {error}",
+        de: "die neue Version von {name} konnte nicht gespeichert werden: {error}",
+        ja: "{name} の新しいバージョンを保存できませんでした: {error}",
+        zh: "无法保存 {name} 的新版本：{error}",
+    )
 }
 
 pub fn skill_text(base: &Path, name: &str) -> Result<String, String> {
@@ -540,7 +635,7 @@ pub fn create_skill(base: &Path, root: &str, name: &str, description: &str, body
     std::fs::create_dir_all(&folder).map_err(unwritable(&folder))?;
     std::fs::write(folder.join(SKILL_FILE), skill_md(name, description, body)).map_err(|error| {
         let _ = std::fs::remove_dir_all(&folder);
-        format!("no pude guardar la skill {name}: {error}")
+        unsaved_skill(name, error)
     })?;
     adopt(base, root, Kind::Skill, name)
 }
@@ -554,8 +649,7 @@ pub fn import_skill(base: &Path, root: &str, source: &Path) -> Result<String, St
     let staging = shelf(base).join(format!("{STAGING}{}", parsed.name));
     let _ = std::fs::remove_dir_all(&staging);
     let placed = copy_all(source, &staging, &found).and_then(|()| {
-        std::fs::rename(&staging, &target)
-            .map_err(|error| format!("no pude guardar la skill {}: {error}", parsed.name))
+        std::fs::rename(&staging, &target).map_err(|error| unsaved_skill(&parsed.name, error))
     });
     if placed.is_err() {
         let _ = std::fs::remove_dir_all(&staging);
@@ -568,16 +662,40 @@ pub fn import_skill(base: &Path, root: &str, source: &Path) -> Result<String, St
 fn header_of(source: &Path, found: &Survey) -> Result<Header, String> {
     let shown = source.display();
     if !found.files.iter().any(|file| file == Path::new(SKILL_FILE)) {
-        return Err(format!("{shown} no tiene {SKILL_FILE}"));
+        return Err(said!(
+            en: "{shown} has no {SKILL_FILE}",
+            es: "{shown} no tiene {SKILL_FILE}",
+            fr: "{shown} n’a pas de {SKILL_FILE}",
+            de: "{shown} hat keine {SKILL_FILE}",
+            ja: "{shown} に {SKILL_FILE} がありません",
+            zh: "{shown} 中没有 {SKILL_FILE}",
+        ));
     }
     let path = source.join(SKILL_FILE);
     let text = std::fs::read_to_string(&path).map_err(unreadable(&path))?;
-    header(&text).ok_or_else(|| format!("el {SKILL_FILE} de {shown} no tiene name y description en la cabecera"))
+    header(&text).ok_or_else(|| {
+        said!(
+            en: "the {SKILL_FILE} in {shown} has no name and description in its header",
+            es: "el {SKILL_FILE} de {shown} no tiene name y description en la cabecera",
+            fr: "le {SKILL_FILE} de {shown} n’a pas de name ni de description dans son en-tête",
+            de: "die {SKILL_FILE} in {shown} hat keinen name und keine description im Kopf",
+            ja: "{shown} の {SKILL_FILE} のヘッダーに name と description がありません",
+            zh: "{shown} 中的 {SKILL_FILE} 头部缺少 name 和 description",
+        )
+    })
 }
 
 fn survey(source: &Path) -> Result<Survey, String> {
     if !source.symlink_metadata().is_ok_and(|meta| meta.is_dir()) {
-        return Err(format!("{} no es una carpeta", source.display()));
+        return Err(said!(
+            en: "{path} isn’t a folder",
+            es: "{path} no es una carpeta",
+            fr: "{path} n’est pas un dossier",
+            de: "{path} ist kein Ordner",
+            ja: "{path} はフォルダーではありません",
+            zh: "{path} 不是文件夹",
+            path = source.display(),
+        ));
     }
     let mut found = Survey::default();
     let mut pending = vec![PathBuf::new()];
@@ -614,10 +732,27 @@ impl Survey {
 
     fn within(&self, source: &Path) -> Result<(), String> {
         if self.files.len() > FILE_CAP {
-            return Err(format!("{} tiene más de {FILE_CAP} ficheros", source.display()));
+            return Err(said!(
+                en: "{path} has more than {FILE_CAP} files",
+                es: "{path} tiene más de {FILE_CAP} ficheros",
+                fr: "{path} contient plus de {FILE_CAP} fichiers",
+                de: "{path} enthält mehr als {FILE_CAP} Dateien",
+                ja: "{path} のファイルが {FILE_CAP} 個を超えています",
+                zh: "{path} 中的文件超过 {FILE_CAP} 个",
+                path = source.display(),
+            ));
         }
         if self.bytes > BYTE_CAP {
-            return Err(format!("{} pasa de {} MB", source.display(), BYTE_CAP / MEGABYTE));
+            return Err(said!(
+                en: "{path} is over {size} MB",
+                es: "{path} pasa de {size} MB",
+                fr: "{path} dépasse {size} Mo",
+                de: "{path} ist größer als {size} MB",
+                ja: "{path} が {size} MB を超えています",
+                zh: "{path} 超过 {size} MB",
+                path = source.display(),
+                size = BYTE_CAP / MEGABYTE,
+            ));
         }
         Ok(())
     }
@@ -647,9 +782,25 @@ pub fn remove_skill(base: &Path, name: &str) -> Result<(), String> {
         .canonicalize()
         .is_ok_and(|skills| held.parent() == Some(skills.as_path()));
     if !inside {
-        return Err(format!("{name} no está dentro de la carpeta de skills"));
+        return Err(said!(
+            en: "{name} isn’t inside the skills folder",
+            es: "{name} no está dentro de la carpeta de skills",
+            fr: "{name} n’est pas dans le dossier des skills",
+            de: "{name} liegt nicht im Skills-Ordner",
+            ja: "{name} はスキルのフォルダー内にありません",
+            zh: "{name} 不在技能文件夹中",
+        ));
     }
-    std::fs::remove_dir_all(&held).map_err(|error| format!("no pude quitar la skill {name}: {error}"))?;
+    std::fs::remove_dir_all(&held).map_err(|error| {
+        said!(
+            en: "couldn’t remove the skill {name}: {error}",
+            es: "no pude quitar la skill {name}: {error}",
+            fr: "impossible de retirer la skill {name} : {error}",
+            de: "der Skill {name} konnte nicht entfernt werden: {error}",
+            ja: "スキル {name} を削除できませんでした: {error}",
+            zh: "无法移除技能 {name}：{error}",
+        )
+    })?;
     forget(base, Kind::Skill, name)
 }
 
@@ -660,16 +811,35 @@ pub fn set_skill(base: &Path, root: &str, name: &str, enabled: bool) -> Result<(
 fn vetted_server(server: &NewServer) -> Result<(&str, Entry), String> {
     let name = server.name.trim();
     if !is_server_name(name) {
-        return Err(format!(
-            "nombre de servidor no válido: «{name}». Usa letras, números, guiones o guiones bajos, hasta {NAME_CAP}"
+        return Err(said!(
+            en: "invalid server name: “{name}”. Use letters, numbers, hyphens or underscores, up to {NAME_CAP} characters",
+            es: "nombre de servidor no válido: «{name}». Usa letras, números, guiones o guiones bajos, hasta {NAME_CAP}",
+            fr: "nom de serveur non valide : « {name} ». Utilisez des lettres, des chiffres, des traits d’union ou des tirets bas, {NAME_CAP} caractères au plus",
+            de: "ungültiger Servername: „{name}“. Nutze Buchstaben, Ziffern, Bindestriche oder Unterstriche, höchstens {NAME_CAP} Zeichen",
+            ja: "サーバー名が無効です: 「{name}」。英数字、ハイフン、アンダースコアを使い、{NAME_CAP} 文字以内にしてください",
+            zh: "服务器名称无效：“{name}”。请使用字母、数字、连字符或下划线，最多 {NAME_CAP} 个字符",
         ));
     }
     let command = server.command.trim();
     if command.is_empty() {
-        return Err("el comando es obligatorio".into());
+        return Err(said!(
+            en: "the command is required",
+            es: "el comando es obligatorio",
+            fr: "la commande est obligatoire",
+            de: "der Befehl ist erforderlich",
+            ja: "コマンドは必須です",
+            zh: "必须填写命令",
+        ));
     }
     if server.env.keys().any(|key| key.trim().is_empty()) {
-        return Err("hay una variable de entorno sin nombre".into());
+        return Err(said!(
+            en: "an environment variable has no name",
+            es: "hay una variable de entorno sin nombre",
+            fr: "une variable d’environnement n’a pas de nom",
+            de: "eine Umgebungsvariable hat keinen Namen",
+            ja: "名前のない環境変数があります",
+            zh: "有一个环境变量没有名称",
+        ));
     }
     let entry = Entry {
         args: server.args.clone(),
@@ -688,13 +858,35 @@ pub fn add_server(base: &Path, root: &str, server: &NewServer) -> Result<(), Str
 pub fn add_remote(base: &Path, root: &str, name: &str, remote: Remote) -> Result<(), String> {
     let name = name.trim();
     if !is_server_name(name) {
-        return Err(format!("nombre de servidor no válido: «{name}»"));
+        return Err(said!(
+            en: "invalid server name: “{name}”",
+            es: "nombre de servidor no válido: «{name}»",
+            fr: "nom de serveur non valide : « {name} »",
+            de: "ungültiger Servername: „{name}“",
+            ja: "サーバー名が無効です: 「{name}」",
+            zh: "服务器名称无效：“{name}”",
+        ));
     }
     if !REMOTE_KINDS.contains(&remote.kind.as_str()) {
-        return Err(format!("no conozco el transporte {}", remote.kind));
+        return Err(said!(
+            en: "unknown transport {kind}",
+            es: "no conozco el transporte {kind}",
+            fr: "transport inconnu : {kind}",
+            de: "unbekannter Transport: {kind}",
+            ja: "不明なトランスポートです: {kind}",
+            zh: "未知的传输方式：{kind}",
+            kind = remote.kind,
+        ));
     }
     if !remote.url.starts_with("https://") && !remote.url.starts_with("http://localhost") {
-        return Err(format!("la dirección de {name} tiene que empezar por https://"));
+        return Err(said!(
+            en: "the address of {name} has to start with https://",
+            es: "la dirección de {name} tiene que empezar por https://",
+            fr: "l’adresse de {name} doit commencer par https://",
+            de: "die Adresse von {name} muss mit https:// beginnen",
+            ja: "{name} のアドレスは https:// で始まる必要があります",
+            zh: "{name} 的地址必须以 https:// 开头",
+        ));
     }
     let entry = Entry { kind: remote.kind, url: remote.url, headers: remote.headers, ..Entry::default() };
     insert_server(base, root, name, entry)
@@ -704,7 +896,14 @@ fn insert_server(base: &Path, root: &str, name: &str, entry: Entry) -> Result<()
     activatable(base, root)?;
     store::update(base, SERVERS_FILE, |known: &mut Servers| {
         if known.servers.contains_key(name) {
-            return Err(format!("ya existe un servidor llamado {name}"));
+            return Err(said!(
+                en: "a server called {name} already exists",
+                es: "ya existe un servidor llamado {name}",
+                fr: "un serveur nommé {name} existe déjà",
+                de: "es gibt bereits einen Server namens {name}",
+                ja: "{name} という名前のサーバーはすでにあります",
+                zh: "已存在名为 {name} 的服务器",
+            ));
         }
         known.servers.insert(name.to_string(), entry);
         Ok(())
@@ -732,7 +931,14 @@ fn plugins_dir(base: &Path) -> PathBuf {
 
 fn plugin_folder(base: &Path, name: &str) -> Result<PathBuf, String> {
     if !is_plugin_name(name) {
-        return Err(format!("nombre de plugin no válido: «{name}»"));
+        return Err(said!(
+            en: "invalid plugin name: “{name}”",
+            es: "nombre de plugin no válido: «{name}»",
+            fr: "nom de plugin non valide : « {name} »",
+            de: "ungültiger Plugin-Name: „{name}“",
+            ja: "プラグイン名が無効です: 「{name}」",
+            zh: "插件名称无效：“{name}”",
+        ));
     }
     Ok(plugins_dir(base).join(name))
 }
@@ -797,7 +1003,14 @@ fn staged_plugin(base: &Path, name: &str, source: &Path, definition: Option<&Val
         None => Ok(()),
         Some(definition) => {
             if manifest(&staging).is_some_and(|found| declares_components(&found)) {
-                return Err(format!("{name} trae su propio plugin.json con componentes y la ficha también los define"));
+                return Err(said!(
+                    en: "{name} comes with its own plugin.json with components, and the listing defines them too",
+                    es: "{name} trae su propio plugin.json con componentes y la ficha también los define",
+                    fr: "{name} fournit son propre plugin.json avec des composants, et la fiche les définit aussi",
+                    de: "{name} bringt eine eigene plugin.json mit Komponenten mit, und der Eintrag definiert sie ebenfalls",
+                    ja: "{name} には独自の plugin.json にコンポーネントがあり、掲載情報でも定義されています",
+                    zh: "{name} 自带含组件的 plugin.json，而条目中也定义了组件",
+                ));
             }
             let path = manifest_path(&staging);
             std::fs::create_dir_all(path.parent().unwrap_or(&staging)).map_err(unwritable(&staging))?;
@@ -807,8 +1020,22 @@ fn staged_plugin(base: &Path, name: &str, source: &Path, definition: Option<&Val
     });
     let named = built.and_then(|()| match manifest(&staging) {
         Some(found) if found["name"].as_str() == Some(name) => Ok(()),
-        Some(_) => Err(format!("el plugin.json de {name} dice otro nombre")),
-        None => Err(format!("{name} no tiene .claude-plugin/plugin.json")),
+        Some(_) => Err(said!(
+            en: "the plugin.json of {name} gives another name",
+            es: "el plugin.json de {name} dice otro nombre",
+            fr: "le plugin.json de {name} indique un autre nom",
+            de: "die plugin.json von {name} nennt einen anderen Namen",
+            ja: "{name} の plugin.json に別の名前が書かれています",
+            zh: "{name} 的 plugin.json 中写的是另一个名称",
+        )),
+        None => Err(said!(
+            en: "{name} has no .claude-plugin/plugin.json",
+            es: "{name} no tiene .claude-plugin/plugin.json",
+            fr: "{name} n’a pas de .claude-plugin/plugin.json",
+            de: "{name} hat keine .claude-plugin/plugin.json",
+            ja: "{name} に .claude-plugin/plugin.json がありません",
+            zh: "{name} 中没有 .claude-plugin/plugin.json",
+        )),
     });
     if let Err(reason) = named {
         let _ = std::fs::remove_dir_all(&staging);
@@ -828,12 +1055,26 @@ pub fn install_plugin(
     let target = plugin_folder(base, name)?;
     activatable(base, root)?;
     if target.symlink_metadata().is_ok() {
-        return Err(format!("ya tienes un plugin llamado {name}"));
+        return Err(said!(
+            en: "you already have a plugin called {name}",
+            es: "ya tienes un plugin llamado {name}",
+            fr: "vous avez déjà un plugin nommé {name}",
+            de: "du hast bereits ein Plugin namens {name}",
+            ja: "{name} という名前のプラグインはすでにあります",
+            zh: "你已有名为 {name} 的插件",
+        ));
     }
     let staging = staged_plugin(base, name, source, definition)?;
     std::fs::rename(&staging, &target).map_err(|error| {
         let _ = std::fs::remove_dir_all(&staging);
-        format!("no pude guardar el plugin {name}: {error}")
+        said!(
+            en: "couldn’t save the plugin {name}: {error}",
+            es: "no pude guardar el plugin {name}: {error}",
+            fr: "impossible d’enregistrer le plugin {name} : {error}",
+            de: "das Plugin {name} konnte nicht gespeichert werden: {error}",
+            ja: "プラグイン {name} を保存できませんでした: {error}",
+            zh: "无法保存插件 {name}：{error}",
+        )
     })?;
     keep_plugin_env(base, name, values)?;
     adopt(base, root, Kind::Plugin, name)
@@ -849,12 +1090,12 @@ pub fn replace_plugin(base: &Path, name: &str, source: &Path, definition: Option
     let _ = std::fs::remove_dir_all(&retired);
     std::fs::rename(&target, &retired).map_err(|error| {
         let _ = std::fs::remove_dir_all(&staging);
-        format!("no pude apartar la versión anterior de {name}: {error}")
+        unretired(name, error)
     })?;
     if let Err(error) = std::fs::rename(&staging, &target) {
         let _ = std::fs::rename(&retired, &target);
         let _ = std::fs::remove_dir_all(&staging);
-        return Err(format!("no pude guardar la versión nueva de {name}: {error}"));
+        return Err(unreplaced(name, error));
     }
     let _ = std::fs::remove_dir_all(&retired);
     Ok(())
@@ -867,7 +1108,14 @@ pub fn replace_skill(base: &Path, name: &str, source: &Path) -> Result<(), Strin
     }
     let found = survey(source)?;
     if header_of(source, &found)?.name != name {
-        return Err(format!("la versión nueva de {name} tiene otro nombre; quítala e instálala de nuevo"));
+        return Err(said!(
+            en: "the new version of {name} has another name; remove it and install it again",
+            es: "la versión nueva de {name} tiene otro nombre; quítala e instálala de nuevo",
+            fr: "la nouvelle version de {name} porte un autre nom ; retirez-la et installez-la à nouveau",
+            de: "die neue Version von {name} hat einen anderen Namen; entferne sie und installiere sie neu",
+            ja: "{name} の新しいバージョンは名前が異なります。削除してからもう一度インストールしてください",
+            zh: "{name} 的新版本名称不同；请先移除，再重新安装",
+        ));
     }
     let staging = shelf(base).join(format!("{STAGING}{name}"));
     let retired = shelf(base).join(format!("{STAGING}viejo-{name}"));
@@ -876,12 +1124,12 @@ pub fn replace_skill(base: &Path, name: &str, source: &Path) -> Result<(), Strin
     copy_all(source, &staging, &found)?;
     std::fs::rename(&target, &retired).map_err(|error| {
         let _ = std::fs::remove_dir_all(&staging);
-        format!("no pude apartar la versión anterior de {name}: {error}")
+        unretired(name, error)
     })?;
     if let Err(error) = std::fs::rename(&staging, &target) {
         let _ = std::fs::rename(&retired, &target);
         let _ = std::fs::remove_dir_all(&staging);
-        return Err(format!("no pude guardar la versión nueva de {name}: {error}"));
+        return Err(unreplaced(name, error));
     }
     let _ = std::fs::remove_dir_all(&retired);
     Ok(())
@@ -902,9 +1150,25 @@ pub fn remove_plugin(base: &Path, name: &str) -> Result<(), String> {
         .canonicalize()
         .is_ok_and(|plugins| held.parent() == Some(plugins.as_path()));
     if !inside {
-        return Err(format!("{name} no está dentro de la carpeta de plugins"));
+        return Err(said!(
+            en: "{name} isn’t inside the plugins folder",
+            es: "{name} no está dentro de la carpeta de plugins",
+            fr: "{name} n’est pas dans le dossier des plugins",
+            de: "{name} liegt nicht im Plugins-Ordner",
+            ja: "{name} はプラグインのフォルダー内にありません",
+            zh: "{name} 不在插件文件夹中",
+        ));
     }
-    std::fs::remove_dir_all(&held).map_err(|error| format!("no pude quitar el plugin {name}: {error}"))?;
+    std::fs::remove_dir_all(&held).map_err(|error| {
+        said!(
+            en: "couldn’t remove the plugin {name}: {error}",
+            es: "no pude quitar el plugin {name}: {error}",
+            fr: "impossible de retirer le plugin {name} : {error}",
+            de: "das Plugin {name} konnte nicht entfernt werden: {error}",
+            ja: "プラグイン {name} を削除できませんでした: {error}",
+            zh: "无法移除插件 {name}：{error}",
+        )
+    })?;
     keep_plugin_env(base, name, BTreeMap::new())?;
     forget(base, Kind::Plugin, name)
 }
@@ -996,7 +1260,14 @@ fn skill_plugin(base: &Path, active: &BTreeSet<String>) -> Result<Option<PathBuf
     let placed = bundle(&staging, &chosen).and_then(|()| match std::fs::rename(&staging, &plugin) {
         Ok(()) => Ok(()),
         Err(_) if plugin.join(MANIFEST).is_dir() => Ok(()),
-        Err(error) => Err(format!("no pude preparar las skills para el agente: {error}")),
+        Err(error) => Err(said!(
+            en: "couldn’t prepare the skills for the agent: {error}",
+            es: "no pude preparar las skills para el agente: {error}",
+            fr: "impossible de préparer les skills pour l’agent : {error}",
+            de: "die Skills für den Agenten konnten nicht vorbereitet werden: {error}",
+            ja: "エージェント用のスキルを準備できませんでした: {error}",
+            zh: "无法为代理准备技能：{error}",
+        )),
     });
     let _ = std::fs::remove_dir_all(&staging);
     placed?;
@@ -1029,7 +1300,7 @@ fn fingerprint(chosen: &[(String, PathBuf, Survey)]) -> u64 {
 fn bundle(staging: &Path, chosen: &[(String, PathBuf, Survey)]) -> Result<(), String> {
     let manifest = staging.join(MANIFEST);
     std::fs::create_dir_all(&manifest).map_err(unwritable(&manifest))?;
-    let identity = json!({ "name": PLUGIN_NAME, "description": "Skills que activaste en Sens para este proyecto" });
+    let identity = json!({ "name": PLUGIN_NAME, "description": "Skills you enabled in Sens for this project" });
     let path = manifest.join("plugin.json");
     std::fs::write(&path, identity.to_string()).map_err(unwritable(&path))?;
     for (name, folder, found) in chosen {
@@ -1062,6 +1333,7 @@ fn prune(folder: &Path, keep: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sens_agent::language::{Language, speaking};
 
     const HERE: &str = "P:\\SGT-Portal";
     const THERE: &str = "P:\\Otro";
@@ -1180,6 +1452,7 @@ mod tests {
 
         let manifest: Value = serde_json::from_str(&std::fs::read_to_string(plugin.join(MANIFEST).join("plugin.json")).unwrap()).unwrap();
         assert_eq!(manifest["name"], PLUGIN_NAME);
+        assert_eq!(manifest["description"], "Skills you enabled in Sens for this project");
         assert!(std::fs::read_to_string(plugin.join(SKILLS).join("revisar-prs").join(SKILL_FILE)).unwrap().contains("# Pasos"));
         assert!(!plugin.join(SKILLS).join("ajena").exists());
         assert_eq!(launch(&base, HERE).unwrap().args, args);
@@ -1308,11 +1581,22 @@ mod tests {
     fn a_description_must_exist_fit_in_1024_characters_and_one_line() {
         let base = temp_root("description");
         assert!(create_skill(&base, "", "a", "   ", "").is_err());
-        assert!(create_skill(&base, "", "b", "una\notra", "").unwrap_err().contains("una sola línea"));
+        assert!(create_skill(&base, "", "b", "una\notra", "").unwrap_err().contains("a single line"));
         assert!(create_skill(&base, "", "c", "una\rotra", "").is_err());
         assert!(create_skill(&base, "", "d", &"é".repeat(1025), "").unwrap_err().contains("1024"));
         create_skill(&base, "", "e", &"é".repeat(1024), "").unwrap();
         assert_eq!(names(&base), vec!["e"]);
+    }
+
+    #[test]
+    fn a_refused_skill_is_explained_in_the_language_spoken() {
+        let base = temp_root("description-spoken");
+
+        assert_eq!(create_skill(&base, "", "a", "   ", ""), Err("the description is required".into()));
+        assert_eq!(speaking(Language::Es, || create_skill(&base, "", "a", "   ", "")), Err("la descripción es obligatoria".into()));
+        assert_eq!(speaking(Language::Es, || create_skill(&base, "", "b", "una\notra", "")), Err("la descripción tiene que ir en una sola línea".into()));
+        assert_eq!(speaking(Language::De, || set_skill(&base, "", "a", true)), Err("öffne ein Projekt, um Fähigkeiten zu aktivieren".into()));
+        assert_eq!(speaking(Language::Es, || set_skill(&base, "", "a", true)), Err("abre un proyecto para activar capacidades".into()));
     }
 
     #[test]
@@ -1330,7 +1614,7 @@ mod tests {
 
         let refused = create_skill(&base, "", "a", "Segunda.", "dos").unwrap_err();
 
-        assert!(refused.contains("ya existe"));
+        assert!(refused.contains("already exists"));
         assert!(skill_text(&base, "a").unwrap().contains("Primera."));
     }
 
@@ -1401,7 +1685,7 @@ mod tests {
 
         let refused = import_skill(&base, "", &source_skill(&root, "importada")).unwrap_err();
 
-        assert!(refused.contains("ya existe"));
+        assert!(refused.contains("already exists"));
         assert!(skill_text(&base, "importada").unwrap().contains("Original."));
         assert_eq!(leftovers(&base), vec!["importada"]);
     }
@@ -1490,7 +1774,7 @@ mod tests {
 
         assert!(!shelf(&base).join("a").exists());
         assert!(state(&base).projects.is_empty());
-        assert!(remove_skill(&base, "a").unwrap_err().contains("no existe"));
+        assert!(remove_skill(&base, "a").unwrap_err().contains("doesn’t exist"));
     }
 
     #[test]
@@ -1588,7 +1872,7 @@ mod tests {
 
         assert!(add_server(&base, "", &server("con espacio", &[])).is_err());
         assert!(add_server(&base, "", &server("", &[])).is_err());
-        assert!(add_server(&base, "", &blank).unwrap_err().contains("comando"));
+        assert!(add_server(&base, "", &blank).unwrap_err().contains("command"));
         assert!(add_server(&base, "", &server("b", &[(" ", "x")])).is_err());
         assert!(all(&base, "").servers.is_empty());
     }
@@ -1600,7 +1884,7 @@ mod tests {
 
         let refused = add_server(&base, "", &server("github", &[("TOKEN", "segundo")])).unwrap_err();
 
-        assert!(refused.contains("ya existe"));
+        assert!(refused.contains("already exists"));
         assert!(std::fs::read_to_string(base.join(SERVERS_FILE)).unwrap().contains("primero"));
     }
 
@@ -1619,8 +1903,8 @@ mod tests {
 
         assert_eq!(off, vec![false, true]);
         assert_eq!(left, vec![("a".to_string(), true)]);
-        assert!(set_server(&base, HERE, "b", true).unwrap_err().contains("no existe"));
-        assert!(remove_server(&base, "b").unwrap_err().contains("no existe"));
+        assert!(set_server(&base, HERE, "b", true).unwrap_err().contains("doesn’t exist"));
+        assert!(remove_server(&base, "b").unwrap_err().contains("doesn’t exist"));
     }
 
     #[test]
@@ -1652,8 +1936,8 @@ mod tests {
         add_server(&base, HERE, &server("github", &[])).unwrap();
         let before = state_text(&base);
 
-        assert!(set_skill(&base, "", "a", true).unwrap_err().contains("proyecto"));
-        assert!(set_server(&base, "", "github", false).unwrap_err().contains("proyecto"));
+        assert!(set_skill(&base, "", "a", true).unwrap_err().contains("project"));
+        assert!(set_server(&base, "", "github", false).unwrap_err().contains("project"));
         assert_eq!(skill_flags(&base, ""), vec![false]);
         assert_eq!(server_flags(&base, ""), vec![false]);
         assert_eq!(state_text(&base), before);
@@ -1664,8 +1948,8 @@ mod tests {
         let base = temp_root("switch-missing");
 
         for enabled in [true, false] {
-            assert!(set_skill(&base, HERE, "nadie", enabled).unwrap_err().contains("no existe la skill"));
-            assert!(set_server(&base, HERE, "nadie", enabled).unwrap_err().contains("no existe el servidor"));
+            assert!(set_skill(&base, HERE, "nadie", enabled).unwrap_err().contains("the skill nadie doesn’t exist"));
+            assert!(set_server(&base, HERE, "nadie", enabled).unwrap_err().contains("the server nadie doesn’t exist"));
         }
         assert!(set_skill(&base, HERE, "../fuera", true).is_err());
         assert!(!base.join(STATE_FILE).exists());
@@ -1753,13 +2037,13 @@ mod tests {
         add_server(&base, "", &server("github", &[])).unwrap();
         put(&base.join(STATE_FILE), b"{ roto");
 
-        assert!(set_skill(&base, HERE, "a", true).unwrap_err().contains("dañado"));
-        assert!(set_server(&base, HERE, "github", true).unwrap_err().contains("dañado"));
-        assert!(create_skill(&base, HERE, "b", "x", "").unwrap_err().contains("dañado"));
-        assert!(import_skill(&base, HERE, &source_skill(&root, "c")).unwrap_err().contains("dañado"));
-        assert!(add_server(&base, HERE, &server("otro", &[])).unwrap_err().contains("dañado"));
-        assert!(remove_skill(&base, "a").unwrap_err().contains("dañado"));
-        assert!(remove_server(&base, "github").unwrap_err().contains("dañado"));
+        assert!(set_skill(&base, HERE, "a", true).unwrap_err().contains("is damaged"));
+        assert!(set_server(&base, HERE, "github", true).unwrap_err().contains("is damaged"));
+        assert!(create_skill(&base, HERE, "b", "x", "").unwrap_err().contains("is damaged"));
+        assert!(import_skill(&base, HERE, &source_skill(&root, "c")).unwrap_err().contains("is damaged"));
+        assert!(add_server(&base, HERE, &server("otro", &[])).unwrap_err().contains("is damaged"));
+        assert!(remove_skill(&base, "a").unwrap_err().contains("is damaged"));
+        assert!(remove_server(&base, "github").unwrap_err().contains("is damaged"));
 
         assert_eq!(state_text(&base), "{ roto");
         assert_eq!(names(&base), vec!["a"]);
@@ -1772,7 +2056,7 @@ mod tests {
         let base = temp_root("damaged-servers");
         std::fs::write(base.join(SERVERS_FILE), "{ roto").unwrap();
 
-        assert!(add_server(&base, "", &server("github", &[])).unwrap_err().contains("dañado"));
+        assert!(add_server(&base, "", &server("github", &[])).unwrap_err().contains("is damaged"));
         assert_eq!(std::fs::read_to_string(base.join(SERVERS_FILE)).unwrap(), "{ roto");
     }
 
@@ -1846,7 +2130,7 @@ mod tests {
 
         let refused = install_plugin(&base, "", "choque", &source, Some(&definition), BTreeMap::new()).unwrap_err();
 
-        assert!(refused.contains("componentes"));
+        assert!(refused.contains("components"));
         assert!(std::fs::read_dir(plugins_dir(&base)).map_or(true, |mut left| left.next().is_none()));
     }
 
@@ -1859,10 +2143,10 @@ mod tests {
         let good = plugin_source(&root, "bueno", "{\"name\":\"bueno\"}");
 
         assert!(install_plugin(&base, "", "sin", &bare, None, BTreeMap::new()).unwrap_err().contains("plugin.json"));
-        assert!(install_plugin(&base, "", "otro", &other, None, BTreeMap::new()).unwrap_err().contains("otro nombre"));
+        assert!(install_plugin(&base, "", "otro", &other, None, BTreeMap::new()).unwrap_err().contains("another name"));
         assert!(install_plugin(&base, "", "../fuera", &good, None, BTreeMap::new()).is_err());
         install_plugin(&base, "", "bueno", &good, None, BTreeMap::new()).unwrap();
-        assert!(install_plugin(&base, "", "bueno", &good, None, BTreeMap::new()).unwrap_err().contains("ya tienes"));
+        assert!(install_plugin(&base, "", "bueno", &good, None, BTreeMap::new()).unwrap_err().contains("already have"));
         assert_eq!(plugin_flags(&base, ""), vec![("bueno".to_string(), false)]);
     }
 
@@ -1881,8 +2165,8 @@ mod tests {
         assert!(plugin_env(&base).is_empty());
         assert!(all(&base, HERE).origins.is_empty());
         assert!(state(&base).projects.is_empty());
-        assert!(remove_plugin(&base, "gh").unwrap_err().contains("no existe"));
-        assert!(set_plugin(&base, HERE, "gh", true).unwrap_err().contains("no existe el plugin"));
+        assert!(remove_plugin(&base, "gh").unwrap_err().contains("doesn’t exist"));
+        assert!(set_plugin(&base, HERE, "gh", true).unwrap_err().contains("the plugin gh doesn’t exist"));
     }
 
     #[test]
@@ -1917,7 +2201,7 @@ mod tests {
         assert_eq!(skill_flags(&base, HERE), vec![true]);
         let renamed = root.join("renombrada");
         put(&renamed.join(SKILL_FILE), skill_md("otra", "x", "").as_bytes());
-        assert!(replace_skill(&base, "importada", &renamed).unwrap_err().contains("otro nombre"));
+        assert!(replace_skill(&base, "importada", &renamed).unwrap_err().contains("another name"));
     }
 
     #[test]

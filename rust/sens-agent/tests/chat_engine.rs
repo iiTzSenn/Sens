@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use sens_agent::chat::{Decision, Engine, Event, Image, Message, Settings, Sink};
+use sens_agent::language::{Language, speaking};
 use sens_agent::session::{self, Entry};
 
 type Heard = Arc<Mutex<Vec<Event>>>;
@@ -147,9 +148,11 @@ fn a_busy_session_refuses_a_second_message() {
     let (heard, sink) = ear();
 
     engine.send(&root, &id, &text("lento"), settings(), sink.clone()).unwrap();
-    let refused = engine.send(&root, &id, &text("otra"), settings(), sink).unwrap_err();
+    let refused = speaking(Language::Es, || engine.send(&root, &id, &text("otra"), settings(), sink.clone()).unwrap_err());
+    let told = speaking(Language::En, || engine.send(&root, &id, &text("otra"), settings(), sink).unwrap_err());
 
-    assert!(refused.contains("sigue trabajando"));
+    assert_eq!(refused, "Claude sigue trabajando en esta sesión.");
+    assert_eq!(told, "Claude is still working in this session.");
     engine.stop(&id).unwrap();
     wait_for(&heard, finished);
     engine.shutdown();

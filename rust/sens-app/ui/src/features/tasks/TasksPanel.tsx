@@ -8,6 +8,7 @@ import { ICONS } from "../../shared/icons.js";
 import { Markdown } from "../../shared/markdown/Markdown";
 import { Terminal } from "../../shared/Terminal";
 import { project } from "../project/store";
+import { t } from "./copy";
 import { tasks, tickTasks } from "./store";
 import { TASK_STATE, inOrder, isAgent, isRunning, isShell, shellEnding, tally, taskTime, taskUsage, type Task } from "./tasks";
 
@@ -33,7 +34,7 @@ export function TasksPanel() {
       {list.length ? (
         list.map((task) => <TaskCard key={task.id} task={task} now={now} />)
       ) : (
-        <p className="none">Aquí verás los subagentes y los comandos que el modelo lance en segundo plano.</p>
+        <p className="none">{t.empty}</p>
       )}
     </>
   );
@@ -54,7 +55,7 @@ function TaskCard({ task, now }: { task: Task; now: number }) {
         <span className="step-icon">
           <Icon svg={shell ? ICONS.terminal : agent ? ICONS.split : ICONS.wrench} />
         </span>
-        <span className="step-verb">{shell ? "Comando" : agent ? "Subagente" : "Tarea"}</span>
+        <span className="step-verb">{shell ? t.command : agent ? t.subagent : t.task}</span>
         <span className="step-target" title={task.description || ""}>
           {task.description || task.id}
         </span>
@@ -156,7 +157,7 @@ function StopTask({ task }: { task: Task }) {
   return (
     <div className="task-actions" hidden={!isRunning(task)}>
       <button className="quiet" type="button" disabled={asked} onClick={stop}>
-        Detener
+        {t.stop}
       </button>
       <span className="fault">{trouble}</span>
     </div>

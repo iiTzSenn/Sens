@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { Language } from "../shared/i18n";
 import type { Look } from "../shared/look";
 
 export type Mode = "install" | "update" | "uninstall";
@@ -25,6 +26,12 @@ export interface Choice {
   desktop: boolean;
   startMenu: boolean;
   look: Look | null;
+  language: Language | null;
+}
+
+export interface Stopped {
+  cancelled: boolean;
+  reason: string;
 }
 
 export interface Progress {
@@ -41,6 +48,7 @@ export interface Place {
 export const setup = {
   state: () => invoke<SetupState>("setup_state"),
   dir: (dir: string) => invoke<Place>("setup_dir", { dir }),
+  language: (language: Language) => invoke<void>("setup_language", { language }),
   install: (choice: Choice) => invoke<void>("setup_install", { choice }),
   uninstall: (removeData: boolean) => invoke<void>("setup_uninstall", { removeData }),
   cancel: () => invoke<void>("setup_cancel"),

@@ -5,11 +5,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use brotli_decompressor::Decompressor;
 
-use crate::progress::CANCELLED;
+use crate::language::said;
+use crate::progress::{self, CANCELLED};
 
 const HEADER: usize = 8;
 const CHUNK: usize = 64 * 1024;
-const DAMAGED: &str = "el paquete de sens-app.exe está dañado";
+
+fn damaged() -> String {
+    said!(
+        en: "the sens-app.exe package is damaged",
+        es: "el paquete de sens-app.exe está dañado",
+        fr: "le paquet de sens-app.exe est endommagé",
+        de: "das Paket von sens-app.exe ist beschädigt",
+        ja: "sens-app.exe のパッケージが破損しています",
+        zh: "sens-app.exe 的安装包已损坏",
+    )
+}
 
 #[cfg(payload)]
 pub fn embedded() -> Option<&'static [u8]> {
@@ -25,34 +36,34 @@ pub fn size(payload: &[u8]) -> Result<u64, String> {
     let header: [u8; HEADER] = payload
         .get(..HEADER)
         .and_then(|header| header.try_into().ok())
-        .ok_or(DAMAGED)?;
+        .ok_or_else(damaged)?;
     Ok(u64::from_le_bytes(header))
 }
 
 pub fn extract(payload: &[u8], into: &Path, cancel: &AtomicBool, mut progress: impl FnMut(u64, u64)) -> Result<(), String> {
     let expected = size(payload)?;
     let mut stream = Decompressor::new(&payload[HEADER..], CHUNK);
-    let mut file = File::create(into).map_err(|error| format!("no pude crear {}: {error}", into.display()))?;
-    let unwritten = |error: std::io::Error| format!("no pude escribir {}: {error}", into.display());
+    let mut file = File::create(into).map_err(|error| progress::cannot_create(into, &error))?;
+    let unwritten = |error: std::io::Error| progress::cannot_write(into, &error);
     let mut buffer = vec![0; CHUNK];
     let mut written = 0u64;
     loop {
         if cancel.load(Ordering::SeqCst) {
             return Err(CANCELLED.into());
         }
-        let read = stream.read(&mut buffer).map_err(|_| DAMAGED.to_string())?;
+        let read = stream.read(&mut buffer).map_err(|_| damaged())?;
         if read == 0 {
             break;
         }
         written += read as u64;
         if written > expected {
-            return Err(DAMAGED.into());
+            return Err(damaged());
         }
         file.write_all(&buffer[..read]).map_err(unwritten)?;
         progress(written, expected);
     }
     if written != expected {
-        return Err(DAMAGED.into());
+        return Err(damaged());
     }
     file.sync_all().map_err(unwritten)
 }
@@ -94,7 +105,7 @@ mod tests {
 
     #[test]
     fn a_payload_shorter_than_its_header_is_damaged() {
-        assert_eq!(size(&[1, 2, 3]), Err(DAMAGED.to_string()));
+        assert_eq!(size(&[1, 2, 3]), Err("the sens-app.exe package is damaged".to_string()));
     }
 
     #[test]
@@ -120,7 +131,7 @@ mod tests {
 
         let refused = extract(&payload, &dir.join("sens-app.exe.new"), &AtomicBool::new(false), |_, _| {});
 
-        assert_eq!(refused, Err(DAMAGED.to_string()));
+        assert_eq!(refused, Err(damaged()));
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -132,7 +143,7 @@ mod tests {
 
         let refused = extract(&payload, &dir.join("sens-app.exe.new"), &AtomicBool::new(false), |_, _| {});
 
-        assert_eq!(refused, Err(DAMAGED.to_string()));
+        assert_eq!(refused, Err(damaged()));
         let _ = fs::remove_dir_all(&dir);
     }
 

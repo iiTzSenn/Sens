@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { shared } from "./copy";
 import { Markdown } from "./markdown/Markdown";
 
 const LONG_TEXT = 900;
@@ -15,7 +16,7 @@ export function Folded({ long, children }: { long: boolean; children: ReactNode 
       <div className="inside">{children}</div>
       {folded && (
         <button className="unfold" type="button" onClick={() => setOpen(true)}>
-          Mostrar todo
+          {shared.showAll}
         </button>
       )}
     </div>

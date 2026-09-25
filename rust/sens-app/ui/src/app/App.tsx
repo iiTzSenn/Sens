@@ -12,6 +12,7 @@ import { openSettings } from "../features/settings/store";
 import { toggleConsole } from "../features/terminal/store";
 import { Welcome } from "../features/welcome/Welcome";
 import { sheets } from "../shared/sheets.js";
+import { t } from "./copy";
 import { Dialog } from "./Dialog";
 import { dialog } from "./modal";
 import { chooseFolder, fresh } from "./session";
@@ -83,26 +84,26 @@ export function App() {
           <nav className="rail" id="rail" ref={rail} inert={railClosed}>
             <Rail />
           </nav>
-          <Splitter id="rail-split" label="Ancho de la barra lateral" name="--rail-width" host={body} pane={rail} grow={1} />
+          <Splitter id="rail-split" label={t.sidebarWidth} name="--rail-width" host={body} pane={rail} grow={1} />
           <section className="chat" hidden={Boolean(view)}>
             <Panes />
           </section>
-          <section className="view" id="shelf" aria-label="Artefactos" hidden={view !== "artifacts"}>
+          <section className="view" id="shelf" aria-label={t.artifacts} hidden={view !== "artifacts"}>
             <div className="view-inner" id="shelf-body">
               <Shelf />
             </div>
           </section>
-          <section className="view" id="capabilities-view" aria-label="Capacidades" hidden={view !== "capabilities"}>
+          <section className="view" id="capabilities-view" aria-label={t.capabilities} hidden={view !== "capabilities"}>
             <div className="view-inner" id="capabilities-body">
               <Capabilities />
             </div>
           </section>
-          <section className="view" id="news-view" aria-label="Novedades" hidden={view !== "news"}>
+          <section className="view" id="news-view" aria-label={t.news} hidden={view !== "news"}>
             <div className="view-inner news">
               <NewsView />
             </div>
           </section>
-          <Splitter id="panel-split" label="Ancho del panel de herramientas" name="--tools-width" host={body} pane={code} grow={-1} />
+          <Splitter id="panel-split" label={t.toolsWidth} name="--tools-width" host={body} pane={code} grow={-1} />
           <ToolsPanel pane={code} />
         </div>
       </div>

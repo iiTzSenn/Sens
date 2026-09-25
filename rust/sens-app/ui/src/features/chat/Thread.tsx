@@ -1,15 +1,16 @@
-import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
-import { openPicture } from "../../app/Dialog";
-import { seconds, whole } from "../../shared/format.js";
+import { compact, seconds, whole } from "../../shared/format.js";
 import { look } from "../../shared/look";
 import { useIds, usePane } from "../panes/context";
 import { Ask } from "./Ask";
 import { grain } from "./grain";
-import { FOOT_JOIN, TOKENS } from "./looks";
-import { Said, Thought } from "./Said";
-import { Step } from "./Step";
-import type { Notice as NoticeTurn, Picture, Reply as ReplyTurn, You as YouTurn } from "./turns";
+import { Run } from "./Run";
+import { Said } from "./Said";
+import { HINTS, t } from "./thread.copy";
+import type { Compacted as CompactedPart, Foot as FootPart, Notice as NoticeTurn, Reply as ReplyTurn } from "./turns";
+import { FOLD_AT, grouped } from "./work";
+import { You } from "./You";
 
 // Within this of the bottom, the chat follows what arrives.
 const NEAR_BOTTOM = 160;
@@ -81,58 +82,6 @@ export function Thread() {
   );
 }
 
-const You = memo(function You({ turn }: { turn: YouTurn }) {
-  return (
-    <div className="turn you">
-      <div className="body-text">{turn.text}</div>
-      {turn.pictures.length > 0 && (
-        <div className="asked-pictures">
-          {turn.pictures.map((picture, at) => (
-            <Sent key={at} picture={picture} />
-          ))}
-        </div>
-      )}
-      {turn.files.length > 0 && (
-        <div className="asked-files">
-          {turn.files.map((file) => (
-            <span key={file}>{file}</span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-});
-
-// A picture sent with a message, larger on click; gone if it cannot be read.
-function Sent({ picture }: { picture: Picture }) {
-  const [src, setSrc] = useState(typeof picture === "string" ? picture : "");
-  const [gone, setGone] = useState(false);
-
-  useEffect(() => {
-    if (typeof picture === "string") return;
-    let live = true;
-    picture.then(
-      (read) => live && setSrc(read),
-      () => live && setGone(true),
-    );
-    return () => {
-      live = false;
-    };
-  }, [picture]);
-
-  if (gone) return null;
-  return (
-    <button
-      type="button"
-      title="Ver imagen"
-      aria-label="Ver imagen"
-      onClick={(event) => src && openPicture("Imagen enviada", src, event.currentTarget)}
-    >
-      <img alt="" src={src || undefined} />
-    </button>
-  );
-}
-
 const Notice = memo(function Notice({ turn }: { turn: NoticeTurn }) {
   return (
     <div className={turn.tone ? `tick ${turn.tone}` : "tick"}>
@@ -147,30 +96,24 @@ const Reply = memo(function Reply({ turn }: { turn: ReplyTurn }) {
     <div className="turn reply">
       {turn.who && <div className="who">{turn.who}</div>}
       <div className="flow">
-        {turn.parts.map((part) => {
-          switch (part.kind) {
+        {grouped(turn.parts).map((piece) => {
+          switch (piece.kind) {
+            case "run":
+              return <Run key={piece.key} parts={piece.parts} folded={turn.closed && piece.parts.length >= FOLD_AT} />;
             case "said":
-              return <Said key={part.key} part={part} />;
-            case "thought":
-              return <Thought key={part.key} part={part} />;
-            case "step":
-              return <Step key={part.key} part={part} />;
+              return <Said key={piece.key} part={piece} />;
             case "ask":
-              return <Ask key={part.key} part={part} reply={turn.key} />;
+              return <Ask key={piece.key} part={piece} reply={turn.key} />;
             case "fault":
               return (
-                <p key={part.key} className="reply-fault">
-                  {part.text}
+                <p key={piece.key} className="reply-fault">
+                  {piece.text}
                 </p>
               );
             case "foot":
-              return <Foot key={part.key} text={part.text} />;
-            case "note":
-              return (
-                <p key={part.key} className="reply-note">
-                  {part.text}
-                </p>
-              );
+              return <Foot key={piece.key} part={piece} />;
+            case "compacted":
+              return <Note key={piece.key} part={piece} />;
           }
         })}
       </div>
@@ -179,27 +122,36 @@ const Reply = memo(function Reply({ turn }: { turn: ReplyTurn }) {
   );
 });
 
-function Foot({ text }: { text: string }) {
+const JOIN = " · ";
+const MARK = "\u0000";
+
+function Foot({ part }: { part: FootPart }) {
+  const [before, after] = t.tokens(MARK).split(MARK);
+  const pieces: ReactNode[] = [];
+  if (part.millis) pieces.push(seconds(part.millis));
+  if (part.tokens)
+    pieces.push(
+      <>
+        {before}
+        <b className="foot-count">{compact(part.tokens)}</b>
+        {after}
+      </>,
+    );
+  if (part.stopped) pieces.push(t.stopped);
   return (
     <div className="reply-foot">
-      {text.split(FOOT_JOIN).map((piece, at) => {
-        const count = piece.endsWith(TOKENS) ? piece.slice(0, -TOKENS.length) : "";
-        return (
-          <Fragment key={at}>
-            {at > 0 && FOOT_JOIN}
-            {count ? (
-              <span>
-                <b className="foot-count">{count}</b>
-                {TOKENS}
-              </span>
-            ) : (
-              <span>{piece}</span>
-            )}
-          </Fragment>
-        );
-      })}
+      {pieces.map((piece, at) => (
+        <Fragment key={at}>
+          {at > 0 && JOIN}
+          <span>{piece}</span>
+        </Fragment>
+      ))}
     </div>
   );
+}
+
+function Note({ part }: { part: CompactedPart }) {
+  return <p className="reply-note">{[part.auto ? t.compactedByClaude : t.compacted, part.before ? t.before(compact(part.before)) : ""].filter(Boolean).join(JOIN)}</p>;
 }
 
 // While Claude works: what it is doing, and for how long.
@@ -218,12 +170,23 @@ function Live({ said, began }: { said: string; began: number }) {
   );
 }
 
+let lastHint = -1;
+
+function nextHint() {
+  let at = lastHint;
+  while (at === lastHint) at = Math.floor(Math.random() * HINTS);
+  return (lastHint = at);
+}
+
 // The canvas is made here and handed to WebGL, and goes with its context when
 // the welcome does; without WebGL2 the word shows plain.
 function Hello({ hint }: { hint: string }) {
   const mark = useRef<HTMLDivElement>(null);
   const [lit, setLit] = useState(false);
   const tone = useStore(look, (s) => `${s.shown} ${s.chosen.accent}`);
+  const pane = usePane();
+  const folder = useStore(pane.desk, (s) => Boolean(s.root));
+  const nth = useMemo(nextHint, [hint]);
 
   useEffect(() => {
     if (!mark.current) return;
@@ -243,7 +206,7 @@ function Hello({ hint }: { hint: string }) {
       <div className="hello-mark" ref={mark} data-grain={lit ? "on" : undefined}>
         <span className="hello-word">sens AI</span>
       </div>
-      <p className="hello-hint">{hint}</p>
+      <p className="hello-hint">{folder ? t.hint(nth) : t.noFolder}</p>
     </div>
   );
 }

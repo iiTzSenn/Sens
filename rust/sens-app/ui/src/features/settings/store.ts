@@ -5,10 +5,10 @@ import { checkClaudeCode, readAccount, refreshModels } from "../models/store";
 import { store, stored } from "../../shared/storage.js";
 import { settingsSheet } from "./sheet";
 
-export type Section = "general" | "look" | "providers";
+export type Section = "general" | "look" | "language" | "providers";
 
 const SECTION = "sens.settings.section";
-const SECTIONS: Section[] = ["general", "look", "providers"];
+export const SECTIONS: Section[] = ["general", "look", "language", "providers"];
 const kept = stored(SECTION, "");
 
 // `visits` counts every time the view opens, so the pane starts fresh each

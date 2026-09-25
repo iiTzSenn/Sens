@@ -9,11 +9,13 @@ import { consoles, runningConsoles } from "../features/terminal/store";
 import { openUpdate } from "../features/updates/UpdatePanel";
 import { updates } from "../features/updates/store";
 import { anchorMenu } from "../shared/anchorMenu";
+import { shared } from "../shared/copy";
 import { stem } from "../shared/format.js";
 import { Icon } from "../shared/Icon";
 import { ICONS } from "../shared/icons.js";
 import { Mark } from "../shared/Mark";
 import { useSheet, type Sheet } from "../shared/useSheet";
+import { t } from "./copy";
 import { panelShows, railFolded, shell, showTool, toggleRail, type Tool } from "./shell";
 
 // The title bar Sens draws instead of the system's: the rail switch, the
@@ -21,7 +23,7 @@ import { panelShows, railFolded, shell, showTool, toggleRail, type Tool } from "
 // It drags the window.
 export function Topbar() {
   const closed = useStore(shell, railFolded);
-  const label = closed ? "Mostrar la barra lateral" : "Ocultar la barra lateral";
+  const label = closed ? t.showSidebar : t.hideSidebar;
   return (
     <header className="topbar">
       <button
@@ -30,7 +32,7 @@ export function Topbar() {
         aria-controls="rail"
         aria-expanded={!closed}
         aria-keyshortcuts="Control+B"
-        title={`${label} (Ctrl+B)`}
+        title={`${label} (${shared.ctrl}+B)`}
         aria-label={label}
         onClick={toggleRail}
       >
@@ -64,13 +66,13 @@ function UpdatePill() {
     <button
       className="update-pill"
       id="update"
-      aria-label={`Actualización disponible: Sens ${latest.version}`}
-      title={`Sens ${latest.version} disponible`}
+      aria-label={t.updateAvailable(latest.version)}
+      title={t.versionAvailable(latest.version)}
       onClick={(event) => openUpdate(event.currentTarget)}
     >
       <span className="update-ping" aria-hidden="true" />
       <Icon svg={ICONS.update} />
-      <span>Actualizar</span>
+      <span>{t.update}</span>
       <span className="update-version">{latest.version}</span>
     </button>
   );
@@ -89,11 +91,11 @@ export function Window({ tools = true }: { tools?: boolean }) {
     };
   }, []);
 
-  const grow = wide ? "Restaurar" : "Maximizar";
+  const grow = wide ? t.restore : t.maximize;
   return (
     <div className="win" id="win" data-max={String(wide)}>
       {tools && <ToolsButton />}
-      <button id="win-min" title="Minimizar" aria-label="Minimizar" onClick={() => frame.minimize()}>
+      <button id="win-min" title={t.minimize} aria-label={t.minimize} onClick={() => frame.minimize()}>
         <Icon svg={ICONS.minimize} />
       </button>
       <button id="win-max" title={grow} aria-label={grow} onClick={() => frame.toggleMaximize().then(() => frame.isMaximized().then(setWide))}>
@@ -104,19 +106,19 @@ export function Window({ tools = true }: { tools?: boolean }) {
           <Icon svg={ICONS.restore} />
         </span>
       </button>
-      <button className="shut" id="win-close" title="Cerrar" aria-label="Cerrar" onClick={() => frame.close()}>
+      <button className="shut" id="win-close" title={shared.close} aria-label={shared.close} onClick={() => frame.close()}>
         <Icon svg={ICONS.shutWindow} />
       </button>
     </div>
   );
 }
 
-const TOOLS: { tool: Tool; label: string; said: string; icon: string }[] = [
-  { tool: "files", label: "Ficheros", said: "El árbol y el código del proyecto", icon: ICONS.files },
-  { tool: "changes", label: "Cambios", said: "Lo que difiere del último commit", icon: ICONS.compare },
-  { tool: "web", label: "Web", said: "Páginas y servidores locales", icon: ICONS.globe },
-  { tool: "terminal", label: "Terminal", said: "Una consola en la carpeta del proyecto", icon: ICONS.terminal },
-  { tool: "tasks", label: "Segundo plano", said: "Subagentes y comandos del modelo", icon: ICONS.activity },
+const TOOLS: { tool: Tool; icon: string }[] = [
+  { tool: "files", icon: ICONS.files },
+  { tool: "changes", icon: ICONS.compare },
+  { tool: "web", icon: ICONS.globe },
+  { tool: "terminal", icon: ICONS.terminal },
+  { tool: "tasks", icon: ICONS.activity },
 ];
 
 // The tools of the right panel; a dot while background work runs.
@@ -129,8 +131,8 @@ function ToolsButton() {
         className="tools-btn"
         id="tools"
         ref={sheet.anchor}
-        title="Herramientas"
-        aria-label="Herramientas"
+        title={t.tools}
+        aria-label={t.tools}
         aria-haspopup="menu"
         aria-expanded={sheet.open}
         data-running={String(running > 0)}
@@ -157,7 +159,7 @@ function ToolsMenu({ sheet }: { sheet: Sheet }) {
   const counts: Partial<Record<Tool, number>> = { changes: dirty, tasks: running, terminal: shells };
   const count = (tool: Tool) => (counts[tool] ? String(counts[tool]) : "");
   return (
-    <div className="sheet menu float-menu tool-menu" id="tool-menu" role="menu" aria-label="Herramientas" {...sheet.sheet}>
+    <div className="sheet menu float-menu tool-menu" id="tool-menu" role="menu" aria-label={t.tools} {...sheet.sheet}>
       {TOOLS.map((one) => (
         <button
           key={one.tool}
@@ -175,8 +177,8 @@ function ToolsMenu({ sheet }: { sheet: Sheet }) {
             <Icon svg={one.icon} />
           </span>
           <span className="mode-text">
-            <span>{one.label}</span>
-            <span className="mode-sub">{one.said}</span>
+            <span>{t.tool[one.tool]}</span>
+            <span className="mode-sub">{t.toolSaid[one.tool]}</span>
           </span>
           <span className="tool-count">{count(one.tool)}</span>
         </button>

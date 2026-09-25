@@ -5,6 +5,7 @@ use std::process::Command;
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
+use crate::language::said;
 use crate::layout::Layout;
 use crate::progress::{self, Report, Step};
 use crate::registry;
@@ -31,13 +32,31 @@ pub fn is_relocated(exe: &Path) -> bool {
 pub fn relocate(exe: &Path, dir: &Path, silent: bool) -> Result<(), String> {
     let temp = std::env::temp_dir();
     let copy = temp.join(format!("{RELOCATED}{}.exe", std::process::id()));
-    fs::copy(exe, &copy).map_err(|error| format!("no pude preparar el desinstalador: {error}"))?;
+    fs::copy(exe, &copy).map_err(|error| {
+        said!(
+            en: "couldn’t prepare the uninstaller: {error}",
+            es: "no pude preparar el desinstalador: {error}",
+            fr: "impossible de préparer le programme de désinstallation : {error}",
+            de: "das Deinstallationsprogramm konnte nicht vorbereitet werden: {error}",
+            ja: "アンインストーラーを準備できませんでした: {error}",
+            zh: "无法准备卸载程序：{error}",
+        )
+    })?;
     let mut command = Command::new(&copy);
     command.arg("--uninstall").arg("--dir").arg(dir).current_dir(&temp);
     if silent {
         command.arg("/S");
     }
-    command.spawn().map(drop).map_err(|error| format!("no pude abrir el desinstalador: {error}"))
+    command.spawn().map(drop).map_err(|error| {
+        said!(
+            en: "couldn’t open the uninstaller: {error}",
+            es: "no pude abrir el desinstalador: {error}",
+            fr: "impossible d’ouvrir le programme de désinstallation : {error}",
+            de: "das Deinstallationsprogramm konnte nicht geöffnet werden: {error}",
+            ja: "アンインストーラーを開けませんでした: {error}",
+            zh: "无法打开卸载程序：{error}",
+        )
+    })
 }
 
 pub fn run(removal: &Removal, report: Report) -> Result<(), String> {
@@ -46,14 +65,14 @@ pub fn run(removal: &Removal, report: Report) -> Result<(), String> {
     running::settle(&layout.app(), &removal.closing, removal.cancel, report)?;
     report(Step::Remove, 0.2, &progress::deleting(&layout.dir));
     clear(layout)?;
-    report(Step::Remove, 0.45, progress::UNLINKING);
+    report(Step::Remove, 0.45, &progress::unlinking());
     for link in [&layout.start_menu, &layout.desktop] {
         forget(link, fs::remove_file(link))?;
     }
-    report(Step::Remove, 0.65, progress::UNREGISTERING);
+    report(Step::Remove, 0.65, &progress::unregistering());
     registry::erase(layout)?;
     if removal.remove_data {
-        report(Step::Remove, 0.8, progress::FORGETTING);
+        report(Step::Remove, 0.8, &progress::forgetting());
         for folder in &layout.data {
             forget(folder, fs::remove_dir_all(folder))?;
         }
@@ -72,7 +91,7 @@ pub fn clear(layout: &Layout) -> Result<(), String> {
 
 fn forget(path: &Path, removed: std::io::Result<()>) -> Result<(), String> {
     match removed {
-        Err(error) if error.kind() != ErrorKind::NotFound => Err(format!("no pude borrar {}: {error}", path.display())),
+        Err(error) if error.kind() != ErrorKind::NotFound => Err(progress::cannot_delete(path, &error)),
         _ => Ok(()),
     }
 }
@@ -100,6 +119,7 @@ mod tests {
             closing: Closing::Force,
             cancel: &cancel,
             look: None,
+            language: None,
         };
         install::run(&job, &|_, _, _| {}).unwrap();
     }

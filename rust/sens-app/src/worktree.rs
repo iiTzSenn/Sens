@@ -1,22 +1,22 @@
 use std::path::{Path, PathBuf};
 
+use sens_agent::said;
 use sens_agent::session::{self, Isolation};
 
 use crate::git;
 
 const FOLDER: &str = "worktrees";
 const SHORT: usize = 8;
-const BEGUN: &str = "esta sesión ya empezó: su carpeta de trabajo no puede cambiar";
 
 pub fn isolate(root: &Path, id: &str) -> Result<Isolation, String> {
     if !session::is_uuid(id) {
-        return Err(format!("{id} no es un identificador de sesión válido"));
+        return Err(session::invalid(id));
     }
     if let Some(known) = session::isolation(root, id) {
         return Ok(known);
     }
     if session::has_tasks(root, id) {
-        return Err(BEGUN.into());
+        return Err(session::begun());
     }
     let short: String = id.chars().filter(char::is_ascii_hexdigit).take(SHORT).collect::<String>().to_ascii_lowercase();
     let path = root.join(".sens").join(FOLDER).join(&short);
@@ -42,7 +42,15 @@ pub fn work_dir(root: &Path, id: &str) -> Result<Option<PathBuf>, String> {
     };
     let path = PathBuf::from(&isolation.path);
     if !path.is_dir() {
-        return Err(format!("el worktree de esta sesión ya no está en {}", isolation.path));
+        return Err(said!(
+            en: "this session’s worktree is no longer at {path}",
+            es: "el worktree de esta sesión ya no está en {path}",
+            fr: "le worktree de cette session n’est plus dans {path}",
+            de: "der Worktree dieser Sitzung liegt nicht mehr in {path}",
+            ja: "このセッションのワークツリーは {path} にもうありません",
+            zh: "此会话的工作树已不在 {path}",
+            path = isolation.path,
+        ));
     }
     Ok(Some(path))
 }
@@ -56,9 +64,14 @@ pub fn release(root: &Path, id: &str, clear: impl FnOnce(&Path)) -> Result<(), S
         return Ok(());
     }
     if git::dirty(path) {
-        return Err(format!(
-            "el worktree de la rama {} tiene cambios sin confirmar: confírmalos o descártalos antes de eliminar la sesión",
-            isolation.branch
+        return Err(said!(
+            en: "the worktree of branch {branch} has uncommitted changes: commit or discard them before deleting the session",
+            es: "el worktree de la rama {branch} tiene cambios sin confirmar: confírmalos o descártalos antes de eliminar la sesión",
+            fr: "le worktree de la branche {branch} contient des modifications non validées : validez-les ou abandonnez-les avant de supprimer la session",
+            de: "der Worktree des Branches {branch} hat nicht committete Änderungen: committe oder verwirf sie, bevor du die Sitzung löschst",
+            ja: "ブランチ {branch} のワークツリーに未コミットの変更があります。セッションを削除する前にコミットするか破棄してください",
+            zh: "分支 {branch} 的工作树有未提交的更改：请先提交或丢弃，再删除会话",
+            branch = isolation.branch,
         ));
     }
     clear(path);
@@ -68,6 +81,7 @@ pub fn release(root: &Path, id: &str, clear: impl FnOnce(&Path)) -> Result<(), S
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sens_agent::language::{Language, speaking};
     use std::process::Command;
 
     fn git_in(root: &Path, args: &[&str]) {
@@ -113,7 +127,8 @@ mod tests {
         let root = repo("begun");
         let id = session::open(&root).unwrap();
         session::append(&root, &id, &session::Entry::Task { at: 1, text: "hola".into(), files: Vec::new(), images: Vec::new() }).unwrap();
-        assert_eq!(isolate(&root, &id), Err(BEGUN.to_string()));
+        assert_eq!(isolate(&root, &id), Err(session::begun()));
+        assert_eq!(speaking(Language::Es, || isolate(&root, &id)), Err("esta sesión ya empezó: su carpeta de trabajo no puede cambiar".into()));
 
         let plain = std::env::temp_dir().join("sens-worktree-plain");
         let _ = std::fs::remove_dir_all(&plain);
@@ -132,7 +147,8 @@ mod tests {
         git_in(&root, &["init", "--quiet"]);
         let id = session::open(&root).unwrap();
 
-        assert_eq!(isolate(&root, &id), Err("el proyecto no tiene ningún commit del que partir".to_string()));
+        assert_eq!(isolate(&root, &id), Err("the project has no commit to start from".to_string()));
+        assert_eq!(speaking(Language::Es, || isolate(&root, &id)), Err("el proyecto no tiene ningún commit del que partir".to_string()));
         assert_eq!(session::isolation(&root, &id), None);
     }
 
@@ -145,7 +161,7 @@ mod tests {
         std::fs::write(work.join("nuevo.txt"), "a medias").unwrap();
 
         let mut cleared = Vec::new();
-        assert!(release(&root, &id, |path| cleared.push(path.to_path_buf())).unwrap_err().contains("cambios sin confirmar"));
+        assert!(release(&root, &id, |path| cleared.push(path.to_path_buf())).unwrap_err().contains("uncommitted changes"));
         assert!(cleared.is_empty());
         assert!(work.is_dir());
 
@@ -153,7 +169,7 @@ mod tests {
         release(&root, &id, |path| cleared.push(path.to_path_buf())).unwrap();
         assert_eq!(cleared, std::slice::from_ref(&work));
         assert!(!work.exists());
-        assert!(work_dir(&root, &id).unwrap_err().contains("ya no está"));
+        assert!(work_dir(&root, &id).unwrap_err().contains("no longer"));
         git_in(&root, &["rev-parse", "--verify", &isolation.branch]);
     }
 }

@@ -5,8 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::RwLock;
 
+use crate::said;
+
 pub const CLAUDE: &str = "claude";
-const MISSING: &str = "no encuentro Claude Code en este ordenador: Sens lo instala desde Ajustes › Proveedores";
 const EXECUTABLE: &str = if cfg!(windows) { "claude.exe" } else { "claude" };
 const NPM_PACKAGE: [&str; 4] = ["node_modules", "@anthropic-ai", "claude-code", "bin"];
 
@@ -153,10 +154,72 @@ pub fn program() -> PathBuf {
     located().unwrap_or_else(|| PathBuf::from(CLAUDE))
 }
 
+fn missing() -> String {
+    said!(
+        en: "Claude Code wasn’t found on this computer: Sens installs it from Settings › Providers",
+        es: "no encuentro Claude Code en este ordenador: Sens lo instala desde Ajustes › Proveedores",
+        fr: "Claude Code est introuvable sur cet ordinateur : Sens l’installe depuis Paramètres › Fournisseurs",
+        de: "Claude Code wurde auf diesem Computer nicht gefunden: Sens installiert es unter Einstellungen › Anbieter",
+        ja: "このコンピューターに Claude Code が見つかりません。Sens の「設定 › プロバイダー」からインストールできます",
+        zh: "这台电脑上找不到 Claude Code：可在 Sens 的“设置 › 提供商”中安装",
+    )
+}
+
+fn unstarted(program: &str, error: &std::io::Error) -> String {
+    said!(
+        en: "couldn’t start {program}: {error}",
+        es: "no pude lanzar {program}: {error}",
+        fr: "impossible de lancer {program} : {error}",
+        de: "{program} konnte nicht gestartet werden: {error}",
+        ja: "{program} を起動できませんでした: {error}",
+        zh: "无法启动 {program}：{error}",
+    )
+}
+
+pub fn unheard(program: &str, error: impl std::fmt::Display) -> String {
+    said!(
+        en: "couldn’t talk to {program}: {error}",
+        es: "no pude hablar con {program}: {error}",
+        fr: "impossible de communiquer avec {program} : {error}",
+        de: "Kommunikation mit {program} fehlgeschlagen: {error}",
+        ja: "{program} と通信できませんでした: {error}",
+        zh: "无法与 {program} 通信：{error}",
+    )
+}
+
+pub fn no_input() -> String {
+    said!(
+        en: "Claude Code doesn’t accept input",
+        es: "Claude Code no acepta entrada",
+        fr: "Claude Code n’accepte pas d’entrée",
+        de: "Claude Code nimmt keine Eingabe an",
+        ja: "Claude Code が入力を受け付けません",
+        zh: "Claude Code 不接受输入",
+    )
+}
+
+pub fn no_output() -> String {
+    said!(
+        en: "Claude Code gives no output",
+        es: "Claude Code no da salida",
+        fr: "Claude Code ne renvoie aucune sortie",
+        de: "Claude Code liefert keine Ausgabe",
+        ja: "Claude Code から出力がありません",
+        zh: "Claude Code 没有输出",
+    )
+}
+
 pub fn unlaunched(error: std::io::Error) -> String {
     match error.kind() {
-        std::io::ErrorKind::NotFound => MISSING.to_string(),
-        _ => format!("no pude lanzar {CLAUDE}: {error}"),
+        std::io::ErrorKind::NotFound => missing(),
+        _ => unstarted(CLAUDE, &error),
+    }
+}
+
+pub fn launched<T>(started: std::io::Result<T>) -> Result<Option<T>, String> {
+    match started {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        started => started.map(Some).map_err(unlaunched),
     }
 }
 
@@ -173,22 +236,46 @@ pub fn run(mut command: Command, input: &str) -> Result<String, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|error| format!("no pude lanzar {program}: {error}"))?;
+        .map_err(|error| unstarted(&program, &error))?;
 
     child
         .stdin
         .take()
-        .ok_or("el proceso no acepta entrada")?
+        .ok_or_else(|| {
+            said!(
+                en: "the process doesn’t accept input",
+                es: "el proceso no acepta entrada",
+                fr: "le processus n’accepte pas d’entrée",
+                de: "der Prozess nimmt keine Eingabe an",
+                ja: "プロセスが入力を受け付けません",
+                zh: "该进程不接受输入",
+            )
+        })?
         .write_all(input.as_bytes())
-        .map_err(|error| format!("no pude hablar con {program}: {error}"))?;
+        .map_err(|error| unheard(&program, error))?;
 
-    let finished = child
-        .wait_with_output()
-        .map_err(|error| format!("{program} se cayó: {error}"))?;
+    let finished = child.wait_with_output().map_err(|error| {
+        said!(
+            en: "{program} crashed: {error}",
+            es: "{program} se cayó: {error}",
+            fr: "{program} s’est arrêté brutalement : {error}",
+            de: "{program} ist abgestürzt: {error}",
+            ja: "{program} が異常終了しました: {error}",
+            zh: "{program} 崩溃了：{error}",
+        )
+    })?;
 
     if !finished.status.success() {
         let complaint = String::from_utf8_lossy(&finished.stderr);
-        return Err(format!("{program} falló: {}", complaint.trim()));
+        let complaint = complaint.trim();
+        return Err(said!(
+            en: "{program} failed: {complaint}",
+            es: "{program} falló: {complaint}",
+            fr: "{program} a échoué : {complaint}",
+            de: "{program} ist fehlgeschlagen: {complaint}",
+            ja: "{program} が失敗しました: {complaint}",
+            zh: "{program} 运行失败：{complaint}",
+        ));
     }
 
     Ok(String::from_utf8_lossy(&finished.stdout).into_owned())
@@ -197,6 +284,7 @@ pub fn run(mut command: Command, input: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::language::{Language, speaking};
 
     #[cfg(windows)]
     fn outlived(name: &str, finish: impl FnOnce(Family)) -> bool {
@@ -250,7 +338,7 @@ mod tests {
 
     #[test]
     fn a_program_that_does_not_exist_says_so_instead_of_panicking() {
-        let failure = run(Command::new("sens-no-such-program-exists"), "").unwrap_err();
+        let failure = speaking(Language::Es, || run(Command::new("sens-no-such-program-exists"), "").unwrap_err());
         assert!(failure.contains("no pude lanzar"));
     }
 
@@ -322,11 +410,22 @@ mod tests {
 
     #[test]
     fn only_a_missing_program_reads_as_not_installed() {
-        let missing = unlaunched(std::io::Error::from(std::io::ErrorKind::NotFound));
-        let refused = unlaunched(std::io::Error::from_raw_os_error(5));
+        let missing = || Err::<u8, _>(std::io::Error::from(std::io::ErrorKind::NotFound));
+        let refused = || Err::<u8, _>(std::io::Error::from_raw_os_error(5));
 
-        assert!(missing.starts_with("no encuentro Claude Code"), "{missing}");
-        assert!(refused.starts_with("no pude lanzar claude: "), "{refused}");
-        assert!(!refused.contains("instala"), "{refused}");
+        assert_eq!(launched(missing()), Ok(None));
+        assert_eq!(launched(Ok(7)), Ok(Some(7)));
+        let said = speaking(Language::Es, || launched(refused()).unwrap_err());
+        assert!(said.starts_with("no pude lanzar claude: "), "{said}");
+        assert!(!said.contains("instala"), "{said}");
+    }
+
+    #[test]
+    fn a_missing_claude_code_is_told_in_the_language_spoken() {
+        let missing = || unlaunched(std::io::Error::from(std::io::ErrorKind::NotFound));
+
+        assert!(speaking(Language::Es, missing).starts_with("no encuentro Claude Code en este ordenador"));
+        assert!(speaking(Language::En, missing).starts_with("Claude Code wasn’t found on this computer"));
+        assert!(speaking(Language::De, missing).ends_with("Einstellungen › Anbieter"));
     }
 }

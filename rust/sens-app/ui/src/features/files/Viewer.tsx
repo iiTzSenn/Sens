@@ -5,10 +5,12 @@ import { EmptyView } from "../../shared/EmptyView";
 import { FRONT_MATTER, stem, weigh } from "../../shared/format.js";
 import { ICONS } from "../../shared/icons.js";
 import { Markdown } from "../../shared/markdown/Markdown";
+import { useCode } from "../../shared/syntax/code";
 import { languageOf } from "../../shared/syntax/languages";
-import { usePainted, type Look, type Painted, type Runs } from "../../shared/syntax/paint";
+import type { Look, Painted, Runs } from "../../shared/syntax/paint";
 import { useSeen } from "../../shared/useSeen";
 import { project, type Edits } from "../project/store";
+import { t } from "./copy";
 import { setMode, textOf, viewer, viewOf, type Body } from "./view";
 
 // The file beside the tree: as code, or as a page when it reads as one. Its
@@ -36,7 +38,7 @@ const useEdits = () => {
 };
 
 export function ViewerHead() {
-  const title = useStore(viewer, (s) => s.title) || "Ningún fichero abierto";
+  const title = useStore(viewer, (s) => s.title) || t.noneOpen;
   const edits = useEdits();
   return (
     <>
@@ -64,10 +66,10 @@ export function ViewerModes() {
   return (
     <div className="segment">
       <button type="button" aria-pressed={mode === "source"} onClick={() => setMode("source")}>
-        Código
+        {t.code}
       </button>
       <button type="button" aria-pressed={kind === "reading" && mode === "view"} onClick={() => setMode("view")}>
-        Vista
+        {t.view}
       </button>
     </div>
   );
@@ -96,7 +98,7 @@ function Source({ hidden }: { hidden: boolean }) {
   const lines = useMemo(() => text.split(/\r?\n/), [text]);
   const code = useMemo(() => lines.join("\n"), [lines]);
   const language = useMemo(() => languageOf(title, text.slice(0, 200)), [title, text]);
-  const painted = usePainted(code, language);
+  const painted = useCode(code, language);
   const colored = painted?.lines.length === lines.length ? painted : null;
 
   const blocks = [];
@@ -105,7 +107,7 @@ function Source({ hidden }: { hidden: boolean }) {
   }
   return (
     <div className="source" ref={box} hidden={hidden}>
-      {title ? blocks : <p className="empty">Elige un fichero.</p>}
+      {title ? blocks : <p className="empty">{t.choose}</p>}
     </div>
   );
 }
@@ -166,10 +168,10 @@ function Reading({ hidden }: { hidden: boolean }) {
 function Picture({ title, data, bytes }: { title: string; data: string; bytes: number }) {
   const [drawn, setDrawn] = useState("");
   const [broken, setBroken] = useState(false);
-  if (broken) return <Notice art={ICONS.image} lead="No pude dibujar la imagen" said={`Su contenido no es una imagen que el visor sepa leer (${weigh(bytes)}).`} />;
+  if (broken) return <Notice art={ICONS.image} lead={t.unreadable} said={t.unreadableSaid(weigh(bytes))} />;
   return (
     <div className="sight-view">
-      <button type="button" className="frame" title="Ver en grande" onClick={(event) => openPicture(stem(title), data, event.currentTarget)}>
+      <button type="button" className="frame" title={t.enlarge} onClick={(event) => openPicture(stem(title), data, event.currentTarget)}>
         <img
           alt={stem(title)}
           src={data}
@@ -185,9 +187,9 @@ function Picture({ title, data, bytes }: { title: string; data: string; bytes: n
 type Said = { art: string; lead: string; said: string };
 
 function noticeOf(body: Exclude<Body, { kind: "text" | "picture" }>): Said {
-  if (body.kind === "fault") return { art: ICONS.info, lead: "Error al abrir", said: body.fault };
-  if (body.kind === "tooBig") return { art: ICONS.info, lead: "Demasiado grande", said: `Pesa ${weigh(body.bytes)} y el visor muestra hasta ${weigh(body.cap)}.` };
-  return { art: ICONS.info, lead: "Sin vista previa", said: `No es texto UTF-8 ni una imagen (${weigh(body.bytes)}).` };
+  if (body.kind === "fault") return { art: ICONS.info, lead: t.openFailed, said: body.fault };
+  if (body.kind === "tooBig") return { art: ICONS.info, lead: t.tooBig, said: t.tooBigSaid(weigh(body.bytes), weigh(body.cap)) };
+  return { art: ICONS.info, lead: t.noPreview, said: t.noPreviewSaid(weigh(body.bytes)) };
 }
 
 function Notice(said: Said) {

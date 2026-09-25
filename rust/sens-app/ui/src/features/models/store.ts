@@ -1,13 +1,22 @@
 import { createStore } from "zustand/vanilla";
 import { commands } from "../../ipc/commands";
-import type { Account, Card, Provider } from "../../ipc/types";
+import type { Account, Card, Limits, Provider } from "../../ipc/types";
 import { API_KEY_SOURCE, PLANS, keyed } from "../../shared/account";
 import { store, stored } from "../../shared/storage.js";
 import { CHOICE, focused, panes, type Pane } from "../panes/store";
+import { t } from "./copy";
+import { capital, tightest, usedSaid, type Reading } from "./limits";
 
 const KNOWN = "sens.models.v4";
 const HIDDEN = "sens.models.hidden";
 const ASKED = "sens.models.asked";
+const LIMITS = "sens.limits";
+const MISSING = "missing";
+
+function keptReading() {
+  const kept = stored(LIMITS, null) as Reading | null;
+  return kept && typeof kept.seen === "number" && kept.windows && typeof kept.windows === "object" ? kept : null;
+}
 
 // The providers Sens chats through and the models each offers (kept across
 // launches, asked for again once a day), the ones hidden from the picker, the
@@ -21,27 +30,16 @@ export const models = createStore(() => ({
   note: "",
   account: null as Account | null,
   accountFault: "",
-  usage: null as Record<string, { utilization?: number }> | null,
+  limits: keptReading(),
   behind: "",
 }));
 
 const set = models.setState;
 
-const MODEL_SAID: Record<string, string> = {
-  "Best for everyday, complex tasks": "El mejor para el trabajo complejo de cada día",
-  "Most capable for your hardest and longest-running tasks": "El más capaz para las tareas más difíciles y largas",
-  "Efficient for routine tasks": "Eficiente para tareas rutinarias",
-  "Fastest for quick answers": "El más rápido para respuestas cortas",
-};
-
 export function saidOf(card: Card) {
   const tagline = card.description.split(" · ").pop()!;
-  return MODEL_SAID[tagline] || tagline;
+  return (t.taglines as Record<string, string>)[tagline] || tagline;
 }
-
-const claudeCodeAbsent = (reason: unknown) => String(reason).startsWith("no encuentro Claude Code");
-
-const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 // "claude-opus-5-5" reads "Opus 5.5" when the catalog does not name it.
 function prettyModel(id: string) {
@@ -102,7 +100,7 @@ export function chosenLabel(pane: Pane = focused()) {
   if (card) return card.label;
   const { catalog } = models.getState();
   const { choice } = pane.desk.getState();
-  return catalog.find((provider) => provider.id === choice.provider)?.label || "modelo";
+  return catalog.find((provider) => provider.id === choice.provider)?.label || t.model;
 }
 
 export async function refreshModels() {
@@ -113,9 +111,10 @@ export async function refreshModels() {
   const failures: string[] = [];
   for (const provider of models.getState().catalog) {
     try {
-      known[provider.id] = await commands.models(provider.id);
+      const offered = await commands.models(provider.id);
+      if (offered) known[provider.id] = offered;
     } catch (reason) {
-      if (!claudeCodeAbsent(reason)) failures.push(`${provider.label}: ${reason}`);
+      failures.push(`${provider.label}: ${reason}`);
     }
   }
   store(KNOWN, known);
@@ -150,32 +149,45 @@ export async function checkClaudeCode() {
 
 export async function readAccount() {
   try {
-    set({ account: await commands.claudeAccount(), accountFault: "" });
+    const account = await commands.claudeAccount();
+    set({ account, accountFault: account ? "" : MISSING });
   } catch (reason) {
-    set({ account: null, accountFault: claudeCodeAbsent(reason) ? "Falta Claude Code" : String(reason) });
+    set({ account: null, accountFault: String(reason) });
   }
   return models.getState().account;
 }
 
-export const noteLimits = (usage: Record<string, { utilization?: number }>) => set({ usage });
+export function noteLimits({ status, window, overage, windows }: Limits, seen = Date.now()) {
+  const limits: Reading = { seen, status, window, overage, windows: { ...models.getState().limits?.windows, ...windows } };
+  store(LIMITS, limits);
+  set({ limits });
+}
 
-const BILLED: Record<Account["billing"], (account: Account) => string[]> = {
-  subscription: ({ plan, source, email }) => [`Suscripción ${PLANS[plan] || plan}`.trim(), source, email],
-  noPlan: ({ email }) => [email, "sin plan Pro ni Max"],
-  elsewhere: ({ source }) => [source === API_KEY_SOURCE ? "Clave de API de la Consola" : `Claude Code usa ${source}, no tu suscripción`],
-  signedOut: () => ["Claude Code no tiene sesión"],
-};
+export const faultSaid = (fault: string) => (fault === MISSING ? t.missing : fault);
 
-// The account under the models: how it pays, and how much of the five-hour
-// window a subscription used. `warn` when Claude Code is not paying with it.
-export function accountLine() {
-  const { account, accountFault, usage } = models.getState();
-  const said = accountFault ? [accountFault] : account ? BILLED[account.billing](account) : [];
-  const window = usage?.five_hour;
-  if (account?.billing === "subscription" && typeof window?.utilization === "number") said.push(`${Math.round(window.utilization * 100)} % usado en 5 h`);
+export const planName = (account: Account | null) => (account?.billing === "subscription" ? PLANS[account.plan] || account.plan : "");
+
+function billed(account: Account) {
+  const { billing, source, email } = account;
+  if (billing === "subscription") return [t.subscription(planName(account)), source, email];
+  if (billing === "noPlan") return [email, t.noPlan];
+  if (billing === "elsewhere") return [source === API_KEY_SOURCE ? t.consoleKey : t.elsewhere(source)];
+  return [t.signedOut];
+}
+
+export function limitsShown() {
+  const { account, limits } = models.getState();
+  return limits ? account?.billing !== "elsewhere" : account?.billing === "subscription";
+}
+
+export function accountLine(now = Date.now()) {
+  const { account, accountFault, limits } = models.getState();
+  const said = accountFault ? [faultSaid(accountFault)] : account ? billed(account) : [];
+  const nearest = account?.billing === "subscription" ? tightest(limits, now) : undefined;
+  if (nearest) said.push(usedSaid(nearest));
   return {
     text: said.filter(Boolean).join(" · "),
-    warn: Boolean(accountFault) || (account?.billing !== "subscription" && !keyed(account)),
+    warn: Boolean(accountFault) || (account?.billing !== "subscription" && !keyed(account)) || Boolean(nearest?.level),
   };
 }
 

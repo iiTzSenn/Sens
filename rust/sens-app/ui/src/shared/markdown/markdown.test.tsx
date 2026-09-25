@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { paintCode } from "../syntax/code";
 import { paint } from "../syntax/paint";
 import { Markdown } from "./Markdown";
 import { mended, parse, splitBlocks, textLength } from "./parse";
@@ -19,7 +20,7 @@ describe("markdown", () => {
     expect(page.querySelector("p")?.textContent).toBe("Una línea que sigue.");
     expect(page.querySelector("blockquote")?.textContent).toBe("citado y más");
     expect(page.querySelector("hr")).toBeTruthy();
-    expect(page.querySelector(".codeblock-head")?.textContent).toBe("ts");
+    expect(page.querySelector(".codeblock-head")?.textContent).toBe("TypeScript");
     expect(page.querySelector(".codeblock code")?.textContent).toBe("const a = 1;");
   });
 
@@ -50,6 +51,35 @@ describe("markdown", () => {
     const code = page.querySelector(".codeblock code")!;
     expect(code.textContent).toBe("const a = 'x';\nlet b;");
     expect([...code.querySelectorAll("span")].find((span) => span.textContent === "const")?.style.color).toBe("light-dark(rgb(0, 0, 255), rgb(86, 156, 214))");
+  });
+
+  it("names a block's language, or says it is code or text", () => {
+    const labels = ["```ps1\nGet-Date\n```", "```bash\nls\n```", "```\nplain\n```", "```text\nplain\n```", "```mystery\nx\n```"].map((text) => html(text).querySelector(".codeblock-head")?.textContent);
+    expect(labels).toEqual(["PowerShell", "Bash", "código", "texto", "mystery"]);
+  });
+
+  it("draws a console session: the prompt dimmed, the command in its shell, what it printed as it came", async () => {
+    const session = ["PS C:\\Users\\sofia\\PRUEBASENS> Get-ChildItem -Name", "notas.txt", "C:\\demo>dir /b", "$ npm test"].join("\n");
+    const page = html(["```", session, "```"].join("\n"));
+    await act(async () => {
+      await Promise.all([paintCode("Get-ChildItem -Name", "powershell"), paintCode("dir /b", "bat"), paintCode("npm test", "shellscript")]);
+      await new Promise((settle) => setTimeout(settle));
+    });
+    const block = page.querySelector(".codeblock") as HTMLElement;
+    expect(block.dataset.session).toBe("true");
+    expect(block.querySelector(".codeblock-head")?.textContent).toBe("consola");
+    expect(block.querySelector("code")?.textContent).toBe(session);
+    expect([...block.querySelectorAll(".prompt")].map((prompt) => prompt.textContent)).toEqual(["PS C:\\Users\\sofia\\PRUEBASENS> ", "C:\\demo>", "$ "]);
+    expect([...block.querySelectorAll(".command")].map((command) => command.textContent)).toEqual(["Get-ChildItem -Name", "dir /b", "npm test"]);
+    const colorOf = (word: string) => [...block.querySelectorAll(".command span")].find((span) => span.textContent === word) as HTMLElement | undefined;
+    expect(colorOf("Get-ChildItem")?.style.color).toBe("light-dark(rgb(121, 94, 38), rgb(220, 220, 170))");
+    expect(colorOf("npm")?.style.color).toBe("light-dark(rgb(121, 94, 38), rgb(220, 220, 170))");
+  });
+
+  it("leaves a fenced block that is not a session as code", () => {
+    const page = html(["```", "const a = 1;", "```"].join("\n"));
+    expect(page.querySelector(".codeblock")?.getAttribute("data-session")).toBeNull();
+    expect(page.querySelector(".prompt")).toBeNull();
   });
 
   it("mends a text cut while it arrives", () => {

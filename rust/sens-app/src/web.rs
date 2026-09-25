@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use sens_agent::said;
 use serde_json::Value;
 use ureq::http::Response;
 use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
@@ -42,23 +43,73 @@ pub fn host(url: &str) -> &str {
 fn answered(asked: RequestBuilder<WithoutBody>, url: &str) -> Result<Response<Body>, String> {
     let site = host(url);
     let answer = asked.call().map_err(|error| match error {
-        ureq::Error::Timeout(_) => format!("{site} tardó demasiado en responder"),
-        _ => format!("sin conexión con {site}: {error}"),
+        ureq::Error::Timeout(_) => said!(
+            en: "{site} took too long to respond",
+            es: "{site} tardó demasiado en responder",
+            fr: "{site} a mis trop de temps à répondre",
+            de: "{site} hat zu lange nicht geantwortet",
+            ja: "{site} の応答に時間がかかりすぎました",
+            zh: "{site} 响应超时",
+        ),
+        _ => said!(
+            en: "no connection to {site}: {error}",
+            es: "sin conexión con {site}: {error}",
+            fr: "pas de connexion avec {site} : {error}",
+            de: "keine Verbindung zu {site}: {error}",
+            ja: "{site} に接続できません: {error}",
+            zh: "无法连接到 {site}：{error}",
+        ),
     })?;
     match answer.status().as_u16() {
         200..=299 => Ok(answer),
-        404 => Err(format!("{site} no tiene {url}")),
+        404 => Err(said!(
+            en: "{site} doesn’t have {url}",
+            es: "{site} no tiene {url}",
+            fr: "{site} n’a pas {url}",
+            de: "{site} hat {url} nicht",
+            ja: "{site} に {url} はありません",
+            zh: "{site} 上没有 {url}",
+        )),
         429 => Err(throttled(site)),
         403 if answer.headers().get("x-ratelimit-remaining").is_some_and(|left| left == "0") => Err(throttled(site)),
-        403 => Err(format!("{site} no da acceso a {url}")),
-        code => Err(format!("{site} respondió {code}")),
+        403 => Err(said!(
+            en: "{site} doesn’t allow access to {url}",
+            es: "{site} no da acceso a {url}",
+            fr: "{site} refuse l’accès à {url}",
+            de: "{site} verweigert den Zugriff auf {url}",
+            ja: "{site} は {url} へのアクセスを許可していません",
+            zh: "{site} 不允许访问 {url}",
+        )),
+        code => Err(said!(
+            en: "{site} answered {code}",
+            es: "{site} respondió {code}",
+            fr: "{site} a répondu {code}",
+            de: "{site} hat mit {code} geantwortet",
+            ja: "{site} が {code} を返しました",
+            zh: "{site} 返回了 {code}",
+        )),
     }
 }
 
 fn unread(site: &str, cap: u64, error: ureq::Error) -> String {
     match error {
-        ureq::Error::BodyExceedsLimit(_) => format!("la descarga de {site} pasa de {} MB", cap / MEGABYTE),
-        _ => format!("no pude leer la respuesta de {site}: {error}"),
+        ureq::Error::BodyExceedsLimit(_) => said!(
+            en: "the download from {site} is over {size} MB",
+            es: "la descarga de {site} pasa de {size} MB",
+            fr: "le téléchargement depuis {site} dépasse {size} Mo",
+            de: "der Download von {site} ist größer als {size} MB",
+            ja: "{site} からのダウンロードが {size} MB を超えています",
+            zh: "来自 {site} 的下载超过 {size} MB",
+            size = cap / MEGABYTE,
+        ),
+        _ => said!(
+            en: "couldn’t read the response from {site}: {error}",
+            es: "no pude leer la respuesta de {site}: {error}",
+            fr: "impossible de lire la réponse de {site} : {error}",
+            de: "die Antwort von {site} konnte nicht gelesen werden: {error}",
+            ja: "{site} からの応答を読み取れませんでした: {error}",
+            zh: "无法读取 {site} 的响应：{error}",
+        ),
     }
 }
 
@@ -86,29 +137,64 @@ pub fn save(url: &str, path: &Path, cap: u64, progress: impl Fn(u64)) -> Result<
     let asked = agent().get(url).config().timeout_global(Some(SAVING_TIME)).build();
     let mut answer = answered(asked, url)?;
     let mut reader = answer.body_mut().with_config().limit(cap).reader();
-    let mut file = File::create(path).map_err(|error| format!("no pude crear {}: {error}", path.display()))?;
+    let mut file = File::create(path).map_err(|error| crate::files::uncreated(path, error))?;
+    let unsaved = |error: std::io::Error| {
+        said!(
+            en: "couldn’t save the download from {site}: {error}",
+            es: "no pude guardar la descarga de {site}: {error}",
+            fr: "impossible d’enregistrer le téléchargement depuis {site} : {error}",
+            de: "der Download von {site} konnte nicht gespeichert werden: {error}",
+            ja: "{site} からのダウンロードを保存できませんでした: {error}",
+            zh: "无法保存来自 {site} 的下载：{error}",
+        )
+    };
     let mut chunk = vec![0u8; SAVING_CHUNK];
     let mut done = 0u64;
     loop {
-        let read = reader.read(&mut chunk).map_err(|error| format!("la descarga de {site} se cortó: {error}"))?;
+        let read = reader.read(&mut chunk).map_err(|error| {
+            said!(
+                en: "the download from {site} was cut off: {error}",
+                es: "la descarga de {site} se cortó: {error}",
+                fr: "le téléchargement depuis {site} a été interrompu : {error}",
+                de: "der Download von {site} wurde abgebrochen: {error}",
+                ja: "{site} からのダウンロードが途中で切れました: {error}",
+                zh: "来自 {site} 的下载中断了：{error}",
+            )
+        })?;
         if read == 0 {
             break;
         }
-        file.write_all(&chunk[..read])
-            .map_err(|error| format!("no pude guardar la descarga de {site}: {error}"))?;
+        file.write_all(&chunk[..read]).map_err(unsaved)?;
         done += read as u64;
         progress(done);
     }
-    file.sync_all().map_err(|error| format!("no pude guardar la descarga de {site}: {error}"))?;
+    file.sync_all().map_err(unsaved)?;
     Ok(done)
 }
 
 fn throttled(site: &str) -> String {
-    format!("{site} no responde ahora (demasiadas peticiones); prueba en un rato")
+    said!(
+        en: "{site} isn’t responding right now (too many requests); try again in a while",
+        es: "{site} no responde ahora (demasiadas peticiones); prueba en un rato",
+        fr: "{site} ne répond pas pour le moment (trop de requêtes) ; réessayez dans un moment",
+        de: "{site} antwortet gerade nicht (zu viele Anfragen); versuch es später noch einmal",
+        ja: "{site} は現在応答していません（リクエストが多すぎます）。しばらくしてからもう一度お試しください",
+        zh: "{site} 暂时没有响应（请求过多）；请稍后再试",
+    )
 }
 
 pub fn text(url: &str, cap: u64) -> Result<String, String> {
-    String::from_utf8(bytes(url, &[], cap)?).map_err(|_| format!("{} no devolvió texto", host(url)))
+    String::from_utf8(bytes(url, &[], cap)?).map_err(|_| {
+        said!(
+            en: "{site} didn’t return text",
+            es: "{site} no devolvió texto",
+            fr: "{site} n’a pas renvoyé de texte",
+            de: "{site} hat keinen Text geliefert",
+            ja: "{site} がテキストを返しませんでした",
+            zh: "{site} 没有返回文本",
+            site = host(url),
+        )
+    })
 }
 
 pub fn json(url: &str, query: &[(&str, &str)]) -> Result<Value, String> {
@@ -116,8 +202,17 @@ pub fn json(url: &str, query: &[(&str, &str)]) -> Result<Value, String> {
 }
 
 pub fn json_with(url: &str, query: &[(&str, &str)], headers: &[(&str, &str)], wait: Option<Duration>) -> Result<Value, String> {
-    serde_json::from_slice(&bytes_with(url, query, headers, PAGE_CAP, wait)?)
-        .map_err(|error| format!("{} devolvió JSON ilegible: {error}", host(url)))
+    serde_json::from_slice(&bytes_with(url, query, headers, PAGE_CAP, wait)?).map_err(|error| {
+        said!(
+            en: "{site} returned unreadable JSON: {error}",
+            es: "{site} devolvió JSON ilegible: {error}",
+            fr: "{site} a renvoyé du JSON illisible : {error}",
+            de: "{site} hat unlesbares JSON geliefert: {error}",
+            ja: "{site} が読み取れない JSON を返しました: {error}",
+            zh: "{site} 返回了无法解析的 JSON：{error}",
+            site = host(url),
+        )
+    })
 }
 
 pub fn is_sha(text: &str) -> bool {
@@ -131,8 +226,22 @@ pub fn revision(repo: &str, wanted: &str) -> Result<String, String> {
     let url = format!("https://github.com/{repo}.git/info/refs?service=git-upload-pack");
     let listing = text(&url, 4 * MEGABYTE)?;
     pick_ref(&advertised(&listing), wanted).ok_or_else(|| match wanted {
-        "" => format!("{repo} no dice cuál es su última versión"),
-        _ => format!("{repo} no tiene la versión {wanted}"),
+        "" => said!(
+            en: "{repo} doesn’t say which version is its latest",
+            es: "{repo} no dice cuál es su última versión",
+            fr: "{repo} n’indique pas sa dernière version",
+            de: "{repo} nennt seine neueste Version nicht",
+            ja: "{repo} の最新バージョンがわかりません",
+            zh: "{repo} 未说明其最新版本",
+        ),
+        _ => said!(
+            en: "{repo} doesn’t have version {wanted}",
+            es: "{repo} no tiene la versión {wanted}",
+            fr: "{repo} n’a pas de version {wanted}",
+            de: "{repo} hat keine Version {wanted}",
+            ja: "{repo} にバージョン {wanted} はありません",
+            zh: "{repo} 没有版本 {wanted}",
+        ),
     })
 }
 

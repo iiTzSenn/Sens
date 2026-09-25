@@ -7,8 +7,10 @@ import { Viewer, ViewerHead, ViewerModes } from "../features/files/Viewer";
 import { TaskTally, TasksPanel } from "../features/tasks/TasksPanel";
 import { ConsolePanel, ConsoleTabs, ConsoleTools } from "../features/terminal/Consoles";
 import { Address, Outside, Web } from "../features/web/Web";
+import { shared } from "../shared/copy";
 import { Icon } from "../shared/Icon";
 import { ICONS } from "../shared/icons.js";
+import { t } from "./copy";
 import { closeTools, shell, toggleTree, type Tool } from "./shell";
 import { Splitter } from "./Splitter";
 
@@ -17,22 +19,21 @@ export function ToolsPanel({ pane }: { pane?: RefObject<HTMLElement | null> }) {
   const tool = useStore(shell, (s) => s.tool);
   return (
     <aside className="code" id="code" data-tool={tool} ref={pane}>
-      <Section tool="files" label="Ficheros" head={<ViewerHead />} tools={<FilesTools />}>
+      <Section tool="files" head={<ViewerHead />} tools={<FilesTools />}>
         <Files />
       </Section>
       <Section
         tool="changes"
-        label="Cambios"
         head={
           <>
-            <span className="tool-name">Cambios</span>
+            <span className="tool-name">{t.tool.changes}</span>
             <span className="marks" id="change-marks">
               <ChangeTotals />
             </span>
           </>
         }
         tools={
-          <button className="icon-btn" id="changes-reload" title="Actualizar" aria-label="Actualizar" onClick={loadChanges}>
+          <button className="icon-btn" id="changes-reload" title={t.refresh} aria-label={t.refresh} onClick={loadChanges}>
             <Icon svg={ICONS.refresh} />
           </button>
         }
@@ -41,20 +42,19 @@ export function ToolsPanel({ pane }: { pane?: RefObject<HTMLElement | null> }) {
           <ChangesPanel />
         </div>
       </Section>
-      <Section tool="web" label="Web" head={<Address />} tools={<Outside />}>
+      <Section tool="web" head={<Address />} tools={<Outside />}>
         <div className="site" id="site">
           <Web />
         </div>
       </Section>
-      <Section tool="terminal" label="Terminal" head={<ConsoleTabs />} tools={<ConsoleTools />}>
+      <Section tool="terminal" head={<ConsoleTabs />} tools={<ConsoleTools />}>
         <ConsolePanel />
       </Section>
       <Section
         tool="tasks"
-        label="Segundo plano"
         head={
           <>
-            <span className="tool-name">Segundo plano</span>
+            <span className="tool-name">{t.tool.tasks}</span>
             <span className="tool-tally" id="task-tally">
               <TaskTally />
             </span>
@@ -69,15 +69,15 @@ export function ToolsPanel({ pane }: { pane?: RefObject<HTMLElement | null> }) {
   );
 }
 
-function Section({ tool, label, head, tools, children }: { tool: Tool; label: string; head: ReactNode; tools?: ReactNode; children: ReactNode }) {
+function Section({ tool, head, tools, children }: { tool: Tool; head: ReactNode; tools?: ReactNode; children: ReactNode }) {
   const shown = useStore(shell, (s) => s.tool === tool);
   return (
-    <section className="tool" data-tool={tool} aria-label={label} hidden={!shown}>
+    <section className="tool" data-tool={tool} aria-label={t.tool[tool]} hidden={!shown}>
       <div className="code-head">
         {head}
         <div className="code-tools">
           {tools}
-          <button className="icon-btn shut-tool" title="Cerrar" aria-label="Cerrar" onClick={closeTools}>
+          <button className="icon-btn shut-tool" title={shared.close} aria-label={shared.close} onClick={closeTools}>
             <Icon svg={ICONS.close} />
           </button>
         </div>
@@ -92,7 +92,7 @@ function FilesTools() {
   return (
     <>
       <ViewerModes />
-      <button className="icon-btn" id="toggle-tree" title="Árbol de ficheros" aria-pressed={shown} onClick={toggleTree}>
+      <button className="icon-btn" id="toggle-tree" title={t.fileTree} aria-pressed={shown} onClick={toggleTree}>
         <Icon svg={ICONS.treeLines} />
       </button>
     </>
@@ -110,7 +110,7 @@ function Files() {
       <div className="tree" id="tree" ref={tree}>
         <Tree />
       </div>
-      <Splitter id="tree-split" label="Ancho del árbol de ficheros" name="--tree-width" host={body} pane={tree} grow={1} />
+      <Splitter id="tree-split" label={t.treeWidth} name="--tree-width" host={body} pane={tree} grow={1} />
       <Viewer />
     </div>
   );

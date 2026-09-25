@@ -89,3 +89,24 @@ it("ranks names before descriptions, keeping order and ignoring accents", () => 
   expect(rank(items, "codigo")).toEqual([items[1], items[2], items[0]]);
   expect(rank(items.slice(0, 2), "codigo")).toEqual([items[1], items[0]]);
 });
+
+it("needs every word, and puts the name that holds the whole search first", () => {
+  const rank = createMarketRanker();
+  const items = [
+    { name: "pdf", title: "PDF tools", description: "Works with react apps" },
+    { name: "react-pdf", title: "react-pdf", description: "" },
+    { name: "react", title: "React", description: "Components" },
+  ];
+  expect(rank(items, "react pdf")).toEqual([items[1], items[0]]);
+});
+
+it("lifts trusted, installable and popular listings among equal matches", () => {
+  const rank = createMarketRanker();
+  const items = [
+    { name: "lint", title: "Lint", badge: "community", installable: true },
+    { name: "lint", title: "Lint", badge: "skillsSh", installable: true, installs: 50_000 },
+    { name: "lint", title: "Lint", badge: "anthropic", installable: true },
+    { name: "lint", title: "Lint", badge: "partner", installable: false },
+  ];
+  expect(rank(items, "lint")).toEqual([items[2], items[1], items[0], items[3]]);
+});

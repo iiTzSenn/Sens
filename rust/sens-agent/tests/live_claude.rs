@@ -20,7 +20,7 @@ fn the_installed_claude_says_who_pays_for_it() {
 #[ignore]
 fn the_installed_claude_lists_every_model_it_offers() {
     let started = std::time::Instant::now();
-    let cards = sens_agent::catalog::discover("claude").expect("pedir los modelos a Claude Code");
+    let cards = sens_agent::catalog::discover("claude").expect("pedir los modelos a Claude Code").expect("Claude Code instalado");
     for card in &cards {
         println!("{} · {} · {:?} · {}", card.id, card.label, card.efforts, card.latest);
     }

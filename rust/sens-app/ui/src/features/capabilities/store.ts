@@ -7,20 +7,23 @@ import { store, stored } from "../../shared/storage.js";
 import { createDebouncedSearch, createMarketRanker } from "../market/search.js";
 import { present } from "../files/view";
 import { project } from "../project/store";
+import { t } from "./copy";
 import {
   CAP_TAB_IDS,
-  KIND_CHIPS,
+  KIND_IDS,
   MARKET_PAGE,
   NO_CAPS,
-  SOURCE_CHIPS,
+  SOURCE_IDS,
   searchesSkillsSh,
   type CapTab,
   type DetailTab,
   type Item,
   type KindFilter,
+  type Place,
   type SourceFilter,
   type Spec,
 } from "./kinds";
+import { SECTION_IDS } from "./sections";
 
 export type Mode = "installed" | "explore";
 
@@ -28,7 +31,9 @@ const MODE_KEY = "sens.capabilities.mode";
 const TAB_KEY = "sens.capabilities.tab";
 const KIND_KEY = "sens.market.kind";
 const SOURCE_KEY = "sens.market.source";
+const PLACE_KEY = "sens.market.place";
 const MARKET_SEEK_WAIT = 300;
+const PLACES: Place[] = ["home", "all", ...SECTION_IDS];
 
 function kept<T extends string>(key: string, options: readonly T[], fallback: T): T {
   const value = stored(key, "");
@@ -43,6 +48,7 @@ export interface Reading {
 
 export interface Detailing {
   id: string;
+  listing: Listing | null;
   detail: Detail | null;
   fault: string;
   tab: DetailTab;
@@ -50,6 +56,8 @@ export interface Detailing {
   reading: Reading | null;
   back: { mode: Mode; scroll: number };
 }
+
+export type Where = "listFault" | "detailFault" | "exploreFault";
 
 // `loadFault` replaces the installed list; `listFault` and `detailFault` sit on
 // top of what they failed on, until the next try there. `scrollTo` is where
@@ -60,16 +68,19 @@ export const capabilities = createStore(() => ({
   listFault: "",
   tab: kept<CapTab>(TAB_KEY, CAP_TAB_IDS, "all"),
   mode: kept<Mode>(MODE_KEY, ["installed", "explore"], "installed"),
-  kind: kept<KindFilter>(KIND_KEY, KIND_CHIPS.map(([id]) => id), "all"),
-  source: kept<SourceFilter>(SOURCE_KEY, SOURCE_CHIPS.map(([id]) => id), "all"),
+  kind: kept<KindFilter>(KIND_KEY, KIND_IDS, "all"),
+  source: kept<SourceFilter>(SOURCE_KEY, SOURCE_IDS, "all"),
+  place: kept<Place>(PLACE_KEY, PLACES, "home"),
   market: null as Market | null,
   marketAsking: false,
   marketFault: "",
+  exploreFault: "",
   query: "",
   hits: [] as Listing[],
   hitsFault: "",
   seeking: false,
   shown: MARKET_PAGE,
+  adding: [] as string[],
   detailing: null as Detailing | null,
   detailFault: "",
   installing: false,
@@ -81,8 +92,6 @@ const get = capabilities.getState;
 const home = () => project.getState().root;
 
 export const rank = createMarketRanker();
-
-type Where = "listFault" | "detailFault";
 
 async function attempt(where: Where, work: () => Promise<unknown>) {
   set({ [where]: "" });
@@ -105,13 +114,13 @@ export async function loadCapabilities() {
 
 export function enterCapabilities() {
   loadCapabilities();
-  if (get().mode === "explore") loadMarket(false);
+  loadMarket(false);
 }
 
 export function showMode(mode: Mode) {
   store(MODE_KEY, mode);
-  set({ mode, detailing: null });
-  if (mode === "explore") loadMarket(false);
+  set({ mode, detailing: null, scrollTo: 0 });
+  loadMarket(false);
 }
 
 export function pickTab(tab: CapTab) {
@@ -151,7 +160,7 @@ export const openSkill = (name: string) =>
 
 export const importSkill = () =>
   attempt("listFault", async () => {
-    const picked = await open({ directory: true, title: "Elige la carpeta de la skill" });
+    const picked = await open({ directory: true, title: t.chooseSkillFolder });
     if (typeof picked !== "string") return;
     await commands.importSkill(home(), picked);
     await loadCapabilities();
@@ -201,13 +210,25 @@ export function pickSource(source: SourceFilter) {
   seek();
 }
 
+export function pickPlace(place: Place) {
+  store(PLACE_KEY, place);
+  set({ place, shown: MARKET_PAGE, scrollTo: 0 });
+  if (place === "home" && get().query) seek("");
+}
+
 export const showMore = () => set(({ shown }) => ({ shown: shown + MARKET_PAGE }));
+
+export const marking = (id: string, busy: boolean) =>
+  set(({ adding }) => ({ adding: busy ? [...adding.filter((one) => one !== id), id] : adding.filter((one) => one !== id) }));
+
+export const failExplore = (reason: string) => set({ exploreFault: reason });
 
 const view = () => document.getElementById("capabilities-view");
 
-export async function openDetail(id: string) {
+export async function openDetail(id: string, listing: Listing | null = null) {
   const back = { mode: get().mode, scroll: view()?.scrollTop ?? 0 };
-  set({ detailing: { id, detail: null, fault: "", tab: "summary", file: "", reading: null, back }, detailFault: "", scrollTo: 0 });
+  const known = listing || get().market?.listings.find((one) => one.id === id) || get().hits.find((one) => one.id === id) || null;
+  set({ detailing: { id, listing: known, detail: null, fault: "", tab: "summary", file: "", reading: null, back }, detailFault: "", scrollTo: 0 });
   let detail: Detail | null = null;
   let fault = "";
   try {
@@ -216,7 +237,7 @@ export async function openDetail(id: string) {
     fault = String(reason);
   }
   const now = get().detailing;
-  if (now?.id === id) set({ detailing: { ...now, detail, fault } });
+  if (now?.id === id) set({ detailing: { ...now, listing: detail?.listing || now.listing, detail, fault } });
 }
 
 export function closeDetail() {
@@ -257,8 +278,8 @@ export async function install(detail: Detail, values: Record<string, string>) {
 
 export const installNow = (detail: Detail) => attempt("detailFault", () => install(detail, {}));
 
-export const updateInstalled = (listing: Listing, name: string) =>
-  attempt("detailFault", async () => {
+export const updateInstalled = (listing: Listing, name: string, where: Where = "detailFault") =>
+  attempt(where, async () => {
     await commands.marketUpdate(listing.id, name);
     await loadCapabilities();
   });

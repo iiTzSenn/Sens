@@ -1,5 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createStore } from "zustand/vanilla";
+import { looks } from "./copy";
 
 export type Mode = "dark" | "light" | "system";
 export type Accent = "signal" | "ice" | "iris" | "rose" | "neutral";
@@ -16,19 +17,13 @@ declare global {
   }
 }
 
-export const MODES: { id: Mode; label: string }[] = [
-  { id: "dark", label: "Oscuro" },
-  { id: "light", label: "Claro" },
-  { id: "system", label: "Sistema" },
-];
+export const MODES: readonly Mode[] = ["dark", "light", "system"];
 
-export const ACCENTS: { id: Accent; label: string }[] = [
-  { id: "signal", label: "Señal" },
-  { id: "ice", label: "Hielo" },
-  { id: "iris", label: "Iris" },
-  { id: "rose", label: "Rosa" },
-  { id: "neutral", label: "Neutro" },
-];
+export const ACCENTS: readonly Accent[] = ["signal", "ice", "iris", "rose", "neutral"];
+
+export const modeName = (mode: Mode) => looks[mode];
+
+export const accentName = (accent: Accent) => looks[accent];
 
 export const FIRST_LOOK: Look = { mode: "dark", accent: "signal" };
 
@@ -36,8 +31,8 @@ const LIGHT_SYSTEM = "(prefers-color-scheme: light)";
 
 export function lookOf(value: unknown): Look {
   const given = (value ?? {}) as Partial<Record<keyof Look, unknown>>;
-  const mode = MODES.find((one) => one.id === given.mode)?.id ?? FIRST_LOOK.mode;
-  const accent = ACCENTS.find((one) => one.id === given.accent)?.id ?? FIRST_LOOK.accent;
+  const mode = MODES.find((one) => one === given.mode) ?? FIRST_LOOK.mode;
+  const accent = ACCENTS.find((one) => one === given.accent) ?? FIRST_LOOK.accent;
   return { mode, accent };
 }
 

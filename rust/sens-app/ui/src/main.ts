@@ -2,6 +2,7 @@ import "./styles.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { StrictMode, createElement } from "react";
 import { createRoot } from "react-dom/client";
+import { useStore } from "zustand";
 import { App } from "./app/App";
 import { boot } from "./app/session";
 import { watchWidth, whenShown } from "./app/shell";
@@ -17,8 +18,10 @@ import { enterConsole, hearTerminal } from "./features/terminal/store";
 import { startUpdates } from "./features/updates/store";
 import { greetAtStart, greetIfNew } from "./features/welcome/store";
 import { enterSite, hearBrowser } from "./features/web/store";
+import { language, languageOf, showLanguage } from "./shared/i18n";
 import { followLook, lookOf, showLook } from "./shared/look";
 
+showLanguage(languageOf(window.__SENS_LANGUAGE__));
 showLook(lookOf(window.__SENS_LOOK__));
 followLook();
 greetAtStart();
@@ -37,7 +40,12 @@ whenShown("web", enterSite);
 whenShown("terminal", enterConsole);
 whenShown("tasks", tickTasks);
 
-createRoot(document.getElementById("app")!).render(createElement(StrictMode, null, createElement(App)));
+function Spoken() {
+  const current = useStore(language, (s) => s.current);
+  return createElement(App, { key: current });
+}
+
+createRoot(document.getElementById("app")!).render(createElement(StrictMode, null, createElement(Spoken)));
 requestAnimationFrame(() => requestAnimationFrame(() => getCurrentWindow().show()));
 
 loadCatalog();

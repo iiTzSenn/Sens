@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { languageNamed, languageOf } from "./languages";
+import { codeNow, paintCode } from "./code";
+import { languageNamed, languageOf, titleOf } from "./languages";
 import { paint, paintedNow, paintRows } from "./paint";
 
 const KEYWORD = "light-dark(#0000ff, #569cd6)";
 const STRING = "light-dark(#a31515, #ce9178)";
 const COMMENT = "light-dark(#008000, #6a9955)";
 const CONTROL = "light-dark(#af00db, #c586c0)";
+const FUNCTION = "light-dark(#795e26, #dcdcaa)";
 
 const colorsOf = (painted: Awaited<ReturnType<typeof paint>>) => {
   const out: Record<string, string> = {};
@@ -37,6 +39,45 @@ describe("languages", () => {
     expect(languageNamed("c#")).toBe("csharp");
     expect(languageNamed("")).toBeNull();
     expect(languageNamed("text")).toBeNull();
+  });
+
+  it("know every name a shell or a console goes by in a fence", () => {
+    const tags = ["ps1", "pwsh", "powershell", "bash", "sh", "shell", "zsh", "fish", "console", "shell-session", "terminal", "cmd", "bat", "batch", "dos", "nu"];
+    expect(tags.map(languageNamed)).toEqual([
+      "powershell",
+      "powershell",
+      "powershell",
+      "shellscript",
+      "shellscript",
+      "shellscript",
+      "shellscript",
+      "fish",
+      "shellsession",
+      "shellsession",
+      "shellsession",
+      "bat",
+      "bat",
+      "bat",
+      "bat",
+      "nushell",
+    ]);
+  });
+
+  it("are called by their proper names", () => {
+    expect(["ts", "ps1", "bash", "zsh", "sh", "cmd", "bat", "json", "c#", "nu", "text", "whatever"].map(titleOf)).toEqual([
+      "TypeScript",
+      "PowerShell",
+      "Bash",
+      "Zsh",
+      "Shell",
+      "CMD",
+      "Batch",
+      "JSON",
+      "C#",
+      "Nushell",
+      null,
+      null,
+    ]);
   });
 });
 
@@ -75,5 +116,32 @@ describe("painting", () => {
     expect(colorOf(1, "still")).toBe(COMMENT);
     expect(colorOf(2, "ends")).toBe(COMMENT);
     expect(colorOf(2, "const")).toBe(KEYWORD);
+  });
+});
+
+describe("commands", () => {
+  const textOf = (painted: Awaited<ReturnType<typeof paintCode>>) => painted!.lines.map((line) => line.map(([part]) => part).join("")).join("\n");
+
+  it("color what another shell runs inside a command as that shell, and the rest as the outer one", async () => {
+    const command = 'powershell -NoProfile -Command "Get-Process | Select-Object -First 3" && echo done';
+    const painted = await paintCode(command, "shellscript");
+    expect(textOf(painted)).toBe(command);
+    expect(colorsOf(painted)).toMatchObject({ powershell: FUNCTION, "Get-Process": FUNCTION, "Select-Object": FUNCTION, '"': STRING, echo: FUNCTION, done: STRING });
+    expect(codeNow(command, "shellscript")).toBe(painted);
+  });
+
+  it("color a heredoc as the program that reads it", async () => {
+    const command = "python3 - <<'EOF'\nimport sys\nEOF";
+    const painted = await paintCode(command, "shellscript");
+    expect(textOf(painted)).toBe(command);
+    expect(colorsOf(painted)).toMatchObject({ import: CONTROL });
+  });
+
+  it("paint a plain command once and have it at hand after", async () => {
+    expect(codeNow("git status --short", "shellscript")).toBeNull();
+    const painted = await paintCode("git status --short", "shellscript");
+    expect(colorsOf(painted)).toMatchObject({ git: FUNCTION, "--short": KEYWORD });
+    expect(codeNow("git status --short", "shellscript")).toBe(painted);
+    expect(await paintCode("", "shellscript")).toBeNull();
   });
 });

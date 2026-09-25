@@ -4,12 +4,12 @@ use std::process::{Command, Output};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use sens_agent::{account, process};
+use sens_agent::{account, process, said};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::{update, web};
+use crate::{files, update, web};
 
 const RELEASES: &str = "https://downloads.claude.ai/claude-code-releases";
 const CHANNEL: &str = "latest";
@@ -20,7 +20,6 @@ const DOWNLOAD_CAP: u64 = 1024 * web::MEGABYTE;
 const CHECKSUM_LENGTH: usize = 64;
 const RELEASE_TRIES: u32 = 12;
 const RELEASE_PAUSE: Duration = Duration::from_millis(250);
-const MISMATCH: &str = "la descarga de Claude Code no coincide con la que publica Anthropic; no se instala";
 
 static INSTALLING: AtomicBool = AtomicBool::new(false);
 
@@ -58,7 +57,14 @@ struct Claim;
 impl Claim {
     fn take() -> Result<Self, String> {
         match INSTALLING.swap(true, Ordering::SeqCst) {
-            true => Err("ya estoy instalando Claude Code".into()),
+            true => Err(said!(
+                en: "Claude Code is already being installed",
+                es: "ya estoy instalando Claude Code",
+                fr: "Claude Code est déjà en cours d’installation",
+                de: "Claude Code wird bereits installiert",
+                ja: "Claude Code はすでにインストール中です",
+                zh: "Claude Code 正在安装中",
+            )),
             false => Ok(Claim),
         }
     }
@@ -74,7 +80,7 @@ pub fn install(base: &Path, report: impl Fn(Progress)) -> Result<String, String>
     let _claim = Claim::take()?;
     let build = newest()?;
     let folder = base.join(FOLDER);
-    fs::create_dir_all(&folder).map_err(|error| format!("no pude crear {}: {error}", folder.display()))?;
+    fs::create_dir_all(&folder).map_err(|error| files::uncreated(&folder, error))?;
     let downloaded = folder.join(format!("claude-{}-{PLATFORM}.exe", build.version));
     let outcome = fetch(&build, &downloaded, &report).and_then(|_| {
         report(Progress::at(Stage::Installing));
@@ -83,7 +89,15 @@ pub fn install(base: &Path, report: impl Fn(Progress)) -> Result<String, String>
     discard(&downloaded);
     outcome?;
     account::version().map_err(|reason| match process::native_folder() {
-        Some(folder) => format!("Claude Code se instaló en {}, pero no arranca: {reason}", folder.display()),
+        Some(folder) => said!(
+            en: "Claude Code was installed in {folder}, but it doesn’t start: {reason}",
+            es: "Claude Code se instaló en {folder}, pero no arranca: {reason}",
+            fr: "Claude Code a été installé dans {folder}, mais ne démarre pas : {reason}",
+            de: "Claude Code wurde in {folder} installiert, startet aber nicht: {reason}",
+            ja: "Claude Code を {folder} にインストールしましたが、起動しません: {reason}",
+            zh: "Claude Code 已安装到 {folder}，但无法启动：{reason}",
+            folder = folder.display(),
+        ),
         None => reason,
     })
 }
@@ -98,7 +112,17 @@ pub fn update(report: impl Fn(Progress)) -> Result<String, String> {
     let _claim = Claim::take()?;
     report(Progress::at(Stage::Updating));
     let finished = process::claude().arg("update").output().map_err(process::unlaunched)?;
-    succeeded(finished, "Claude Code no se pudo actualizar")?;
+    succeeded(
+        finished,
+        &said!(
+            en: "Claude Code couldn’t be updated",
+            es: "Claude Code no se pudo actualizar",
+            fr: "Claude Code n’a pas pu être mis à jour",
+            de: "Claude Code konnte nicht aktualisiert werden",
+            ja: "Claude Code をアップデートできませんでした",
+            zh: "无法更新 Claude Code",
+        ),
+    )?;
     account::version()
 }
 
@@ -111,7 +135,14 @@ fn latest() -> Result<String, String> {
     let version = said.trim();
     match plausible(version) {
         true => Ok(version.to_string()),
-        false => Err("Anthropic no dijo cuál es la última versión de Claude Code; puede que la descarga no esté disponible en tu país".into()),
+        false => Err(said!(
+            en: "Anthropic didn’t say which version of Claude Code is the latest; the download may not be available in your country",
+            es: "Anthropic no dijo cuál es la última versión de Claude Code; puede que la descarga no esté disponible en tu país",
+            fr: "Anthropic n’a pas indiqué la dernière version de Claude Code ; le téléchargement n’est peut-être pas disponible dans votre pays",
+            de: "Anthropic hat die neueste Version von Claude Code nicht genannt; vielleicht ist der Download in deinem Land nicht verfügbar",
+            ja: "Anthropic から Claude Code の最新バージョンを取得できませんでした。お住まいの国ではダウンロードできない可能性があります",
+            zh: "Anthropic 未告知 Claude Code 的最新版本；你所在的国家或地区可能无法下载",
+        )),
     }
 }
 
@@ -125,7 +156,16 @@ fn ahead(installed: &str, latest: &str) -> bool {
 fn newest() -> Result<Build, String> {
     let version = latest()?;
     let manifest = web::json(&format!("{RELEASES}/{version}/manifest.json"), &[])?;
-    build(&version, &manifest).ok_or_else(|| format!("Anthropic no publica Claude Code {version} para este Windows"))
+    build(&version, &manifest).ok_or_else(|| {
+        said!(
+            en: "Anthropic doesn’t publish Claude Code {version} for this Windows",
+            es: "Anthropic no publica Claude Code {version} para este Windows",
+            fr: "Anthropic ne publie pas Claude Code {version} pour cette version de Windows",
+            de: "Anthropic veröffentlicht Claude Code {version} nicht für dieses Windows",
+            ja: "Anthropic はこの Windows 向けの Claude Code {version} を公開していません",
+            zh: "Anthropic 未发布适用于此 Windows 的 Claude Code {version}",
+        )
+    })
 }
 
 fn plausible(version: &str) -> bool {
@@ -161,14 +201,31 @@ fn fetch(build: &Build, path: &Path, report: &impl Fn(Progress)) -> Result<(), S
     report(Progress::at(Stage::Verifying));
     match digest(path)? == build.checksum {
         true => Ok(()),
-        false => Err(MISMATCH.into()),
+        false => Err(said!(
+            en: "the Claude Code download doesn’t match the one Anthropic publishes; it won’t be installed",
+            es: "la descarga de Claude Code no coincide con la que publica Anthropic; no se instala",
+            fr: "le téléchargement de Claude Code ne correspond pas à celui publié par Anthropic ; il ne sera pas installé",
+            de: "der Download von Claude Code stimmt nicht mit dem von Anthropic veröffentlichten überein; er wird nicht installiert",
+            ja: "Claude Code のダウンロードが Anthropic の公開しているものと一致しないため、インストールしません",
+            zh: "Claude Code 的下载与 Anthropic 发布的版本不一致，因此不会安装",
+        )),
     }
 }
 
 fn digest(path: &Path) -> Result<String, String> {
-    let mut file = File::open(path).map_err(|error| format!("no pude leer la descarga: {error}"))?;
+    let unread = |error: std::io::Error| {
+        said!(
+            en: "couldn’t read the download: {error}",
+            es: "no pude leer la descarga: {error}",
+            fr: "impossible de lire le téléchargement : {error}",
+            de: "der Download konnte nicht gelesen werden: {error}",
+            ja: "ダウンロードしたファイルを読み取れませんでした: {error}",
+            zh: "无法读取下载的文件：{error}",
+        )
+    };
+    let mut file = File::open(path).map_err(unread)?;
     let mut hasher = Sha256::new();
-    std::io::copy(&mut file, &mut hasher).map_err(|error| format!("no pude leer la descarga: {error}"))?;
+    std::io::copy(&mut file, &mut hasher).map_err(unread)?;
     Ok(hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
@@ -176,8 +233,27 @@ fn set_up(downloaded: &Path) -> Result<(), String> {
     let finished = process::hidden(&mut Command::new(downloaded))
         .args(["install", CHANNEL])
         .output()
-        .map_err(|error| format!("no pude abrir el instalador de Claude Code: {error}"))?;
-    succeeded(finished, "el instalador de Claude Code falló")
+        .map_err(|error| {
+            said!(
+                en: "couldn’t open the Claude Code installer: {error}",
+                es: "no pude abrir el instalador de Claude Code: {error}",
+                fr: "impossible d’ouvrir le programme d’installation de Claude Code : {error}",
+                de: "das Installationsprogramm von Claude Code konnte nicht geöffnet werden: {error}",
+                ja: "Claude Code のインストーラーを開けませんでした: {error}",
+                zh: "无法打开 Claude Code 安装程序：{error}",
+            )
+        })?;
+    succeeded(
+        finished,
+        &said!(
+            en: "the Claude Code installer failed",
+            es: "el instalador de Claude Code falló",
+            fr: "le programme d’installation de Claude Code a échoué",
+            de: "das Installationsprogramm von Claude Code ist fehlgeschlagen",
+            ja: "Claude Code のインストーラーが失敗しました",
+            zh: "Claude Code 安装程序运行失败",
+        ),
+    )
 }
 
 fn succeeded(finished: Output, failure: &str) -> Result<(), String> {
@@ -189,7 +265,14 @@ fn succeeded(finished: Output, failure: &str) -> Result<(), String> {
         .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
         .find_map(|text| last_line(&text));
     Err(match said {
-        Some(line) => format!("{failure}: {line}"),
+        Some(line) => said!(
+            en: "{failure}: {line}",
+            es: "{failure}: {line}",
+            fr: "{failure} : {line}",
+            de: "{failure}: {line}",
+            ja: "{failure}: {line}",
+            zh: "{failure}：{line}",
+        ),
         None => format!("{failure} ({})", finished.status),
     })
 }

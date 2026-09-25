@@ -2,16 +2,20 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { useStore } from "zustand";
 import { Window } from "../../app/Topbar";
 import type { ForeignServer, Found, FoundProject, ProviderState } from "../../ipc/types";
-import { ago, plural } from "../../shared/format.js";
+import { shared } from "../../shared/copy";
+import { ago } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
+import { LanguagePicker } from "../../shared/LanguagePicker";
 import { StoneCanvas } from "../../shared/StoneCanvas";
 import type { StoneState } from "../../shared/stone";
+import { useLanguageChoice } from "../look/useLanguageChoice";
 import { profile } from "../profile/store";
 import { initials } from "../rail/Me";
 import { providerLine } from "../settings/providers";
 import { ProviderCard } from "../settings/ProvidersSection";
 import { settings } from "../settings/store";
+import { t } from "./copy";
 import {
   STEPS,
   chooseAllRoots,
@@ -30,10 +34,10 @@ import {
   type Step,
 } from "./store";
 
-const SHORTCUTS: [string, string][] = [
-  ["N", "Sesión nueva"],
-  ["O", "Abrir carpeta"],
-  ["B", "Barra lateral"],
+const shortcuts = (): [string, string][] => [
+  ["N", shared.newSession],
+  ["O", t.openFolder],
+  ["B", t.sidebar],
 ];
 
 const submit = (then: () => unknown) => (event: FormEvent) => {
@@ -43,7 +47,7 @@ const submit = (then: () => unknown) => (event: FormEvent) => {
 
 const importable = (project: FoundProject) => project.exists && project.sessions > 0;
 
-const lastSeen = (millis: number) => (new Date(millis).toDateString() === new Date().toDateString() ? "hoy" : ago(millis));
+const lastSeen = (millis: number) => (new Date(millis).toDateString() === new Date().toDateString() ? t.today : ago(millis));
 
 function stoneOf(step: Step, scanning: boolean, applying: boolean, finished: boolean, busy: boolean): StoneState {
   if (step === "hello") return "focus";
@@ -67,7 +71,7 @@ function Stage() {
   const finished = useStore(welcome, (s) => s.finished);
   const busy = useStore(settings, (s) => Boolean(s.progress) || s.connecting);
   return (
-    <div className="welcome stage" role="dialog" aria-modal="true" aria-label="Bienvenida a Sens" data-still={still ? "true" : undefined}>
+    <div className="welcome stage" role="dialog" aria-modal="true" aria-label={t.dialog} data-still={still ? "true" : undefined}>
       <header className="bar">
         <b className="wordmark">sens</b>
         <Progress step={step} />
@@ -87,7 +91,7 @@ function Stage() {
       <footer className="welcome-foot">
         {step !== "ready" && (
           <button type="button" className="link small" onClick={skip}>
-            Saltar la bienvenida
+            {t.skip}
           </button>
         )}
       </footer>
@@ -99,7 +103,7 @@ function Progress({ step }: { step: Step }) {
   const at = STEPS.indexOf(step);
   const shown = STEPS.slice(0, -1);
   return (
-    <ol className="welcome-steps" aria-label={`Paso ${Math.min(at + 1, shown.length)} de ${shown.length}`}>
+    <ol className="welcome-steps" aria-label={t.step(Math.min(at + 1, shown.length), shown.length)}>
       {shown.map((one, index) => (
         <li key={one} data-state={index < at ? "done" : index === at ? "now" : "next"} />
       ))}
@@ -117,15 +121,32 @@ function Go({ children, focus = false }: { children: ReactNode; focus?: boolean 
 }
 
 function Hello() {
+  const asks = useStore(welcome, (s) => s.asksLanguage);
   return (
     <form onSubmit={submit(next)}>
-      <h1>Te damos la bienvenida.</h1>
-      <p className="lead">Entiende más. Lee menos.</p>
-      <p className="welcome-note">En un minuto dejamos Sens a tu gusto: tu nombre, Claude Code y lo que ya tienes.</p>
+      <h1>{t.hello}</h1>
+      <p className="lead">{t.tagline}</p>
+      <p className="welcome-note">{t.helloNote}</p>
+      {asks && <Speak />}
       <div className="actions">
-        <Go focus>Empezar</Go>
+        <Go focus>{t.start}</Go>
       </div>
     </form>
+  );
+}
+
+function Speak() {
+  const { current, fault, choose } = useLanguageChoice();
+
+  return (
+    <div className="welcome-language">
+      <LanguagePicker chosen={current} pick={choose} />
+      {fault && (
+        <p className="hint" role="alert">
+          {fault}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -134,7 +155,7 @@ function Name() {
   const letters = initials(name.trim());
   return (
     <form onSubmit={submit(next)}>
-      <h1>¿Cómo te llamas?</h1>
+      <h1>{t.askName}</h1>
       <div className="name-row">
         <span className="avatar big" aria-hidden="true">
           {letters || <Icon svg={ICONS.user} />}
@@ -144,17 +165,17 @@ function Name() {
           autoFocus
           value={name}
           maxLength={60}
-          placeholder="Tu nombre"
-          aria-label="Tu nombre"
+          placeholder={t.yourName}
+          aria-label={t.yourName}
           spellCheck={false}
           autoComplete="off"
           onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => setName(event.target.value)}
         />
       </div>
-      <p className="hint">Sale en la barra lateral. Puedes dejarlo en blanco.</p>
+      <p className="hint">{t.nameHint}</p>
       <div className="actions">
-        <Go>Continuar</Go>
+        <Go>{t.next}</Go>
         <button
           type="button"
           className="ghost"
@@ -163,7 +184,7 @@ function Name() {
             next();
           }}
         >
-          Ahora no
+          {t.notNow}
         </button>
       </div>
     </form>
@@ -179,11 +200,11 @@ function Claude() {
   const connected = mood === "on";
   return (
     <form onSubmit={submit(next)}>
-      <h1>Sens usa Claude Code.</h1>
-      <p className="lead small">Con tu propia cuenta. Tus credenciales y tu sesión se quedan en Claude Code; Sens nunca las ve.</p>
+      <h1>{t.usesClaude}</h1>
+      <p className="lead small">{t.usesClaudeLead}</p>
       <div className="settings-pane welcome-claude">
         {!state ? (
-          <p className={fault ? "note fault" : "note"}>{fault || "Comprobando Claude Code…"}</p>
+          <p className={fault ? "note fault" : "note"}>{fault || t.checkingClaude}</p>
         ) : connected && !changing ? (
           <Connected state={state} line={line} change={() => setChanging(true)} />
         ) : (
@@ -192,10 +213,10 @@ function Claude() {
       </div>
       <div className="actions">
         {connected ? (
-          <Go focus>Continuar</Go>
+          <Go focus>{t.next}</Go>
         ) : (
           <button type="submit" className="ghost">
-            Hacerlo más tarde
+            {t.later}
           </button>
         )}
       </div>
@@ -214,7 +235,7 @@ function Connected({ state, line, change }: { state: ProviderState; line: string
         <span>{line}</span>
       </span>
       <button type="button" className="link small" onClick={change}>
-        Cambiar
+        {t.change}
       </button>
     </div>
   );
@@ -230,7 +251,7 @@ function Bring() {
   if (scanning || !found) {
     return (
       <div>
-        <h1>Trae lo que ya tienes.</h1>
+        <h1>{t.bring}</h1>
         {fault ? (
           <>
             <p className="fault" role="alert">
@@ -239,16 +260,18 @@ function Bring() {
             </p>
             <div className="actions">
               <button type="button" className="go plain" onClick={scan}>
-                Buscar otra vez
+                {t.scanAgain}
               </button>
               <button type="button" className="ghost" onClick={next}>
-                Continuar sin importar
+                {t.skipImport}
               </button>
             </div>
           </>
         ) : (
           <p className="lead small" role="status">
-            Buscando en <span className="mono">~/.claude</span>…
+            {t.lookingIn.before}
+            <span className="mono">~/.claude</span>
+            {t.lookingIn.after}
           </p>
         )}
       </div>
@@ -265,9 +288,9 @@ function Bring() {
   };
   return (
     <form className="bring" onSubmit={submit(next)}>
-      <h1>Trae lo que ya tienes.</h1>
+      <h1>{t.bring}</h1>
       {nothing ? (
-        <p className="lead small">No hay nada que traer. Empiezas de cero.</p>
+        <p className="lead small">{t.nothing}</p>
       ) : (
         <div className="bring-list">
           {found.projects.length > 0 && <Sessions found={found} roots={roots} />}
@@ -276,10 +299,10 @@ function Bring() {
         </div>
       )}
       <div className="actions">
-        <Go focus>{chosen ? "Importar" : "Continuar"}</Go>
+        <Go focus>{chosen ? t.import : t.next}</Go>
         {chosen && (
           <button type="button" className="ghost" onClick={leave}>
-            Continuar sin importar
+            {t.skipImport}
           </button>
         )}
       </div>
@@ -288,9 +311,9 @@ function Bring() {
 }
 
 function projectMeta(project: FoundProject) {
-  if (!project.exists) return "la carpeta ya no existe";
-  if (!project.sessions && project.already) return "ya están en Sens";
-  return [plural(project.sessions, "sesión", "sesiones"), lastSeen(project.last), project.already ? `${project.already} ya en Sens` : ""].filter(Boolean).join(" · ");
+  if (!project.exists) return t.gone;
+  if (!project.sessions && project.already) return t.allThere;
+  return [t.sessions(project.sessions), lastSeen(project.last), project.already ? t.alreadyIn(project.already) : ""].filter(Boolean).join(" · ");
 }
 
 function Sessions({ found, roots }: { found: Found; roots: Set<string> }) {
@@ -299,13 +322,13 @@ function Sessions({ found, roots }: { found: Found; roots: Set<string> }) {
   const sessions = offered.reduce((sum, one) => sum + one.sessions, 0);
   const all = offered.length > 0 && offered.every((one) => roots.has(one.root));
   return (
-    <section className="bring-group" aria-label="Sesiones de Claude Code">
+    <section className="bring-group" aria-label={t.claudeSessions}>
       <header className="bring-head">
-        <span className="label">Sesiones de Claude Code</span>
-        <span className="bring-count">{`${plural(sessions, "sesión", "sesiones")} en ${plural(offered.length, "proyecto", "proyectos")}`}</span>
+        <span className="label">{t.claudeSessions}</span>
+        <span className="bring-count">{t.sessionsIn(sessions, offered.length)}</span>
         {offered.length > 1 && (
           <button type="button" className="link small" onClick={() => chooseAllRoots(!all)}>
-            {all ? "Ninguno" : "Marcar todos"}
+            {all ? t.none : t.all}
           </button>
         )}
       </header>
@@ -333,30 +356,19 @@ function Sessions({ found, roots }: { found: Found; roots: Set<string> }) {
   );
 }
 
-function listing(parts: string[]) {
-  if (parts.length < 2) return parts.join("");
-  return `${parts.slice(0, -1).join(", ")} y ${parts[parts.length - 1]}`;
-}
-
 function Already({ found }: { found: Found }) {
-  const total = found.skills.length + found.servers.length + found.plugins.length;
-  const parts = [
-    found.skills.length ? plural(found.skills.length, "skill", "skills") : "",
-    found.servers.length ? plural(found.servers.length, "servidor MCP", "servidores MCP") : "",
-    found.plugins.length ? plural(found.plugins.length, "plugin", "plugins") : "",
-  ].filter(Boolean);
   const names = [...found.skills, ...found.servers, ...found.plugins];
   return (
-    <section className="bring-group" aria-label="De Claude Code, ya activo">
+    <section className="bring-group" aria-label={t.active}>
       <header className="bring-head">
-        <span className="label">De Claude Code, ya activo</span>
+        <span className="label">{t.active}</span>
       </header>
       <p className="bring-note">
         <Icon svg={ICONS.check} />
-        <span>{`${listing(parts)} ya ${total === 1 ? "funciona" : "funcionan"} en Sens: Claude Code ${total === 1 ? "lo carga" : "los carga"} en cada sesión.`}</span>
+        <span>{t.works(found.skills.length, found.servers.length, found.plugins.length)}</span>
       </p>
       <details className="bring-names">
-        <summary>Ver nombres</summary>
+        <summary>{t.seeNames}</summary>
         <p>
           {names.map((name) => (
             <span className="name-chip mono" key={name}>
@@ -371,14 +383,14 @@ function Already({ found }: { found: Found }) {
 
 function serverMeta(server: ForeignServer) {
   if (server.blocked) return server.blocked;
-  return [server.app, server.envKeys.length ? `lleva ${server.envKeys.join(", ")}` : ""].filter(Boolean).join(" · ");
+  return [server.app, server.envKeys.length ? t.carries(server.envKeys.join(", ")) : ""].filter(Boolean).join(" · ");
 }
 
 function Foreign({ foreign, servers }: { foreign: ForeignServer[]; servers: Set<string> }) {
   return (
-    <section className="bring-group" aria-label="Servidores MCP de otras apps">
+    <section className="bring-group" aria-label={t.otherApps}>
       <header className="bring-head">
-        <span className="label">Servidores MCP de otras apps</span>
+        <span className="label">{t.otherApps}</span>
       </header>
       <ul className="bring-rows">
         {foreign.map((server) => (
@@ -400,7 +412,7 @@ function Foreign({ foreign, servers }: { foreign: ForeignServer[]; servers: Set<
           </li>
         ))}
       </ul>
-      <p className="hint">Se añaden a Capacidades y se activan en los proyectos que traes.</p>
+      <p className="hint">{t.serversHint}</p>
     </section>
   );
 }
@@ -411,9 +423,9 @@ function First() {
   const listed = places();
   return (
     <form onSubmit={submit(next)}>
-      <h1>¿Con qué proyecto empezamos?</h1>
+      <h1>{t.whichProject}</h1>
       {listed.length > 0 ? (
-        <ul className="places" role="radiogroup" aria-label="Proyecto">
+        <ul className="places" role="radiogroup" aria-label={t.project}>
           {listed.map((place) => (
             <li key={place.root}>
               <button type="button" role="radio" aria-checked={first === place.root} className="place" onClick={() => chooseFirst(place.root)}>
@@ -428,13 +440,13 @@ function First() {
           ))}
         </ul>
       ) : (
-        <p className="lead small">Elige la carpeta de un proyecto. Podrás abrir otros cuando quieras.</p>
+        <p className="lead small">{t.pickLead}</p>
       )}
       <button type="button" className="link" onClick={pickFolder}>
-        Elegir otra carpeta…
+        {t.otherFolder}
       </button>
       <div className="actions">
-        <Go focus>Continuar</Go>
+        <Go focus>{t.next}</Go>
       </div>
     </form>
   );
@@ -470,7 +482,7 @@ function Ready() {
   if (!finished) {
     return (
       <div role="status">
-        <h1>Preparando tu espacio.</h1>
+        <h1>{t.preparing}</h1>
         <Lines lines={lines} />
       </div>
     );
@@ -480,13 +492,13 @@ function Ready() {
   const warned = lines.filter((line) => line.mood === "warn");
   return (
     <form onSubmit={submit(enter)}>
-      <h1>{first ? `Todo listo, ${first}.` : "Todo listo."}</h1>
+      <h1>{t.allSet(first)}</h1>
       <Yours name={name} />
-      <ul className="keys-row" aria-label="Atajos">
-        {SHORTCUTS.map(([key, does]) => (
+      <ul className="keys-row" aria-label={t.shortcuts}>
+        {shortcuts().map(([key, does]) => (
           <li key={key}>
             <span className="keycaps">
-              <kbd>Ctrl</kbd>
+              <kbd>{shared.ctrl}</kbd>
               <kbd>{key}</kbd>
             </span>
             <span>{does}</span>
@@ -495,7 +507,7 @@ function Ready() {
       </ul>
       {warned.length > 0 && <Lines lines={warned} />}
       <div className="actions">
-        <Go focus>Abrir Sens</Go>
+        <Go focus>{t.openSens}</Go>
       </div>
     </form>
   );
@@ -507,8 +519,8 @@ function Yours({ name }: { name: string }) {
   const state = useStore(settings, (s) => s.providers?.[0]);
   const letters = initials(name);
   const numbers: [number, string][] = [
-    [adopted?.sessions ?? 0, adopted?.sessions === 1 ? "sesión" : "sesiones"],
-    [adopted?.projects ?? 0, adopted?.projects === 1 ? "proyecto" : "proyectos"],
+    [adopted?.sessions ?? 0, t.sessionWord(adopted?.sessions ?? 0)],
+    [adopted?.projects ?? 0, t.projectWord(adopted?.projects ?? 0)],
     [imported?.added.length ?? 0, "MCP"],
   ];
   const shown = numbers.filter(([count]) => count > 0);
@@ -518,8 +530,9 @@ function Yours({ name }: { name: string }) {
         {letters || <Icon svg={ICONS.user} />}
       </span>
       <span className="yours-who">
-        <b>{name || "Sin nombre"}</b>
-        <span>{state ? providerLine(state)[0] : "Claude Code sin comprobar"}</span>
+        <b>{name || t.noName}</b>
+        <span>{state ? providerLine(state)[0] : t.unchecked}</span>
+
       </span>
       {shown.length > 0 && (
         <dl className="yours-numbers">

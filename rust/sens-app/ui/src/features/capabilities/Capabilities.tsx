@@ -1,14 +1,15 @@
-import { StrictMode, useLayoutEffect, useRef, type KeyboardEvent } from "react";
-import { createRoot } from "react-dom/client";
+import { useLayoutEffect, useRef, type KeyboardEvent } from "react";
 import { useStore } from "zustand";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { useSheet } from "../../shared/useSheet";
+import "./capabilities.css";
+import { t } from "./copy";
 import { DetailView } from "./Detail";
 import { Explore } from "./Explore";
 import { serverForm, skillForm } from "./forms";
 import { Installed } from "./Installed";
-import { CAP_TABS } from "./kinds";
+import { CAP_TABS, entriesOf } from "./kinds";
 import { capabilities, consumeScroll, importSkill, showMode, type Mode } from "./store";
 
 export function Capabilities() {
@@ -27,8 +28,8 @@ export function Capabilities() {
     <>
       <header className="view-top">
         <div>
-          <h1 className="label">Capacidades</h1>
-          <p>Skills, plugins y servidores MCP que Sens puede usar en tus sesiones.</p>
+          <h1 className="label">{t.title}</h1>
+          <p>{t.lede}</p>
         </div>
         <ModeSwitch mode={mode} />
         <AddMenu hidden={mode !== "installed" || detailing} />
@@ -40,13 +41,12 @@ export function Capabilities() {
   );
 }
 
-const MODES: [Mode, string][] = [
-  ["installed", "Instaladas"],
-  ["explore", "Explorar"],
-];
+const MODES: Mode[] = ["installed", "explore"];
 
 function ModeSwitch({ mode }: { mode: Mode }) {
   const bar = useRef<HTMLDivElement>(null);
+  const caps = useStore(capabilities, (s) => s.caps);
+  const count = entriesOf(caps).length;
 
   function onKeyDown(event: KeyboardEvent) {
     if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
@@ -57,8 +57,8 @@ function ModeSwitch({ mode }: { mode: Mode }) {
   }
 
   return (
-    <div className="segmented" id="caps-mode" role="tablist" aria-label="Qué ver" ref={bar} onKeyDown={onKeyDown}>
-      {MODES.map(([id, label]) => (
+    <div className="segmented" id="caps-mode" role="tablist" aria-label={t.modes} ref={bar} onKeyDown={onKeyDown}>
+      {MODES.map((id) => (
         <button
           key={id}
           role="tab"
@@ -69,7 +69,8 @@ function ModeSwitch({ mode }: { mode: Mode }) {
           tabIndex={id === mode ? 0 : -1}
           onClick={() => showMode(id)}
         >
-          {label}
+          {id === "installed" ? t.installedMode : t.exploreMode}
+          {id === "installed" && count > 0 && <span className="count">{count}</span>}
         </button>
       ))}
     </div>
@@ -106,17 +107,17 @@ function AddMenu({ hidden }: { hidden: boolean }) {
         onClick={add}
       >
         <Icon svg={ICONS.plus} />
-        Añadir
+        {t.add}
       </button>
-      <div className="sheet menu drop" id="caps-menu" role="menu" aria-label="Añadir capacidad" {...menu.sheet}>
+      <div className="sheet menu drop" id="caps-menu" role="menu" aria-label={t.addMenu} {...menu.sheet}>
         <button className="menu-item" role="menuitem" tabIndex={-1} onClick={() => pick(() => skillForm(button()))}>
-          Crear skill
+          {t.createSkill}
         </button>
         <button className="menu-item" role="menuitem" tabIndex={-1} onClick={() => pick(importSkill)}>
-          Importar carpeta
+          {t.importFolder}
         </button>
         <button className="menu-item" role="menuitem" tabIndex={-1} onClick={() => pick(() => serverForm(button()))}>
-          Añadir servidor MCP
+          {t.addServer}
         </button>
       </div>
     </div>

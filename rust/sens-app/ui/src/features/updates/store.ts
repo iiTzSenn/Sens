@@ -3,6 +3,7 @@ import { createStore } from "zustand/vanilla";
 import { commands, events } from "../../ipc/commands";
 import type { Release, UpdateStage } from "../../ipc/types";
 import { profile } from "../profile/store";
+import { t } from "./copy";
 
 const UPDATE_EVERY = 12 * 60 * 60 * 1000;
 
@@ -25,10 +26,10 @@ let timer = 0;
 const automatic = () => profile.getState().person.checkUpdates !== false;
 
 export function updateState({ checking, fault, latest, checked }: Updates) {
-  if (checking) return "Comprobando…";
+  if (checking) return t.checking;
   if (fault) return fault;
-  if (latest) return `Sens ${latest.version} disponible.`;
-  if (checked) return "Estás en la última versión.";
+  if (latest) return t.available(latest.version);
+  if (checked) return t.latest;
   return "";
 }
 

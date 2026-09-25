@@ -14,6 +14,7 @@ import { close, focused, keptLayout, newPane, other, paneOf, panes, place, setFo
 import { forgetEdits, project, type View } from "../features/project/store";
 import { failRail, fold, loadRail, oweRail, rail } from "../features/rail/store";
 import { forgetSite } from "../features/web/store";
+import { t } from "./copy";
 
 // Where the main area goes: a session of a project, a new one, a view over
 // the chat. Opening a project other than the one open resets what shows it.
@@ -143,7 +144,7 @@ export async function closePane(pane: Pane) {
 export const dropShown = (pane: Pane, home: string) => (split() ? closePane(pane) : draft(home, pane));
 
 export async function chooseFolder() {
-  const picked = await open({ directory: true, title: "Elige la carpeta de trabajo", defaultPath: project.getState().root || undefined });
+  const picked = await open({ directory: true, title: t.chooseFolder, defaultPath: project.getState().root || undefined });
   if (typeof picked === "string") await draft(picked);
 }
 

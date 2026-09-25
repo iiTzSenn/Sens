@@ -1,6 +1,7 @@
 import { useRef, type KeyboardEvent } from "react";
 import { useStore } from "zustand";
 import { project } from "../features/project/store";
+import { shared } from "./copy";
 import { stem } from "./format.js";
 import { Icon } from "./Icon";
 import { ICONS } from "./icons.js";
@@ -107,7 +108,7 @@ export function ProjectFocus({
   return (
     <div className="view-focus">
       <span className="label" id={`${prefix}-project`} title={root}>
-        {root ? stem(root) : "Sin proyecto"}
+        {root ? stem(root) : shared.noProject}
       </span>
       <p className="tally" id={`${prefix}-tally`} aria-live="polite">
         {root ? tally(root) : unopened}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "zustand";
 import { commands } from "../../ipc/commands";
-import { PICTURE, parentOf, plural, stem } from "../../shared/format.js";
+import { PICTURE, parentOf, stem } from "../../shared/format.js";
 import { FileIcon } from "../../shared/FileIcon";
 import { Icon } from "../../shared/Icon";
 import { LinesCard } from "../../shared/LinesCard";
@@ -9,13 +9,13 @@ import { addedRows, patchRows } from "../../shared/rows";
 import { languageOf } from "../../shared/syntax/languages";
 import { ICONS } from "../../shared/icons.js";
 import { project } from "../project/store";
+import { t } from "./copy";
 import type { DiffFile } from "./diff";
 import { showFile, type Body } from "../files/view";
 import { changes, unfold } from "./store";
 
 const CHANGE_PREVIEW = 400;
 const CHANGE_CAP = 300;
-const CHANGE_WORD: Record<DiffFile["state"], string> = { A: "Nuevo", M: "Modificado", D: "Borrado", R: "Renombrado" };
 
 export function ChangesPanel() {
   const changed = useStore(changes, (s) => s.changed);
@@ -24,13 +24,13 @@ export function ChangesPanel() {
   const root = useStore(project, (s) => s.work);
   const files = changed || [];
   const quiet = !root
-    ? "Sin carpeta."
+    ? t.noFolder
     : changed === null
-      ? "Leyendo cambios…"
+      ? t.reading
       : !versioned
-        ? "Esta carpeta no está en un repositorio git."
+        ? t.notRepo
         : !files.length
-          ? "Sin cambios desde el último commit."
+          ? t.clean
           : "";
 
   return (
@@ -45,7 +45,7 @@ export function ChangesPanel() {
             <ChangeRow key={file.path} file={file} />
           ))}
           {files.length > CHANGE_CAP && (
-            <p className="none">{`Y ${plural(files.length - CHANGE_CAP, "fichero más", "ficheros más")}.`}</p>
+            <p className="none">{t.more(files.length - CHANGE_CAP)}</p>
           )}
         </>
       )}
@@ -60,7 +60,7 @@ export function ChangeTotals() {
   const sum = (key: "plus" | "minus") => files.reduce((total, file) => total + file[key], 0);
   return (
     <>
-      <span className="files">{plural(files.length, "fichero", "ficheros")}</span>
+      <span className="files">{t.files(files.length)}</span>
       <span className="plus">{`+${sum("plus")}`}</span>
       <span className="minus">{`−${sum("minus")}`}</span>
     </>
@@ -86,7 +86,7 @@ function ChangeRow({ file }: { file: DiffFile }) {
         <span className="chev">
           <Icon svg={ICONS.shut} />
         </span>
-        <span className="state" data-state={file.state} title={CHANGE_WORD[file.state] || file.state}>
+        <span className="state" data-state={file.state} title={t.states[file.state] || file.state}>
           {file.state}
         </span>
         <FileIcon path={file.path} />
@@ -97,8 +97,8 @@ function ChangeRow({ file }: { file: DiffFile }) {
           <button
             className="jump"
             type="button"
-            title="Abrir en Ficheros"
-            aria-label="Abrir en Ficheros"
+            title={t.openInFiles}
+            aria-label={t.openInFiles}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -118,9 +118,9 @@ function Counts({ file, plus }: { file: DiffFile; plus: number }) {
   return (
     <span className="marks">
       {file.binary ? (
-        <span className="files">binario</span>
+        <span className="files">{t.binary}</span>
       ) : file.fresh && !plus ? (
-        <span className="plus">nuevo</span>
+        <span className="plus">{t.fresh}</span>
       ) : (
         <>
           <span className="plus">{`+${plus}`}</span>
@@ -147,7 +147,7 @@ function ChangeBody({ file, counted }: { file: DiffFile; counted: (lines: number
     };
   }, [file]);
 
-  const binary = <p className="none">Fichero binario.</p>;
+  const binary = <p className="none">{t.binaryFile}</p>;
   if (file.binary || (file.fresh && PICTURE.test(file.path))) return binary;
   if (file.fresh) {
     if (!fresh) return null;
@@ -156,7 +156,7 @@ function ChangeBody({ file, counted }: { file: DiffFile; counted: (lines: number
     return <Added path={file.path} text={fresh.text} counted={counted} />;
   }
   if (!file.hunks.length) {
-    return <p className="none">{file.state === "R" ? "Renombrado, sin cambios de contenido." : "Sin cambios de contenido."}</p>;
+    return <p className="none">{file.state === "R" ? t.renamedOnly : t.sameContent}</p>;
   }
   return <Patch file={file} />;
 }

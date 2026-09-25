@@ -5,6 +5,7 @@ use serde::Serialize;
 use winreg::RegKey;
 use winreg::enums::HKEY_CURRENT_USER;
 
+use crate::language::said;
 use crate::layout::{APP, Layout};
 
 const PRODUCT: &str = "Sens";
@@ -22,7 +23,16 @@ fn user() -> RegKey {
 }
 
 pub fn write(layout: &Layout, version: &str, kilobytes: u32) -> Result<(), String> {
-    let failed = |error: std::io::Error| format!("no pude registrar Sens en Windows: {error}");
+    let failed = |error: std::io::Error| {
+        said!(
+            en: "couldn’t register Sens with Windows: {error}",
+            es: "no pude registrar Sens en Windows: {error}",
+            fr: "impossible d’inscrire Sens dans Windows : {error}",
+            de: "Sens konnte nicht in Windows registriert werden: {error}",
+            ja: "Sens を Windows に登録できませんでした: {error}",
+            zh: "无法向 Windows 注册 Sens：{error}",
+        )
+    };
     let (entry, _) = user().create_subkey(&layout.uninstall_key).map_err(failed)?;
     let uninstaller = quoted(&layout.uninstaller());
     let texts = [
@@ -49,7 +59,14 @@ pub fn erase(layout: &Layout) -> Result<(), String> {
     for key in [&layout.uninstall_key, &layout.remembered_key] {
         match user().delete_subkey_all(key) {
             Err(error) if error.kind() != ErrorKind::NotFound => {
-                return Err(format!("no pude quitar Sens de Windows: {error}"));
+                return Err(said!(
+                    en: "couldn’t remove Sens from Windows: {error}",
+                    es: "no pude quitar Sens de Windows: {error}",
+                    fr: "impossible de retirer Sens de Windows : {error}",
+                    de: "Sens konnte nicht aus Windows entfernt werden: {error}",
+                    ja: "Windows から Sens を削除できませんでした: {error}",
+                    zh: "无法从 Windows 中移除 Sens：{error}",
+                ));
             }
             _ => {}
         }

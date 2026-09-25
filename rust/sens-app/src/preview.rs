@@ -7,13 +7,46 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::SystemTime;
 
+use sens_agent::said;
+
 use crate::files;
 
 const INDEX: &str = "index.html";
 const TEXT: &str = "text/plain; charset=utf-8";
 const HTML: &str = "text/html; charset=utf-8";
-const MISSING: &[u8] = b"no encontrado";
-const BUSY: &str = "la vista previa esta ocupada";
+
+fn missing() -> String {
+    said!(
+        en: "not found",
+        es: "no encontrado",
+        fr: "introuvable",
+        de: "nicht gefunden",
+        ja: "見つかりません",
+        zh: "未找到",
+    )
+}
+
+fn busy() -> String {
+    said!(
+        en: "the preview is busy",
+        es: "la vista previa está ocupada",
+        fr: "l’aperçu est occupé",
+        de: "die Vorschau ist belegt",
+        ja: "プレビューは使用中です",
+        zh: "预览正忙",
+    )
+}
+
+fn unopened(error: std::io::Error) -> String {
+    said!(
+        en: "couldn’t open the preview: {error}",
+        es: "no pude abrir la vista previa: {error}",
+        fr: "impossible d’ouvrir l’aperçu : {error}",
+        de: "die Vorschau konnte nicht geöffnet werden: {error}",
+        ja: "プレビューを開けませんでした: {error}",
+        zh: "无法打开预览：{error}",
+    )
+}
 
 #[derive(Default)]
 pub struct Site {
@@ -30,16 +63,16 @@ pub fn url(site: &Site, root: &Path, path: &str) -> Result<String, String> {
     let full = files::inside(root, path)?;
     let relative = full
         .strip_prefix(files::home(root)?)
-        .map_err(|_| format!("{path} está fuera del proyecto"))?
+        .map_err(|_| files::outside(path))?
         .to_path_buf();
-    let mut open = site.open.lock().map_err(|_| BUSY.to_string())?;
+    let mut open = site.open.lock().map_err(|_| busy())?;
     if open.is_none() {
         *open = Some(start(root)?);
     }
     let Some(served) = open.as_ref() else {
-        return Err(BUSY.to_string());
+        return Err(busy());
     };
-    *served.root.lock().map_err(|_| BUSY.to_string())? = root.to_path_buf();
+    *served.root.lock().map_err(|_| busy())? = root.to_path_buf();
     Ok(format!(
         "http://127.0.0.1:{}/{}/{}",
         served.port,
@@ -49,12 +82,8 @@ pub fn url(site: &Site, root: &Path, path: &str) -> Result<String, String> {
 }
 
 fn start(root: &Path) -> Result<Served, String> {
-    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-        .map_err(|error| format!("no pude abrir la vista previa: {error}"))?;
-    let port = listener
-        .local_addr()
-        .map_err(|error| format!("no pude abrir la vista previa: {error}"))?
-        .port();
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(unopened)?;
+    let port = listener.local_addr().map_err(unopened)?.port();
 
     let pass = pass();
     let root = Arc::new(Mutex::new(root.to_path_buf()));
@@ -95,14 +124,14 @@ fn answer(stream: TcpStream, root: &Mutex<PathBuf>, pass: &str) -> std::io::Resu
     let head = method == "HEAD";
 
     if method != "GET" && !head {
-        return send(&mut stream, "405 Method Not Allowed", TEXT, MISSING, head);
+        return send(&mut stream, "405 Method Not Allowed", TEXT, missing().as_bytes(), head);
     }
 
     let Some(file) = wanted(root, pass, target) else {
-        return send(&mut stream, "404 Not Found", TEXT, MISSING, head);
+        return send(&mut stream, "404 Not Found", TEXT, missing().as_bytes(), head);
     };
     let Ok(body) = std::fs::read(&file) else {
-        return send(&mut stream, "404 Not Found", TEXT, MISSING, head);
+        return send(&mut stream, "404 Not Found", TEXT, missing().as_bytes(), head);
     };
 
     send(&mut stream, "200 OK", kind(&file), &body, head)

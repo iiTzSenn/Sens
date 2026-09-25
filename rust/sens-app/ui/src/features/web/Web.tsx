@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { openOutside } from "../../shared/outside";
+import { t } from "./copy";
 import { addressOf, aim, goBack, goForward, holdFrame, pickWidth, reloadSite, syncBrowser, toggleLog, web } from "./store";
 
 const WIDTHS = [0, 390, 768, 1280];
@@ -49,8 +50,8 @@ export function Address() {
         ref={field}
         className="field"
         id="site-url"
-        placeholder="Busca o escribe una dirección"
-        aria-label="Dirección o página del proyecto"
+        placeholder={t.typing}
+        aria-label={t.address}
         autoComplete="off"
         spellCheck={false}
         title={title || undefined}
@@ -65,7 +66,7 @@ export function Outside() {
   const url = useStore(web, (s) => s.url);
   if (!url) return null;
   return (
-    <button className="icon-btn" id="site-out" title="Abrir en el navegador" aria-label="Abrir en el navegador" onClick={() => openOutside(url)}>
+    <button className="icon-btn" id="site-out" title={t.openOutside} aria-label={t.openOutside} onClick={() => openOutside(url)}>
       <Icon svg={ICONS.external} />
     </button>
   );
@@ -79,27 +80,27 @@ function Bar() {
   const fault = useStore(web, (s) => s.fault);
   return (
     <div className="site-bar">
-      <button className="icon-btn" id="site-back" title="Atrás" aria-label="Atrás" disabled={!shown} onClick={goBack}>
+      <button className="icon-btn" id="site-back" title={t.back} aria-label={t.back} disabled={!shown} onClick={goBack}>
         <Icon svg={ICONS.back} />
       </button>
-      <button className="icon-btn" id="site-forward" title="Adelante" aria-label="Adelante" disabled={!shown} onClick={goForward}>
+      <button className="icon-btn" id="site-forward" title={t.forward} aria-label={t.forward} disabled={!shown} onClick={goForward}>
         <Icon svg={ICONS.forward} />
       </button>
-      <button className="icon-btn" id="site-reload" title="Recargar" aria-label="Recargar" disabled={!shown} data-loading={String(loading)} onClick={reloadSite}>
+      <button className="icon-btn" id="site-reload" title={t.reload} aria-label={t.reload} disabled={!shown} data-loading={String(loading)} onClick={reloadSite}>
         <Icon svg={ICONS.refresh} />
       </button>
-      <div className="segment" id="site-widths" role="group" aria-label="Ancho">
+      <div className="segment" id="site-widths" role="group" aria-label={t.width}>
         {WIDTHS.map((one) => (
           <button key={one} aria-pressed={width === one} onClick={() => pickWidth(one)}>
-            {one || "Auto"}
+            {one || t.auto}
           </button>
         ))}
       </div>
       <button
         className="icon-btn"
         id="site-console"
-        title="Consola"
-        aria-label="Consola"
+        title={t.console}
+        aria-label={t.console}
         aria-pressed={logShown}
         data-fault={String(fault)}
         hidden={!shown}
@@ -132,7 +133,7 @@ function Page() {
     <div className="site-frame" id="site-frame" ref={box}>
       {!shown && (
         <p className="site-empty" id="site-empty">
-          Busca en la web o escribe una dirección: una web, tu servidor local (localhost:5173) o una página del proyecto (index.html).
+          {t.waiting}
         </p>
       )}
     </div>

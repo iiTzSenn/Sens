@@ -9,7 +9,14 @@ use crate::system;
 pub const SIZE: u64 = 7_329_792;
 const TICKS: u32 = 24;
 
-pub fn install(dir: &Path, start_menu: bool, desktop: bool, look: bool, cancel: &AtomicBool, report: Report) -> Result<(), String> {
+pub struct Asked {
+    pub start_menu: bool,
+    pub desktop: bool,
+    pub look: bool,
+    pub language: bool,
+}
+
+pub fn install(dir: &Path, asked: &Asked, cancel: &AtomicBool, report: Report) -> Result<(), String> {
     let started = Instant::now();
     report(Step::Check, 0.02, &progress::space(system::free_space(dir)));
     pause(cancel, 300)?;
@@ -20,17 +27,19 @@ pub fn install(dir: &Path, start_menu: bool, desktop: bool, look: bool, cancel: 
     }
     report(Step::Swap, 0.82, &progress::placing(dir));
     rest(250);
-    report(Step::Register, 0.86, progress::UNINSTALLER);
+    report(Step::Register, 0.86, &progress::uninstaller());
     rest(200);
-    report(Step::Register, 0.9, progress::REGISTERING);
+    report(Step::Register, 0.9, &progress::registering());
     rest(250);
-    if look {
-        report(Step::Register, 0.92, progress::LOOK);
-        rest(150);
+    for (wanted, line, share) in [(asked.look, progress::saving_look(), 0.92), (asked.language, progress::saving_language(), 0.93)] {
+        if wanted {
+            report(Step::Register, share, &line);
+            rest(150);
+        }
     }
-    for (asked, line, share) in [(start_menu, progress::START_MENU, 0.94), (desktop, progress::DESKTOP, 0.97)] {
-        if asked {
-            report(Step::Shortcuts, share, line);
+    for (wanted, line, share) in [(asked.start_menu, progress::start_menu(), 0.94), (asked.desktop, progress::desktop(), 0.97)] {
+        if wanted {
+            report(Step::Shortcuts, share, &line);
             rest(150);
         }
     }
@@ -42,12 +51,12 @@ pub fn uninstall(dir: &Path, remove_data: bool, report: Report) -> Result<(), St
     let started = Instant::now();
     report(Step::Remove, 0.2, &progress::deleting(dir));
     rest(300);
-    report(Step::Remove, 0.45, progress::UNLINKING);
+    report(Step::Remove, 0.45, &progress::unlinking());
     rest(200);
-    report(Step::Remove, 0.65, progress::UNREGISTERING);
+    report(Step::Remove, 0.65, &progress::unregistering());
     rest(250);
     if remove_data {
-        report(Step::Remove, 0.8, progress::FORGETTING);
+        report(Step::Remove, 0.8, &progress::forgetting());
         rest(300);
     }
     report(Step::Done, 1.0, &progress::finished(started.elapsed()));

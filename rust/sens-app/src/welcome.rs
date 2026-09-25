@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
 
+use sens_agent::said;
 use sens_agent::session;
 use sens_agent::transcript;
 use serde::Serialize;
@@ -25,8 +26,28 @@ const HTTP: &str = "http";
 const VSCODE_INPUT: &str = "${input:";
 const SECURE: &str = "https://";
 const LOCAL: &str = "http://localhost";
-const GONE: &str = "la carpeta ya no existe";
-const VANISHED: &str = "ya no está en su configuración";
+
+fn gone() -> String {
+    said!(
+        en: "the folder no longer exists",
+        es: "la carpeta ya no existe",
+        fr: "le dossier n’existe plus",
+        de: "der Ordner existiert nicht mehr",
+        ja: "フォルダーはもう存在しません",
+        zh: "该文件夹已不存在",
+    )
+}
+
+fn vanished() -> String {
+    said!(
+        en: "it’s no longer in its configuration",
+        es: "ya no está en su configuración",
+        fr: "il ne figure plus dans sa configuration",
+        de: "er steht nicht mehr in seiner Konfiguration",
+        ja: "設定から削除されています",
+        zh: "它已从配置中移除",
+    )
+}
 
 #[derive(Clone, Copy)]
 enum Under {
@@ -148,7 +169,16 @@ struct Taken {
 
 impl Places {
     pub fn current() -> Result<Self, String> {
-        let home = std::env::home_dir().ok_or("no encuentro tu carpeta de usuario")?;
+        let home = std::env::home_dir().ok_or_else(|| {
+            said!(
+                en: "can’t find your user folder",
+                es: "no encuentro tu carpeta de usuario",
+                fr: "dossier utilisateur introuvable",
+                de: "Benutzerordner nicht gefunden",
+                ja: "ユーザーフォルダーが見つかりません",
+                zh: "找不到你的用户文件夹",
+            )
+        })?;
         let known = |variable: &str, parts: [&str; 2]| {
             std::env::var_os(variable)
                 .filter(|folder| !folder.is_empty())
@@ -156,8 +186,26 @@ impl Places {
                 .unwrap_or_else(|| home.join(parts[0]).join(parts[1]))
         };
         Ok(Self {
-            claude: served::config_folder().ok_or("no encuentro la carpeta de Claude Code")?,
-            claude_json: served::global_config().ok_or("no encuentro la configuración de Claude Code")?,
+            claude: served::config_folder().ok_or_else(|| {
+                said!(
+                    en: "can’t find the Claude Code folder",
+                    es: "no encuentro la carpeta de Claude Code",
+                    fr: "dossier de Claude Code introuvable",
+                    de: "Ordner von Claude Code nicht gefunden",
+                    ja: "Claude Code のフォルダーが見つかりません",
+                    zh: "找不到 Claude Code 文件夹",
+                )
+            })?,
+            claude_json: served::global_config().ok_or_else(|| {
+                said!(
+                    en: "can’t find the Claude Code configuration",
+                    es: "no encuentro la configuración de Claude Code",
+                    fr: "configuration de Claude Code introuvable",
+                    de: "Konfiguration von Claude Code nicht gefunden",
+                    ja: "Claude Code の設定が見つかりません",
+                    zh: "找不到 Claude Code 配置",
+                )
+            })?,
             appdata: known("APPDATA", ["AppData", "Roaming"]),
             localappdata: known("LOCALAPPDATA", ["AppData", "Local"]),
             app_folder: std::env::current_exe()
@@ -210,7 +258,7 @@ pub fn adopt(base: &Path, places: &Places, roots: &[String], mut report: impl Fn
     for root in unique(roots) {
         let registered = match refused.remove(root) {
             Some(reason) => Err(reason),
-            None if !Path::new(root).is_dir() => Err(GONE.to_string()),
+            None if !Path::new(root).is_dir() => Err(gone()),
             None => projects::register(base, root),
         };
         match registered {
@@ -227,7 +275,7 @@ pub fn import_servers(base: &Path, places: &Places, ids: &[String], roots: &[Str
     for id in unique(ids) {
         let Some(server) = offered.iter().find(|server| server.id == id) else {
             let name = id.split_once(':').map_or(id, |(_, name)| name);
-            imported.skipped.push(Unimported { name: name.to_string(), reason: VANISHED.into() });
+            imported.skipped.push(Unimported { name: name.to_string(), reason: vanished() });
             continue;
         };
         match bring(base, server, roots) {
@@ -470,13 +518,62 @@ fn described(source: &Source, name: String, entry: &Value, taken: &Taken) -> For
     let headers: BTreeMap<String, String> = texts(&entry["headers"]).into_iter().chain(texts(&entry["http_headers"])).collect();
     let command = entry["command"].as_str().unwrap_or_default().to_string();
     let checks = [
-        (!capabilities::is_server_name(&name), "el nombre no vale en Sens: usa letras, números, guiones o guiones bajos".to_string()),
-        (taken.sens.contains(&name), "ya hay un servidor con ese nombre en Sens".to_string()),
-        (taken.claude_code.contains(&name), "Claude Code ya tiene un servidor con ese nombre".to_string()),
-        (entry.to_string().contains(VSCODE_INPUT), "usa variables ${input:…} de VS Code, que Sens no puede rellenar".to_string()),
-        (!TRANSPORTS.contains(&declared), format!("usa el transporte {declared}, que Sens no admite")),
-        (kind == STDIO && command.trim().is_empty(), "no dice qué comando lanzar".to_string()),
-        (kind != STDIO && !url.starts_with(SECURE) && !url.starts_with(LOCAL), "su dirección no empieza por https://".to_string()),
+        (!capabilities::is_server_name(&name), said!(
+            en: "the name won’t work in Sens: use letters, numbers, hyphens or underscores",
+            es: "el nombre no vale en Sens: usa letras, números, guiones o guiones bajos",
+            fr: "ce nom n’est pas valide dans Sens : utilisez des lettres, des chiffres, des traits d’union ou des tirets bas",
+            de: "der Name ist in Sens nicht gültig: nutze Buchstaben, Ziffern, Bindestriche oder Unterstriche",
+            ja: "この名前は Sens では使えません。英数字、ハイフン、アンダースコアを使ってください",
+            zh: "该名称在 Sens 中无效：请使用字母、数字、连字符或下划线",
+        )),
+        (taken.sens.contains(&name), said!(
+            en: "there’s already a server with that name in Sens",
+            es: "ya hay un servidor con ese nombre en Sens",
+            fr: "un serveur porte déjà ce nom dans Sens",
+            de: "in Sens gibt es schon einen Server mit diesem Namen",
+            ja: "Sens にはすでに同じ名前のサーバーがあります",
+            zh: "Sens 中已有同名服务器",
+        )),
+        (taken.claude_code.contains(&name), said!(
+            en: "Claude Code already has a server with that name",
+            es: "Claude Code ya tiene un servidor con ese nombre",
+            fr: "Claude Code a déjà un serveur portant ce nom",
+            de: "Claude Code hat schon einen Server mit diesem Namen",
+            ja: "Claude Code にはすでに同じ名前のサーバーがあります",
+            zh: "Claude Code 中已有同名服务器",
+        )),
+        (entry.to_string().contains(VSCODE_INPUT), said!(
+            en: "it uses VS Code ${{input:…}} variables, which Sens can’t fill in",
+            es: "usa variables ${{input:…}} de VS Code, que Sens no puede rellenar",
+            fr: "il utilise des variables ${{input:…}} de VS Code, que Sens ne peut pas renseigner",
+            de: "er nutzt ${{input:…}}-Variablen von VS Code, die Sens nicht ausfüllen kann",
+            ja: "VS Code の ${{input:…}} 変数を使っていますが、Sens では値を入れられません",
+            zh: "它使用了 VS Code 的 ${{input:…}} 变量，Sens 无法填写",
+        )),
+        (!TRANSPORTS.contains(&declared), said!(
+            en: "it uses the {declared} transport, which Sens doesn’t support",
+            es: "usa el transporte {declared}, que Sens no admite",
+            fr: "il utilise le transport {declared}, que Sens ne prend pas en charge",
+            de: "er nutzt den Transport {declared}, den Sens nicht unterstützt",
+            ja: "Sens が対応していない {declared} トランスポートを使っています",
+            zh: "它使用了 Sens 不支持的 {declared} 传输方式",
+        )),
+        (kind == STDIO && command.trim().is_empty(), said!(
+            en: "it doesn’t say which command to run",
+            es: "no dice qué comando lanzar",
+            fr: "il n’indique pas quelle commande exécuter",
+            de: "er gibt nicht an, welcher Befehl ausgeführt werden soll",
+            ja: "実行するコマンドが指定されていません",
+            zh: "未指定要运行的命令",
+        )),
+        (kind != STDIO && !url.starts_with(SECURE) && !url.starts_with(LOCAL), said!(
+            en: "its address doesn’t start with https://",
+            es: "su dirección no empieza por https://",
+            fr: "son adresse ne commence pas par https://",
+            de: "seine Adresse beginnt nicht mit https://",
+            ja: "アドレスが https:// で始まっていません",
+            zh: "其地址不以 https:// 开头",
+        )),
     ];
     ForeignServer {
         id: format!("{}:{name}", source.id),
@@ -511,6 +608,7 @@ fn text(value: &Value) -> String {
 mod tests {
     use std::time::SystemTime;
 
+    use sens_agent::language::{Language, speaking};
     use sens_agent::session::Entry;
     use serde_json::json;
 
@@ -769,15 +867,21 @@ mod tests {
         let found = scan(&base, &places);
         let reason = |id: &str| found.foreign.iter().find(|server| server.id == id).unwrap().blocked.clone();
 
-        assert!(reason("cursor:Brave Search").contains("el nombre no vale"));
-        assert!(reason("cursor:ya-en-sens").contains("en Sens"));
-        assert!(reason("cursor:github").contains("Claude Code ya tiene"));
-        assert!(reason("cursor:socket").contains("transporte ws"));
+        assert!(reason("cursor:Brave Search").contains("the name won’t work"));
+        assert!(reason("cursor:ya-en-sens").contains("in Sens"));
+        assert!(reason("cursor:github").contains("Claude Code already has"));
+        assert!(reason("cursor:socket").contains("the ws transport"));
         assert_eq!(found.foreign.iter().find(|server| server.id == "cursor:socket").unwrap().kind, HTTP);
         assert!(reason("cursor:plano").contains("https://"));
         assert_eq!(reason("cursor:local"), "");
-        assert!(reason("cursor:vacio").contains("comando"));
+        assert!(reason("cursor:vacio").contains("command"));
         assert!(reason("vscode:tokens").contains("${input:"));
+
+        let spoken = speaking(Language::Es, || scan(&base, &places));
+        let reason = |id: &str| spoken.foreign.iter().find(|server| server.id == id).unwrap().blocked.clone();
+        assert_eq!(reason("cursor:socket"), "usa el transporte ws, que Sens no admite");
+        assert_eq!(reason("vscode:tokens"), "usa variables ${input:…} de VS Code, que Sens no puede rellenar");
+        assert_eq!(reason("cursor:local"), "");
     }
 
     #[test]
@@ -800,8 +904,8 @@ mod tests {
         let skipped: Vec<(&str, &str)> = imported.skipped.iter().map(|skip| (skip.name.as_str(), skip.reason.as_str())).collect();
         assert_eq!(skipped.len(), 2);
         assert_eq!(skipped[0].0, "Mal Nombre");
-        assert!(skipped[0].1.contains("el nombre no vale"));
-        assert_eq!(skipped[1], ("borrado", VANISHED));
+        assert!(skipped[0].1.contains("the name won’t work"));
+        assert_eq!(skipped[1], ("borrado", vanished().as_str()));
 
         for root in [&here, &there] {
             let servers = capabilities::all(&base, root).servers;
@@ -817,7 +921,7 @@ mod tests {
 
         let again = import_servers(&base, &places, &ids[..1], &[here]);
         assert!(again.added.is_empty());
-        assert!(again.skipped[0].reason.contains("en Sens"));
+        assert!(again.skipped[0].reason.contains("in Sens"));
     }
 
     #[test]
@@ -867,7 +971,7 @@ mod tests {
         std::fs::remove_dir_all(&gone).unwrap();
 
         let roots = [text_of(&locked), text_of(&gone), text_of(&fine)];
-        let adopted = adopt(&base, &places, &roots, |_, _| {});
+        let adopted = speaking(Language::Es, || adopt(&base, &places, &roots, |_, _| {}));
 
         assert_eq!((adopted.sessions, adopted.projects), (1, 1));
         let skipped: Vec<&str> = adopted.skipped.iter().map(|skip| skip.root.as_str()).collect();

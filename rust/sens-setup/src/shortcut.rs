@@ -12,15 +12,36 @@ use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
 use windows::Win32::UI::Shell::{IShellLinkW, SHStrDupW, ShellLink};
 use windows::core::{HSTRING, Interface};
 
+use crate::language::said;
+
 const APP_ID: &str = "dev.sens.desktop";
 
 pub fn create(at: &Path, target: &Path, dir: &Path) -> Result<(), String> {
-    let failed = |error: String| format!("no pude crear el acceso directo {}: {error}", at.display());
+    let shown = at.display();
+    let failed = |error: String| {
+        said!(
+            en: "couldn’t create the shortcut {shown}: {error}",
+            es: "no pude crear el acceso directo {shown}: {error}",
+            fr: "impossible de créer le raccourci {shown} : {error}",
+            de: "die Verknüpfung {shown} konnte nicht erstellt werden: {error}",
+            ja: "ショートカット {shown} を作成できませんでした: {error}",
+            zh: "无法创建快捷方式 {shown}：{error}",
+        )
+    };
     if let Some(parent) = at.parent() {
         fs::create_dir_all(parent).map_err(|error| failed(error.to_string()))?;
     }
     thread::scope(|scope| scope.spawn(|| in_apartment(|| save(at, target, dir))).join())
-        .map_err(|_| failed("Windows no respondió".into()))?
+        .map_err(|_| {
+            failed(said!(
+                en: "Windows didn’t respond",
+                es: "Windows no respondió",
+                fr: "Windows n’a pas répondu",
+                de: "Windows hat nicht geantwortet",
+                ja: "Windows が応答しませんでした",
+                zh: "Windows 没有响应",
+            ))
+        })?
         .map_err(|error| failed(error.message()))
 }
 

@@ -18,7 +18,7 @@ export const artifacts = createStore(() => ({
   items: [] as Artifact[],
   loadFault: "",
   listFault: "",
-  tab: (SHELF_TABS.some(([id]) => id === kept) ? kept : "all") as ShelfTab,
+  tab: (SHELF_TABS.some((id) => id === kept) ? kept : "all") as ShelfTab,
 }));
 
 const set = artifacts.setState;

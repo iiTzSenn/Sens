@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatEvent } from "../../ipc/types";
+import { showLanguage } from "../../shared/i18n";
 import { profile } from "../profile/store";
 import { rail } from "../rail/store";
 import { notePresence, noticeOf, tellAway } from "./store";
@@ -19,7 +20,10 @@ beforeEach(() => {
   rail.setState({ spaces: [{ root: "C:/demo", name: "demo", sessions: [{ id: "s1", title: "Arreglar el login", startedAt: 0, tasks: 1, archived: false }] }] } as never);
 });
 
-afterEach(() => notePresence(true));
+afterEach(() => {
+  notePresence(true);
+  showLanguage("es");
+});
 
 describe("what a notice says", () => {
   it("names what needs an answer, and how a turn ended", () => {
@@ -69,5 +73,12 @@ describe("when Sens tells", () => {
     profile.setState(({ person }) => ({ person: { ...person, notify: false } }));
     tellAway("s1", finished());
     expect(ipc.commands.notify).not.toHaveBeenCalled();
+  });
+
+  it("in the language chosen", () => {
+    showLanguage("de");
+    expect(noticeOf(asking("AskUserQuestion"))).toBe("Hat eine Frage an dich.");
+    tellAway("s9", finished());
+    expect(ipc.commands.notify).toHaveBeenCalledWith("Neue Sitzung", "Fertig.");
   });
 });

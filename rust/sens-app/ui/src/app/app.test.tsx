@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { focused } from "../features/panes/store";
 import { project } from "../features/project/store";
+import { showLanguage } from "../shared/i18n";
 import { App } from "./App";
 import { dialog } from "./modal";
 import { boot, draft, resume, showView } from "./session";
@@ -43,7 +44,10 @@ beforeEach(() => {
   ipc.commands.folder.mockResolvedValue([]);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  showLanguage("es");
+});
 
 const body = () => document.getElementById("body")!;
 
@@ -143,5 +147,14 @@ describe("the shell", () => {
     expect(body().style.getPropertyValue("--rail-width")).toBe("280px");
     fireEvent.doubleClick(split);
     expect(shell.getState().sizes["--rail-width"]).toBeUndefined();
+  });
+
+  it("speaks the language chosen", () => {
+    showLanguage("en");
+    render(<App />);
+    expect(screen.getByRole("button", { name: "Hide sidebar" }).title).toBe("Hide sidebar (Ctrl+B)");
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+    expect(within(document.getElementById("tool-menu")!).getByRole("menuitemradio", { name: /Changes/ }).textContent).toContain("What differs from the last commit");
+    expect(screen.getByRole("separator", { name: "Sidebar width" })).toBeTruthy();
   });
 });

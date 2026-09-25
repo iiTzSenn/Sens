@@ -2,6 +2,7 @@
 
 mod demo;
 mod install;
+mod language;
 mod launch;
 mod layout;
 mod log;
@@ -20,6 +21,7 @@ use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 
 use install::Job;
+use language::said;
 use launch::{Launch, Mode};
 use layout::Layout;
 use log::Log;
@@ -29,12 +31,16 @@ use uninstall::Removal;
 const VERSION: &str = env!("SENS_VERSION");
 
 fn main() -> ExitCode {
+    language::set(language::system());
     let exe = std::env::current_exe().unwrap_or_default();
     let launch = launch::read(&exe, std::env::args_os().skip(1));
     let layout = match Layout::for_user(launch.dir.clone()) {
         Ok(layout) => layout,
         Err(reason) => return refuse(&launch, &reason),
     };
+    if let Some(saved) = language::read(&layout.settings) {
+        language::set(saved);
+    }
     if launch.mode == Mode::Uninstall {
         let _ = std::env::set_current_dir(std::env::temp_dir());
         if payload::embedded().is_some() && uninstall::runs_inside(&exe, &layout.dir) {
@@ -61,7 +67,15 @@ fn quietly(launch: &Launch, layout: &Layout, exe: &Path, log: &Log) -> ExitCode 
     let cancel = AtomicBool::new(false);
     let done = match (launch.mode, payload::embedded()) {
         (Mode::Uninstall, None) => demo::uninstall(&layout.dir, false, &report),
-        (_, None) => demo::install(&layout.dir, true, false, false, &cancel, &report),
+        (_, None) => {
+            let asked = demo::Asked {
+                start_menu: true,
+                desktop: false,
+                look: false,
+                language: false,
+            };
+            demo::install(&layout.dir, &asked, &cancel, &report)
+        }
         (Mode::Uninstall, Some(_)) => {
             let removal = Removal {
                 layout,
@@ -84,6 +98,7 @@ fn quietly(launch: &Launch, layout: &Layout, exe: &Path, log: &Log) -> ExitCode 
                 closing: Closing::Force,
                 cancel: &cancel,
                 look: None,
+                language: None,
             };
             install::run(&job, &report)
                 .map_err(|failure| failure.reason)
@@ -94,7 +109,7 @@ fn quietly(launch: &Launch, layout: &Layout, exe: &Path, log: &Log) -> ExitCode 
     match done {
         Ok(()) => ExitCode::SUCCESS,
         Err(reason) => {
-            log.write(&format!("Error: {reason}"));
+            log.write(&progress::error(&reason));
             ExitCode::FAILURE
         }
     }
@@ -112,9 +127,9 @@ fn journal(launch: &Launch) -> Log {
         return Log::quiet();
     }
     let doing = match launch.mode {
-        Mode::Install => "instalar",
-        Mode::Update => "actualizar",
-        Mode::Uninstall => "desinstalar",
+        Mode::Install => said!(en: "install", es: "instalar", fr: "installer", de: "installieren", ja: "インストール", zh: "安装"),
+        Mode::Update => said!(en: "update", es: "actualizar", fr: "mettre à jour", de: "aktualisieren", ja: "アップデート", zh: "更新"),
+        Mode::Uninstall => said!(en: "uninstall", es: "desinstalar", fr: "désinstaller", de: "deinstallieren", ja: "アンインストール", zh: "卸载"),
     };
     Log::open(&format!("Sens {VERSION} · {doing}"))
 }

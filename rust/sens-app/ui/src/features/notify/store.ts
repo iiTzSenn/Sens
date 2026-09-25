@@ -1,13 +1,14 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { commands } from "../../ipc/commands";
 import type { ChatEvent } from "../../ipc/types";
+import { shared } from "../../shared/copy";
 import { describe } from "../chat/looks";
 import { profile } from "../profile/store";
 import { rail } from "../rail/store";
+import { t } from "./copy";
 
 const QUIET = 4000;
 const BODY_CAP = 120;
-const UNTITLED = "Sesión nueva";
 
 const told = new Map<string, number>();
 let present = true;
@@ -23,16 +24,16 @@ export function watchPresence() {
 export function noticeOf(event: ChatEvent) {
   switch (event.kind) {
     case "asking": {
-      if (event.tool === "AskUserQuestion") return "Tiene una pregunta para ti.";
-      if (event.tool === "ExitPlanMode") return "Tiene un plan para que lo revises.";
+      if (event.tool === "AskUserQuestion") return t.question;
+      if (event.tool === "ExitPlanMode") return t.plan;
       const { verb, target } = describe(event.tool, event.input || {});
-      const said = `Necesita tu permiso: ${[verb, target].filter(Boolean).join(" ")}`;
+      const said = t.permission([verb, target].filter(Boolean).join(" "));
       return said.length > BODY_CAP ? `${said.slice(0, BODY_CAP - 1)}…` : said;
     }
     case "finished":
-      return event.stopped ? "" : event.ok ? "Ha terminado." : "Terminó con un error.";
+      return event.stopped ? "" : event.ok ? t.finished : t.finishedBadly;
     case "failed":
-      return "Se paró por un error.";
+      return t.failed;
     default:
       return "";
   }
@@ -42,7 +43,7 @@ const titleOf = (session: string) =>
   rail
     .getState()
     .spaces?.flatMap((space) => space.sessions)
-    .find((one) => one.id === session)?.title || UNTITLED;
+    .find((one) => one.id === session)?.title || shared.newSession;
 
 export function tellAway(session: string, event: ChatEvent, now = Date.now()) {
   if (!profile.getState().person.notify || present) return;

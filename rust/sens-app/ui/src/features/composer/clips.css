@@ -1,0 +1,98 @@
+.composer .box { flex-wrap: wrap; row-gap: 10px; }
+.composer .box[data-drop="true"] { border-style: dashed; border-color: var(--focus); background: var(--card); }
+
+.drop-hint {
+  position: absolute; inset: 0; z-index: 1; border-radius: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+  font-size: 13px; line-height: 19px; color: var(--text); pointer-events: none;
+  animation: clip-in var(--fast) var(--curve) both;
+}
+.drop-hint svg { color: var(--focus); }
+
+.clips {
+  flex: 0 0 calc(100% + 8px); min-width: 0;
+  display: flex; flex-wrap: wrap; gap: 6px;
+  max-height: 128px; overflow-y: auto; overscroll-behavior: contain;
+  margin: -4px; padding: 4px;
+}
+
+.clip {
+  position: relative; display: flex; align-items: stretch;
+  width: 216px; max-width: 100%; height: 56px; flex: none;
+  border: 1px solid var(--hair-strong); border-radius: var(--r-control);
+  background: var(--card);
+  transition: border-color var(--fast) var(--curve), background var(--fast) var(--curve);
+}
+.clip[data-kind="text"] { width: 260px; }
+.clip:hover, .clip:focus-within { border-color: var(--edge); }
+.composer .clip { background: color-mix(in srgb, var(--ground) 55%, transparent); }
+
+.clip-face {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px;
+  padding: 0 10px 0 12px; border-radius: inherit; text-align: left; color: inherit;
+}
+button.clip-face:hover .clip-head, button.clip-face:hover .clip-tail { color: var(--text); }
+button.clip-face:focus-visible { outline-offset: -2px; }
+.clip-icon { display: grid; place-items: center; width: 20px; flex: none; color: var(--faint); }
+.clip-icon .glyph, .clip-icon img { display: block; width: 20px; height: 20px; }
+.clip-icon svg { width: 18px; height: 18px; }
+.clip-words { display: grid; gap: 1px; min-width: 0; }
+
+.clip-name { display: flex; min-width: 0; font-size: 13px; line-height: 18px; }
+.clip-head { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; color: var(--dim); transition: color var(--fast) var(--curve); }
+.clip-tail { flex: none; white-space: pre; color: var(--dim); transition: color var(--fast) var(--curve); }
+.clip-meta {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; line-height: 16px; color: var(--faint); font-variant-numeric: tabular-nums;
+}
+.clip-lines { display: grid; min-width: 0; }
+.clip-lines span {
+  overflow: hidden; text-overflow: ellipsis; white-space: pre;
+  font-family: var(--mono); font-size: 11px; line-height: 15px; color: var(--dim);
+}
+
+.clip-acts { display: flex; align-items: center; gap: 2px; padding-inline-end: 6px; flex: none; }
+.clip .clip-acts { opacity: 0; transition: opacity var(--fast) var(--curve); }
+.clip:hover .clip-acts, .clip:focus-within .clip-acts { opacity: 1; }
+.clip-act {
+  width: 22px; height: 22px; display: grid; place-items: center; flex: none;
+  border-radius: var(--r-key); color: var(--faint);
+  transition: background var(--fast) var(--curve), color var(--fast) var(--curve);
+}
+.clip-act:hover { background: var(--raise); color: var(--text); }
+.clip-act.clip-drop:hover { color: var(--red); }
+.clip-act svg { width: 12px; height: 12px; }
+.clip-act:not(.clip-drop) svg { width: 14px; height: 14px; }
+
+.clip-picture { position: relative; flex: none; width: 56px; height: 56px; }
+.clip-sight {
+  display: block; width: 100%; height: 100%; padding: 0; overflow: hidden;
+  border: 1px solid var(--hair-strong); border-radius: var(--r-control); background: var(--card);
+  cursor: zoom-in; transition: border-color var(--fast) var(--curve);
+}
+.clip-sight:hover, .clip-picture:focus-within .clip-sight { border-color: var(--edge); }
+.clip-sight img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.clip-picture .clip-drop {
+  position: absolute; top: 4px; inset-inline-end: 4px; width: 20px; height: 20px;
+  border-radius: 50%; border: 1px solid var(--hair-strong); background: color-mix(in srgb, var(--panel) 92%, transparent);
+  opacity: 0; transition: opacity var(--fast) var(--curve), color var(--fast) var(--curve), background var(--fast) var(--curve);
+}
+.clip-picture:hover .clip-drop, .clip-picture:focus-within .clip-drop { opacity: 1; }
+.clip-picture .clip-drop svg { width: 10px; height: 10px; }
+
+.turn.you .sent-pictures, .turn.you .sent-files {
+  display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px;
+  max-width: min(86%, 438px);
+}
+.sent-pictures .clip-picture { width: 105px; height: 105px; }
+.sent-pictures[data-single="true"] .clip-picture { width: auto; height: 160px; }
+.sent-pictures[data-single="true"] .clip-sight { width: auto; }
+.sent-pictures[data-single="true"] .clip-sight img { width: auto; min-width: 105px; max-width: 280px; }
+.sent-files .clip, .sent-files .clip[data-kind="text"] { width: 216px; }
+
+@keyframes clip-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .drop-hint { animation: none; }
+}

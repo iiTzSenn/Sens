@@ -6,7 +6,8 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::process::{claude, unlaunched};
+use crate::process::{self, claude, launched};
+use crate::said;
 
 #[derive(Serialize, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -91,27 +92,49 @@ pub fn traits(model: &str) -> Traits {
         .map_or(NEWEST_TRAITS, |(_, traits)| *traits)
 }
 
-pub fn discover(id: &str) -> Result<Vec<Card>, String> {
-    provider(id).ok_or_else(|| format!("no conozco el proveedor {id}"))?;
-    let offered = offered()?;
+pub fn unknown(provider: &str) -> String {
+    said!(
+        en: "unknown provider {provider}",
+        es: "no conozco el proveedor {provider}",
+        fr: "fournisseur inconnu : {provider}",
+        de: "unbekannter Anbieter: {provider}",
+        ja: "不明なプロバイダーです: {provider}",
+        zh: "未知的提供商：{provider}",
+    )
+}
+
+pub fn discover(id: &str) -> Result<Option<Vec<Card>>, String> {
+    provider(id).ok_or_else(|| unknown(id))?;
+    let Some(offered) = offered()? else {
+        return Ok(None);
+    };
     let found = cards(&offered);
     match found.is_empty() {
-        true => Err("Claude Code no ofreció ningún modelo".into()),
-        false => Ok(found),
+        true => Err(said!(
+            en: "Claude Code offered no models",
+            es: "Claude Code no ofreció ningún modelo",
+            fr: "Claude Code n’a proposé aucun modèle",
+            de: "Claude Code hat keine Modelle angeboten",
+            ja: "Claude Code からモデルが提示されませんでした",
+            zh: "Claude Code 没有提供任何模型",
+        )),
+        false => Ok(Some(found)),
     }
 }
 
-fn offered() -> Result<Value, String> {
-    let mut child = claude()
+fn offered() -> Result<Option<Value>, String> {
+    let started = claude()
         .args(LISTING)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .spawn()
-        .map_err(unlaunched)?;
+        .spawn();
+    let Some(mut child) = launched(started)? else {
+        return Ok(None);
+    };
 
-    let mut input = child.stdin.take().ok_or("Claude Code no acepta entrada")?;
-    let output = child.stdout.take().ok_or("Claude Code no da salida")?;
+    let mut input = child.stdin.take().ok_or_else(process::no_input)?;
+    let output = child.stdout.take().ok_or_else(process::no_output)?;
     let asked = json!({
         "type": "control_request",
         "request_id": LISTING_REQUEST,
@@ -128,23 +151,55 @@ fn offered() -> Result<Value, String> {
         let _ = tell.send(answer);
     });
 
-    let sent = writeln!(input, "{asked}").map_err(|error| format!("no pude hablar con Claude Code: {error}"));
+    let sent = writeln!(input, "{asked}").map_err(|error| process::unheard("Claude Code", error));
     let answer = sent.and_then(|()| match heard.recv_timeout(LISTING_WAIT) {
         Ok(Some(answer)) => Ok(answer),
-        Ok(None) => Err("Claude Code se cerró sin decir sus modelos".to_string()),
-        Err(_) => Err("Claude Code tardó demasiado en decir sus modelos".to_string()),
+        Ok(None) => Err(said!(
+            en: "Claude Code closed without listing its models",
+            es: "Claude Code se cerró sin decir sus modelos",
+            fr: "Claude Code s’est fermé sans lister ses modèles",
+            de: "Claude Code wurde beendet, ohne seine Modelle zu nennen",
+            ja: "Claude Code がモデル一覧を返す前に終了しました",
+            zh: "Claude Code 在列出模型之前就关闭了",
+        )),
+        Err(_) => Err(said!(
+            en: "Claude Code took too long to list its models",
+            es: "Claude Code tardó demasiado en decir sus modelos",
+            fr: "Claude Code a mis trop de temps à lister ses modèles",
+            de: "Claude Code hat zu lange gebraucht, um seine Modelle zu nennen",
+            ja: "Claude Code がモデル一覧を返すまでに時間がかかりすぎました",
+            zh: "Claude Code 列出模型耗时过长",
+        )),
     });
     let _ = child.kill();
     let _ = child.wait();
 
     let answer = answer?;
     match answer["response"]["subtype"].as_str() {
-        Some("success") => Ok(answer["response"]["response"]["models"].clone()),
-        _ => Err(format!(
-            "Claude Code no dio sus modelos: {}",
-            answer["response"]["error"].as_str().unwrap_or("sin motivo")
-        )),
+        Some("success") => Ok(Some(answer["response"]["response"]["models"].clone())),
+        _ => {
+            let reason = answer["response"]["error"].as_str().map_or_else(unexplained, str::to_string);
+            Err(said!(
+                en: "Claude Code didn’t list its models: {reason}",
+                es: "Claude Code no dio sus modelos: {reason}",
+                fr: "Claude Code n’a pas listé ses modèles : {reason}",
+                de: "Claude Code hat seine Modelle nicht genannt: {reason}",
+                ja: "Claude Code がモデル一覧を返しませんでした: {reason}",
+                zh: "Claude Code 没有给出模型列表：{reason}",
+            ))
+        }
     }
+}
+
+fn unexplained() -> String {
+    said!(
+        en: "no reason given",
+        es: "sin motivo",
+        fr: "aucune raison donnée",
+        de: "ohne Begründung",
+        ja: "理由は示されていません",
+        zh: "未说明原因",
+    )
 }
 
 fn cards(offered: &Value) -> Vec<Card> {
@@ -298,6 +353,14 @@ mod tests {
         assert_eq!(PROVIDERS.len(), 1);
         assert!(provider("claude").is_some());
         assert!(provider("api").is_none());
+    }
+
+    #[test]
+    fn an_unknown_provider_is_refused_in_the_language_spoken() {
+        use crate::language::{Language, speaking};
+
+        assert_eq!(speaking(Language::Es, || discover("gemini")), Err("no conozco el proveedor gemini".into()));
+        assert_eq!(speaking(Language::Fr, || discover("gemini")), Err("fournisseur inconnu : gemini".into()));
     }
 
     #[test]

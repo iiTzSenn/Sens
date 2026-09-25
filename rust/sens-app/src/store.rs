@@ -3,8 +3,11 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 
+use sens_agent::said;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+
+use crate::files;
 
 pub fn stored<T: DeserializeOwned + Default>(path: &Path) -> T {
     std::fs::read_to_string(path)
@@ -18,13 +21,20 @@ pub fn editable<T: DeserializeOwned + Default>(path: &Path) -> Result<T, String>
         return Ok(T::default());
     };
     serde_json::from_str(&text).map_err(|error| {
-        format!("{} está dañado ({error}); arréglalo o bórralo antes de guardar", path.display())
+        said!(
+            en: "{path} is damaged ({error}); fix or delete it before saving",
+            es: "{path} está dañado ({error}); arréglalo o bórralo antes de guardar",
+            fr: "{path} est endommagé ({error}) ; corrigez-le ou supprimez-le avant d’enregistrer",
+            de: "{path} ist beschädigt ({error}); repariere oder lösche die Datei, bevor du speicherst",
+            ja: "{path} が壊れています（{error}）。保存する前に修正するか削除してください",
+            zh: "{path} 已损坏（{error}）；请先修复或删除它，再保存",
+            path = path.display(),
+        )
     })
 }
 
 pub fn store<T: Serialize>(base: &Path, name: &str, value: &T) -> Result<(), String> {
-    std::fs::create_dir_all(base)
-        .map_err(|error| format!("no pude crear {}: {error}", base.display()))?;
+    std::fs::create_dir_all(base).map_err(|error| files::uncreated(base, error))?;
     let text = serde_json::to_string_pretty(value).map_err(|error| error.to_string())?;
     let path = base.join(name);
     let staged = base.join(format!(".{name}.{}.tmp", STAGED.fetch_add(1, Ordering::Relaxed)));
@@ -32,7 +42,7 @@ pub fn store<T: Serialize>(base: &Path, name: &str, value: &T) -> Result<(), Str
     if written.is_err() {
         let _ = std::fs::remove_file(&staged);
     }
-    written.map_err(|error| format!("no pude escribir {}: {error}", path.display()))
+    written.map_err(|error| files::unwritten(&path, error))
 }
 
 pub fn update<T: Serialize + DeserializeOwned + Default>(base: &Path, name: &str, change: impl FnOnce(&mut T) -> Result<(), String>) -> Result<(), String> {
@@ -54,6 +64,7 @@ fn write_through(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sens_agent::language::{Language, speaking};
     use std::collections::BTreeMap;
     use std::path::PathBuf;
 
@@ -119,8 +130,10 @@ mod tests {
             Ok(())
         });
 
-        assert!(refused.unwrap_err().contains("dañado"));
+        assert!(refused.unwrap_err().contains("is damaged"));
         assert_eq!(std::fs::read_to_string(here.join("d.json")).expect("read"), "{ a medias");
+        let spoken = speaking(Language::Es, || editable::<BTreeMap<String, u32>>(&here.join("d.json"))).unwrap_err();
+        assert!(spoken.contains("está dañado") && spoken.ends_with("arréglalo o bórralo antes de guardar"), "{spoken}");
     }
 
     #[test]

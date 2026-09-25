@@ -8,8 +8,10 @@ import { addedRows, replacedRows } from "../../shared/rows";
 import { languageOf } from "../../shared/syntax/languages";
 import { chooseMode } from "../composer/store";
 import { usePane } from "../panes/context";
+import { shellOf } from "../../shared/syntax/shells";
 import { SHELLS, describe } from "./looks";
 import { Ran, WebLink, DIFF_PREVIEW } from "./Step";
+import { t } from "./step.copy";
 import { answer } from "./store";
 import type { Ask as AskPart } from "./turns";
 
@@ -27,9 +29,9 @@ const answersText = (answers: Answers | null) =>
   answers ? Object.values(answers).map((value) => [].concat(value as never).join(", ")).join(" · ") : "";
 
 const SETTLED: Record<string, (answers: Answers | null) => string> = {
-  allowed: (answers) => answersText(answers) || "Permitido",
-  refused: () => "Rechazado",
-  expired: () => "Sin respuesta",
+  allowed: (answers) => answersText(answers) || t.allowed,
+  refused: () => t.denied,
+  expired: () => t.unanswered,
 };
 
 // The frame every question shares: what it is about, what it shows, the
@@ -111,11 +113,11 @@ function Permission({ part, reply }: { part: AskPart; reply: number }) {
   const { tool, input, suggestions } = part.event;
   const look = describe(tool, input);
   const edits = suggestions?.some((one) => one.type === "setMode" && one.mode === "acceptEdits");
-  const remember = suggestions?.length ? (edits ? "Permitir y aceptar ediciones" : "Permitir siempre en esta sesión") : "";
+  const remember = suggestions?.length ? (edits ? t.allowAndAccept : t.allowSession) : "";
   const choices: Choice[] = [
-    ["Permitir", true, { allow: true }],
+    [t.allow, true, { allow: true }],
     ...(remember ? [[remember, false, { allow: true, remember: true }] as Choice] : []),
-    ["Rechazar", false, { allow: false }],
+    [t.deny, false, { allow: false }],
   ];
   const pane = usePane();
   const adopt = (decision: Decision) => {
@@ -123,7 +125,7 @@ function Permission({ part, reply }: { part: AskPart; reply: number }) {
     if (switched && switched.mode) chooseMode(switched.mode, pane);
   };
   return (
-    <Frame part={part} reply={reply} icon={ICONS.shieldAlert} title={`Claude quiere ${look.ask || look.verb.toLowerCase()}`} target={look.target} mono={look.mono} choices={choices} after={adopt}>
+    <Frame part={part} reply={reply} icon={ICONS.shieldAlert} title={look.ask} target={look.target} mono={look.mono} choices={choices} after={adopt}>
       <Preview tool={tool} input={input} />
     </Frame>
   );
@@ -135,7 +137,7 @@ function Preview({ tool, input }: { tool: string; input: AskPart["event"]["input
   if (SHELLS.has(tool)) {
     return (
       <>
-        <Ran command={String(input.command || "")} />
+        <Ran command={String(input.command || "")} shell={shellOf(tool, String(input.command || ""))} />
         {input.description && <p className="ask-note">{input.description}</p>}
       </>
     );
@@ -158,16 +160,16 @@ function Preview({ tool, input }: { tool: string; input: AskPart["event"]["input
 function Plan({ part, reply }: { part: AskPart; reply: number }) {
   const pane = usePane();
   const choices: Choice[] = [
-    ["Aprobar y ejecutar", true, { allow: true, mode: "default" }],
-    ["Aprobar y aceptar ediciones", false, { allow: true, mode: "acceptEdits" }],
-    ["Seguir planificando", false, { allow: false, message: "Todavía no apruebo el plan. Sigue refinándolo." }],
+    [t.approveRun, true, { allow: true, mode: "default" }],
+    [t.approveAccept, false, { allow: true, mode: "acceptEdits" }],
+    [t.keepPlanning, false, { allow: false, message: t.keepPlanningSaid }],
   ];
   return (
     <Frame
       part={part}
       reply={reply}
       icon={ICONS.map}
-      title="Plan listo para revisar"
+      title={t.planReady}
       choices={choices}
       after={(decision) => decision.allow && decision.mode && chooseMode(decision.mode, pane)}
     >
@@ -192,7 +194,7 @@ function Questions({ part, reply }: { part: AskPart; reply: number }) {
 
   const collect = (): Decision | string => {
     const answers = Object.fromEntries(questions.map((question) => [question.question, answerOf(question)]));
-    if (Object.values(answers).some((value) => !value || !value.length)) return "Responde a cada pregunta o escribe tu respuesta.";
+    if (Object.values(answers).some((value) => !value || !value.length)) return t.answerEach;
     return { allow: true, answers };
   };
 
@@ -205,12 +207,12 @@ function Questions({ part, reply }: { part: AskPart; reply: number }) {
     });
 
   const choices: Choice[] = [
-    ["Responder", true, collect],
-    ["Que decida Claude", false, { allow: false, message: "El usuario prefiere no responder; decide tú lo más razonable y sigue." }],
+    [t.answer, true, collect],
+    [t.letClaude, false, { allow: false, message: t.letClaudeSaid }],
   ];
 
   return (
-    <Frame part={part} reply={reply} icon={ICONS.question} title={questions.length > 1 ? "Claude tiene unas preguntas" : "Claude pregunta"} choices={choices}>
+    <Frame part={part} reply={reply} icon={ICONS.question} title={questions.length > 1 ? t.asksMany : t.asksOne} choices={choices}>
       {questions.map((question) => (
         <div key={question.question} className="question">
           {question.header && <span className="label">{question.header}</span>}
@@ -231,7 +233,7 @@ function Questions({ part, reply }: { part: AskPart; reply: number }) {
           </div>
           <input
             className="field"
-            placeholder="Otra respuesta…"
+            placeholder={t.otherAnswer}
             autoComplete="off"
             value={typed[question.question] || ""}
             onChange={(event) => setTyped((now) => ({ ...now, [question.question]: event.target.value }))}

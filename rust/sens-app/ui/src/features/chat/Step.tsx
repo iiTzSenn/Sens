@@ -1,16 +1,20 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Link, Todo } from "../../ipc/types";
+import { Favicon } from "../../shared/Favicon";
 import { FoldedText } from "../../shared/Folded";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { LinesCard } from "../../shared/LinesCard";
 import { openOutside } from "../../shared/outside";
 import { languageOf } from "../../shared/syntax/languages";
-import { Terminal } from "../../shared/Terminal";
+import { shellOf, type Shell } from "../../shared/syntax/shells";
+import { Command, Printed, Terminal } from "../../shared/Terminal";
 import { project } from "../project/store";
 import { showFile } from "../files/view";
+import { readingOf } from "../terminal/readings";
 import { aimSite } from "../web/store";
 import { EDITS, SHELLS, describe, editOf, hitsOf, hostOf, relative, searchSummary } from "./looks";
+import { t } from "./step.copy";
 import type { Step as StepPart } from "./turns";
 
 // Diffs in the chat show this many rows until asked for more.
@@ -18,7 +22,8 @@ export const DIFF_PREVIEW = 14;
 // Search results, this many.
 const RESULT_CAP = 12;
 const STRIP_CAP = 4;
-const FAVICONS = "https://icons.duckduckgo.com/ip3/";
+const TARGET_CAP = 400;
+const READ_TERMINAL = "mcp__sens__read_terminal";
 
 // A tool call: a line saying what it does, opening to what it did. A step with
 // nothing to show does not open; a failed one opens by itself.
@@ -26,6 +31,7 @@ export const Step = memo(function Step({ part }: { part: StepPart }) {
   const { name, input, state, links } = part;
   const look = describe(name, input);
   const box = useRef<HTMLDetailsElement>(null);
+  const [seen, setSeen] = useState(false);
   const shown = outcome(part);
   const body = [links.length > 0 && <Sources key="sources" links={links} />, ...(shown.nodes ?? [])].filter(Boolean);
   if (name === "TodoWrite" && state === "running") body.push(<TodoList key="todos" todos={input.todos} />);
@@ -37,8 +43,8 @@ export const Step = memo(function Step({ part }: { part: StepPart }) {
 
   return (
     <details className={empty ? "step empty" : "step"} data-state={state} data-edits={EDITS.has(name) ? "true" : undefined} ref={box}>
-      <summary onClick={(event) => empty && event.preventDefault()}>
-        <span className="step-icon">{look.site ? <Favicon url={look.site} /> : <Icon svg={look.icon} />}</span>
+      <summary onClick={(event) => (empty ? event.preventDefault() : setSeen(true))}>
+        <span className="step-icon">{look.site ? <Site url={look.site} /> : <Icon svg={look.icon} />}</span>
         <span className="step-verb">{look.verb}</span>
         {look.link ? (
           <button
@@ -55,14 +61,14 @@ export const Step = memo(function Step({ part }: { part: StepPart }) {
           </button>
         ) : (
           <span className={look.mono ? "step-target mono" : "step-target"} title={look.target}>
-            {look.target}
+            {look.shell ? <Command text={look.target} shell={look.shell} cap={TARGET_CAP} /> : look.target}
           </span>
         )}
         <Strip links={links} />
         <span className="step-meta">{shown.meta ?? look.meta ?? ""}</span>
         <span className="step-state" />
       </summary>
-      <div className="step-body">{body}</div>
+      <div className="step-body">{(seen || state === "failed") && body}</div>
     </details>
   );
 });
@@ -74,9 +80,11 @@ function outcome({ name, input, state, output, detail }: StepPart): { nodes?: Re
   if (SHELLS.has(name)) {
     const stdout = typeof detail?.stdout === "string" ? detail.stdout : output;
     const stderr = typeof detail?.stderr === "string" ? detail.stderr : "";
-    return { nodes: [<Ran key="ran" command={String(input.command || "")} stdout={stdout} stderr={stderr} failed={failed} />] };
+    const command = String(input.command || "");
+    return { nodes: [<Ran key="ran" command={command} shell={shellOf(name, command)} stdout={stdout} stderr={stderr} failed={failed} />] };
   }
   if (failed) return { nodes: [<Output key="out" text={output} bad />] };
+  if (name === READ_TERMINAL) return { nodes: output.trim() ? [<Output key="out" text={readingOf(output) ?? output} />] : [] };
 
   const edit = editOf(name, input, detail);
   if (edit) {
@@ -85,12 +93,12 @@ function outcome({ name, input, state, output, detail }: StepPart): { nodes?: Re
   }
   if (name === "Read") {
     const lines = detail?.file?.numLines;
-    return { nodes: [], meta: lines ? `${lines} líneas` : "" };
+    return { nodes: [], meta: lines ? t.lines(lines) : "" };
   }
   if (name === "Glob" || name === "Grep") {
     const lines = hitsOf(output);
     const count = name === "Glob" && detail?.numFiles !== undefined ? detail.numFiles : lines.length;
-    return { nodes: lines.length ? [<Results key="hits" lines={lines} />] : [], meta: `${count} ${count === 1 ? "resultado" : "resultados"}` };
+    return { nodes: lines.length ? [<Results key="hits" lines={lines} />] : [], meta: t.results(count) };
   }
   if (name === "TodoWrite") return { nodes: [<TodoList key="todos" todos={input.todos} />] };
   if (name === "WebFetch") {
@@ -106,26 +114,37 @@ function outcome({ name, input, state, output, detail }: StepPart): { nodes?: Re
 
 const SILENCE = /^\(\w+ completed with no output\)$/;
 
-// A command's run: stdout, then stderr in red; a line when it failed or said nothing.
-export function Ran({ command, stdout, stderr, failed }: { command: string; stdout?: string; stderr?: string; failed?: boolean }) {
+const openPlace = (path: string) => showFile(relative(path));
+
+export function Ran({ command, shell, stdout, stderr, failed }: { command: string; shell?: Shell; stdout?: string; stderr?: string; failed?: boolean }) {
   const ran = stdout !== undefined;
   const out = ran && !SILENCE.test(stdout.trim()) ? stdout.replace(/\s+$/, "") : "";
   const err = (stderr || "").replace(/\s+$/, "");
-  const said = !ran ? "" : failed ? "Terminó con error" : out || err ? "" : "Sin salida";
+  const said = !ran ? "" : failed ? t.endedWithError : out || err ? "" : t.noOutput;
+  const open = project.getState().work ? openPlace : undefined;
   const output =
     out || err ? (
       <>
-        {out}
+        {out && <Printed text={out} open={open} />}
         {out && err && "\n"}
-        {err && <span className="stderr">{err}</span>}
+        {err && (
+          <span className={failed ? "stderr" : undefined}>
+            <Printed text={err} open={open} />
+          </span>
+        )}
       </>
     ) : undefined;
-  return <Terminal command={command} output={output} state={!ran ? undefined : failed ? "failed" : "done"} foot={said} />;
+  return <Terminal command={command} shell={shell} output={output} state={!ran ? undefined : failed ? "failed" : "done"} foot={said} />;
 }
 
-const Output = ({ text, bad = false }: { text: string; bad?: boolean }) => (
-  <pre className={bad ? "out fault" : "out"}>{String(text || "").replace(/\s+$/, "")}</pre>
-);
+function Output({ text, bad = false }: { text: string; bad?: boolean }) {
+  const open = project.getState().work ? openPlace : undefined;
+  return (
+    <pre className={bad ? "out fault" : "out"}>
+      <Printed text={String(text || "").replace(/\s+$/, "")} open={open} />
+    </pre>
+  );
+}
 
 const TODO_ICON = { completed: ICONS.check, in_progress: ICONS.dot, pending: ICONS.circle };
 
@@ -171,7 +190,7 @@ function Results({ lines }: { lines: string[] }) {
       })}
       {!all && lines.length > RESULT_CAP && (
         <button className="unfold" type="button" onClick={() => setAll(true)}>
-          Mostrar {lines.length - RESULT_CAP} más
+          {t.showMore(lines.length - RESULT_CAP)}
         </button>
       )}
     </div>
@@ -188,8 +207,7 @@ export function WebLink({ url }: { url: string }) {
 }
 
 // A site's icon, or the globe until it loads (or when it never does).
-function Favicon({ url }: { url: string }) {
-  const [loaded, setLoaded] = useState(false);
+function Site({ url }: { url: string }) {
   let host = "";
   try {
     host = new URL(url).hostname;
@@ -197,10 +215,9 @@ function Favicon({ url }: { url: string }) {
     host = "";
   }
   return (
-    <span className="favicon">
-      {!loaded && <Icon svg={ICONS.globe} />}
-      {host && <img alt="" referrerPolicy="no-referrer" src={`${FAVICONS}${host}.ico`} hidden={!loaded} onLoad={() => setLoaded(true)} />}
-    </span>
+    <Favicon className="favicon" site={host}>
+      <Icon svg={ICONS.globe} />
+    </Favicon>
   );
 }
 
@@ -210,7 +227,7 @@ function Strip({ links }: { links: Link[] }) {
   return (
     <span className="sources" title={links.map((link) => hostOf(link.url)).join(" · ")}>
       {links.slice(0, STRIP_CAP).map((link) => (
-        <Favicon key={link.url} url={link.url} />
+        <Site key={link.url} url={link.url} />
       ))}
       {links.length > STRIP_CAP && <span className="more">+{links.length - STRIP_CAP}</span>}
     </span>
@@ -222,7 +239,7 @@ function Sources({ links }: { links: Link[] }) {
     <div className="results">
       {links.map((link) => (
         <button key={link.url} type="button" className="result cited" title={link.url} onClick={() => aimSite(link.url)}>
-          <Favicon url={link.url} />
+          <Site url={link.url} />
           <span className="path">{link.title || hostOf(link.url)}</span>
           <span className="hit">{hostOf(link.url)}</span>
         </button>

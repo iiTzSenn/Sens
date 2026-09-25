@@ -7,6 +7,7 @@ import { parentOf } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { project } from "../project/store";
+import { t } from "./copy";
 import { files, loadFolder, toggleFolder } from "./store";
 import { openFile, viewer } from "./view";
 
@@ -27,8 +28,8 @@ export function Tree() {
         <input
           className="field"
           id="filter"
-          placeholder="Buscar en la carpeta…"
-          aria-label="Buscar en la carpeta"
+          placeholder={t.searching}
+          aria-label={t.search}
           autoComplete="off"
           spellCheck={false}
           value={needle}
@@ -64,10 +65,10 @@ function Folders() {
     for (const path of missing) loadFolder(path);
   });
 
-  if (!root) return <p className="none">Sin carpeta.</p>;
+  if (!root) return <p className="none">{t.noFolder}</p>;
   if (fault) return <Fault reason={fault} />;
   if (!folders.has("")) return null;
-  if (!rows.length) return <p className="none">Carpeta vacía.</p>;
+  if (!rows.length) return <p className="none">{t.emptyFolder}</p>;
   return rows.map(([entry, depth]) => <FileRow key={entry.path} entry={entry} depth={depth} />);
 }
 
@@ -95,10 +96,10 @@ function Found({ query }: { query: string }) {
     };
   }, [root, query, loads]);
 
-  if (!root) return <p className="none">Sin carpeta.</p>;
+  if (!root) return <p className="none">{t.noFolder}</p>;
   if (fault) return <Fault reason={fault} />;
   if (!found) return null;
-  if (!found.length) return <p className="none">Nada coincide.</p>;
+  if (!found.length) return <p className="none">{t.noMatch}</p>;
   return found.map((entry) => <FileRow key={entry.path} entry={entry} depth={0} found />);
 }
 

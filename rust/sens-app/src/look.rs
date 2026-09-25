@@ -8,7 +8,7 @@ const FILE: &str = "look.json";
 const FIRST_ACCENT: &str = "signal";
 const LONGEST_ACCENT: usize = 24;
 const DARK_GROUND: Color = Color(0x0c, 0x0d, 0x0d, 0xff);
-const LIGHT_GROUND: Color = Color(0xf4, 0xf1, 0xea, 0xff);
+const LIGHT_GROUND: Color = Color(0xff, 0xff, 0xff, 0xff);
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
 #[serde(rename_all = "camelCase")]

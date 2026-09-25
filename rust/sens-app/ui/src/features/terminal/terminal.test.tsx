@@ -1,12 +1,21 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ILink, ILinkProvider } from "@xterm/xterm";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TerminalHeard, TerminalReading } from "../../ipc/types";
 import { shell } from "../../app/shell";
+import { look } from "../../shared/look";
 import { focused } from "../panes/store";
 import { project } from "../project/store";
 import { ConsolePanel, ConsoleTabs } from "./Consoles";
-import { closeConsole, consoles, endedLine, enterConsole, fenced, hearTerminal, openConsole, readScreen, runningConsoles, shareConsole, toggleConsole } from "./store";
+import { readingOf } from "./readings";
+import { closeConsole, consoles, endedLine, enterConsole, fenced, hearTerminal, openConsole, readScreen, runningConsoles, shareConsole, themeNow, toggleConsole } from "./store";
+
+interface Line {
+  text: string;
+  wrapped?: boolean;
+  fg?: number;
+}
 
 interface Fake {
   options: Record<string, unknown>;
@@ -15,7 +24,8 @@ interface Fake {
   written: string;
   selection: string;
   disposed: boolean;
-  lines: { text: string; wrapped?: boolean }[];
+  lines: Line[];
+  links: ILinkProvider[];
   typed: (data: string) => void;
   key: (event: KeyboardEvent) => boolean;
 }
@@ -27,6 +37,8 @@ const ipc = vi.hoisted(() => ({
     terminalResize: vi.fn(),
     terminalClose: vi.fn(),
     terminalScreen: vi.fn(),
+    openExternal: vi.fn(),
+    openFile: vi.fn(),
   },
   heard: null as ((what: TerminalHeard) => void) | null,
   read: null as ((reading: TerminalReading) => void) | null,
@@ -41,60 +53,90 @@ vi.mock("../../ipc/commands", () => ({
   },
 }));
 
-vi.mock("@xterm/xterm", () => ({
-  Terminal: class {
-    options: Record<string, unknown>;
-    cols: number;
-    rows: number;
-    written = "";
-    selection = "";
-    disposed = false;
-    lines: { text: string; wrapped?: boolean }[] = [];
-    typed: (data: string) => void = () => {};
-    key: (event: KeyboardEvent) => boolean = () => true;
-    get buffer() {
-      const lines = this.lines;
-      return {
-        active: {
-          length: lines.length,
-          viewportY: Math.max(0, lines.length - this.rows),
-          getLine: (at: number) => lines[at] && { isWrapped: Boolean(lines[at].wrapped), translateToString: () => lines[at].text },
-        },
-      };
-    }
-    constructor(options: Record<string, unknown>) {
-      this.options = { ...options };
-      this.cols = options.cols as number;
-      this.rows = options.rows as number;
-      ipc.xterms.push(this);
-    }
-    loadAddon() {}
-    onData(typed: (data: string) => void) {
-      this.typed = typed;
-    }
-    onResize() {}
-    attachCustomKeyEventHandler(key: (event: KeyboardEvent) => boolean) {
-      this.key = key;
-    }
-    write(data: string) {
-      this.written += data;
-    }
-    open() {}
-    focus() {}
-    dispose() {
-      this.disposed = true;
-    }
-    hasSelection() {
-      return Boolean(this.selection);
-    }
-    getSelection() {
-      return this.selection;
-    }
-    clearSelection() {
-      this.selection = "";
-    }
-  },
-}));
+vi.mock("@xterm/xterm", () => {
+  const cellOf = (chars: string, fg?: number) => ({
+    getWidth: () => 1,
+    getChars: () => chars,
+    isBold: () => 0,
+    isDim: () => 0,
+    isItalic: () => 0,
+    isUnderline: () => 0,
+    isInverse: () => 0,
+    isInvisible: () => 0,
+    isStrikethrough: () => 0,
+    isFgPalette: () => fg !== undefined,
+    isFgRGB: () => false,
+    getFgColor: () => fg ?? 0,
+    isBgPalette: () => false,
+    isBgRGB: () => false,
+    getBgColor: () => 0,
+  });
+  const lineOf = ({ text, wrapped, fg }: Line) => ({
+    isWrapped: Boolean(wrapped),
+    length: text.length,
+    translateToString: () => text,
+    getCell: (x: number) => (x < text.length ? cellOf(text[x], fg) : undefined),
+  });
+  return {
+    Terminal: class {
+      options: Record<string, unknown>;
+      cols: number;
+      rows: number;
+      written = "";
+      selection = "";
+      disposed = false;
+      lines: Line[] = [];
+      links: ILinkProvider[] = [];
+      typed: (data: string) => void = () => {};
+      key: (event: KeyboardEvent) => boolean = () => true;
+      get buffer() {
+        const lines = this.lines;
+        return {
+          active: {
+            length: lines.length,
+            viewportY: Math.max(0, lines.length - this.rows),
+            getLine: (at: number) => lines[at] && lineOf(lines[at]),
+            getNullCell: () => cellOf(""),
+          },
+        };
+      }
+      constructor(options: Record<string, unknown>) {
+        this.options = { ...options };
+        this.cols = options.cols as number;
+        this.rows = options.rows as number;
+        ipc.xterms.push(this);
+      }
+      loadAddon() {}
+      registerLinkProvider(provider: ILinkProvider) {
+        this.links.push(provider);
+      }
+      onData(typed: (data: string) => void) {
+        this.typed = typed;
+      }
+      onResize() {}
+      attachCustomKeyEventHandler(key: (event: KeyboardEvent) => boolean) {
+        this.key = key;
+      }
+      write(data: string) {
+        this.written += data;
+      }
+      open() {}
+      focus() {}
+      dispose() {
+        this.disposed = true;
+      }
+      hasSelection() {
+        return Boolean(this.selection);
+      }
+      getSelection() {
+        return this.selection;
+      }
+      clearSelection() {
+        this.selection = "";
+      }
+    },
+  };
+});
 
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit() {} } }));
 
@@ -256,12 +298,91 @@ describe("Claude reading the terminal", () => {
     expect(readScreen({ terminal: null, lines: 5, within: ["C:/Proyectos/dem"] })).toBe("No hay ninguna terminal abierta en la carpeta de esta sesión.");
   });
 
+  it("keeps the colors of what it read for the chat to show, while Claude gets the plain text", async () => {
+    opened(96);
+    await act(async () => openConsole());
+    last().lines = [{ text: "PS C:\\Proyectos\\demo> npm test" }, { text: "FAIL src/app.test.ts", fg: 1 }];
+    const said = readScreen({ terminal: null, lines: 5, within: everywhere });
+    expect(said).toBe("Terminal 96 · pwsh en C:/Proyectos/demo\n\nPS C:\\Proyectos\\demo> npm test\nFAIL src/app.test.ts");
+    expect(readingOf(said)).toBe("Terminal 96 · pwsh en C:/Proyectos/demo\n\nPS C:\\Proyectos\\demo> npm test\n\x1b[0;31mFAIL src/app.test.ts\x1b[0m");
+  });
+
   it("answers the bridge with what it read", async () => {
     opened(95);
     await act(async () => openConsole());
     last().lines = [{ text: "hola" }];
     ipc.read!({ ask: 7, terminal: null, lines: 10, within: ["C:/Proyectos/demo"] });
     expect(ipc.commands.terminalScreen).toHaveBeenCalledWith(7, "Terminal 95 · pwsh en C:/Proyectos/demo\n\nhola");
+  });
+});
+
+describe("the terminal's look", () => {
+  const root = document.documentElement.style;
+  const TOKENS: Record<string, string> = {
+    "--panel": "#111313",
+    "--dim": "#b5bbb7",
+    "--focus": "#c7ff4a",
+    "--card": "#1a1d1c",
+    "--raise": "#252927",
+    "--edge": "#363b38",
+    "--tint": "#f0ffd0",
+    "--accent-soft": "#4e700d",
+    "--text": "#f4f1ea",
+    "--faint": "#929995",
+    "--red": "#e7655f",
+    "--green": "#43c878",
+    "--amber": "#e7b84b",
+    "--blue": "#6fa7d8",
+    "--ansi-black": "#363b38",
+    "--ansi-magenta": "#9b87c4",
+    "--ansi-cyan": "#00c9e9",
+  };
+
+  beforeEach(() => {
+    for (const [token, value] of Object.entries(TOKENS)) root.setProperty(token, value);
+    look.setState({ shown: "dark" });
+  });
+
+  afterEach(() => {
+    for (const token of [...Object.keys(TOKENS), "--ansi-bright-red"]) root.removeProperty(token);
+    look.setState({ shown: "dark" });
+  });
+
+  it("has all 16 colors from the theme's tokens, the cursor in the accent, and a selection for each mode", () => {
+    const theme = themeNow();
+    expect(theme).toMatchObject({ background: "#111313", foreground: "#b5bbb7", cursor: "#c7ff4a", selectionBackground: "#252927", red: "#e7655f", brightRed: "#e7655f", brightWhite: "#f4f1ea", brightBlack: "#929995" });
+    expect(Object.keys(theme).filter((key) => /^(bright)?(black|red|green|yellow|blue|magenta|cyan|white)$/i.test(key))).toHaveLength(16);
+    expect(theme.selectionForeground).toBeUndefined();
+    root.setProperty("--ansi-bright-red", "#ff8a80");
+    look.setState({ shown: "light" });
+    expect(themeNow()).toMatchObject({ brightRed: "#ff8a80", red: "#e7655f", selectionBackground: "#f0ffd0", selectionForeground: "#4e700d" });
+  });
+
+  it("paints every open terminal again when the look changes, and keeps contrast readable", async () => {
+    opened(97);
+    await act(() => openConsole());
+    expect(last().options).toMatchObject({ minimumContrastRatio: 4.5 });
+    root.setProperty("--focus", "#4ee1ff");
+    act(() => look.setState({ shown: "light" }));
+    expect((last().options.theme as Record<string, string>).cursor).toBe("#4ee1ff");
+  });
+
+  it("turns web addresses and file places into links", async () => {
+    opened(98);
+    await act(() => openConsole());
+    ipc.commands.openFile.mockResolvedValue({ kind: "text", text: "" });
+    last().lines = [{ text: "see https://example.com/docs and src/app.ts:12" }];
+    let found: ILink[] = [];
+    last().links[0].provideLinks(1, (links) => (found = links ?? []));
+    expect(found.map((link) => [link.text, link.range])).toEqual([
+      ["https://example.com/docs", { start: { x: 5, y: 1 }, end: { x: 28, y: 1 } }],
+      ["src/app.ts:12", { start: { x: 34, y: 1 }, end: { x: 46, y: 1 } }],
+    ]);
+    found[0].activate(new MouseEvent("click"), found[0].text);
+    expect(ipc.commands.openExternal).toHaveBeenCalledWith("https://example.com/docs");
+    await act(async () => found[1].activate(new MouseEvent("click"), found[1].text));
+    expect(shell.getState()).toMatchObject({ toolsOpen: true, tool: "files" });
+    expect(ipc.commands.openFile).toHaveBeenCalledWith("C:/Proyectos/demo", "src/app.ts");
   });
 });
 

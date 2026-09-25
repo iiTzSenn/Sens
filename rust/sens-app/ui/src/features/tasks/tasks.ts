@@ -1,5 +1,6 @@
 import type { AgentEvent } from "../../ipc/types";
-import { compact, plural, seconds, whole } from "../../shared/format.js";
+import { compact, seconds, whole } from "../../shared/format.js";
+import { t } from "./copy";
 
 // What the model runs in the background: subagents and commands it leaves
 // running, told by the agent's task events.
@@ -108,9 +109,9 @@ export function taskTime(task: Task, now: number) {
 
 export function taskUsage(task: Task) {
   return [
-    isRunning(task) && (task.doing || "Trabajando…"),
-    task.tools && plural(task.tools, "herramienta", "herramientas"),
-    task.tokens && `${compact(task.tokens)} tokens`,
+    isRunning(task) && (task.doing || t.working),
+    task.tools && t.tools(task.tools),
+    task.tokens && t.tokens(compact(task.tokens)),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -118,14 +119,14 @@ export function taskUsage(task: Task) {
 
 export function shellEnding(task: Task) {
   if (isRunning(task)) return "";
-  if (task.status === "stopped") return "Detenido";
+  if (task.status === "stopped") return t.stopped;
   const code = task.summary.match(/exit code (-?\d+)/)?.[1];
-  if (task.status === "failed") return code ? `Terminó con error · código ${code}` : "Terminó con error";
-  return code ? `Código de salida ${code}` : "Terminado";
+  if (task.status === "failed") return code ? t.failedWith(code) : t.failed;
+  return code ? t.exitCode(code) : t.done;
 }
 
 export function tally(tasks: Map<string, Task>) {
   const running = [...tasks.values()].filter(isRunning).length;
-  if (running) return `${running} en marcha`;
-  return tasks.size ? plural(tasks.size, "tarea", "tareas") : "";
+  if (running) return t.running(running);
+  return tasks.size ? t.tasks(tasks.size) : "";
 }

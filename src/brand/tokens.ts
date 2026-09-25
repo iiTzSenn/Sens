@@ -5,6 +5,7 @@ export const palette = {
   "carbon-700": "#252927",
   "carbon-600": "#363b38",
   "alloy-600": "#595f5c",
+  "alloy-550": "#666d69",
   "alloy-500": "#747b77",
   "alloy-400": "#929995",
   "alloy-300": "#b5bbb7",
@@ -13,6 +14,12 @@ export const palette = {
   "bone-100": "#eceae3",
   "bone-50": "#f4f1ea",
   paper: "#fbfaf6",
+  "chalk-0": "#ffffff",
+  "chalk-50": "#f7f9f8",
+  "chalk-100": "#ebeeed",
+  "chalk-200": "#e1e5e3",
+  "chalk-300": "#d4d9d6",
+  "chalk-400": "#bcc2bf",
   "signal-800": "#4e700d",
   "signal-700": "#78aa12",
   "signal-600": "#a9e52d",
@@ -21,6 +28,8 @@ export const palette = {
   "signal-100": "#f0ffd0",
   "signal-tint-900": "#1a1f16",
   "signal-tint-700": "#353e2a",
+  "signal-tint-100": "#eff7e5",
+  "signal-tint-300": "#d0e1b6",
   "ice-800": "#007082",
   "ice-700": "#009bb4",
   "ice-600": "#00c9e9",
@@ -29,6 +38,8 @@ export const palette = {
   "ice-100": "#e9fbff",
   "ice-tint-900": "#131f22",
   "ice-tint-700": "#243f45",
+  "ice-tint-100": "#e2f8fe",
+  "ice-tint-300": "#ace4f1",
   "iris-800": "#665798",
   "iris-700": "#836cca",
   "iris-600": "#a184f7",
@@ -37,6 +48,8 @@ export const palette = {
   "iris-100": "#f7f5ff",
   "iris-tint-900": "#1d1c25",
   "iris-tint-700": "#3b374b",
+  "iris-tint-100": "#f4f1ff",
+  "iris-tint-300": "#dad2fe",
   "rose-800": "#914669",
   "rose-700": "#c15588",
   "rose-600": "#ed69a8",
@@ -45,6 +58,8 @@ export const palette = {
   "rose-100": "#fff3f7",
   "rose-tint-900": "#241a1e",
   "rose-tint-700": "#49333c",
+  "rose-tint-100": "#ffedf5",
+  "rose-tint-300": "#fac9dc",
   success: "#43c878",
   warning: "#e7b84b",
   danger: "#e7655f",
@@ -53,6 +68,10 @@ export const palette = {
   "warning-700": "#895b00",
   "danger-700": "#b63132",
   "info-700": "#2e6b9c",
+  "success-300": "#79e29b",
+  "warning-300": "#f8ce73",
+  "danger-300": "#fe8b83",
+  "info-300": "#90c4f2",
   "lang-amber": "#d8b24a",
   "lang-azure": "#5b8fc9",
   "lang-ember": "#d08248",
@@ -71,16 +90,16 @@ export const accents = ["signal", "ice", "iris", "rose", "neutral"] as const;
 
 export type Accent = (typeof accents)[number];
 
-export const ramp = ["100", "200", "500", "600", "700", "800", "tint-900", "tint-700"] as const;
+export const ramp = ["100", "200", "500", "600", "700", "800", "tint-900", "tint-700", "tint-100", "tint-300"] as const;
 
 
 const lightSurfaces: Record<string, PaletteToken> = {
-  bg: "bone-50",
-  surface: "paper",
-  "surface-subtle": "bone-100",
+  bg: "chalk-0",
+  surface: "chalk-50",
+  "surface-subtle": "chalk-100",
   text: "carbon-950",
   "text-muted": "alloy-600",
-  border: "bone-200",
+  border: "chalk-200",
   focus: "signal-800",
 };
 

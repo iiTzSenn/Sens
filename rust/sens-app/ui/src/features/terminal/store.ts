@@ -1,14 +1,18 @@
 import type { FitAddon } from "@xterm/addon-fit";
-import type { ITheme, Terminal } from "@xterm/xterm";
+import type { IBufferCell, IBufferLine, ITheme, Terminal } from "@xterm/xterm";
 import { createStore } from "zustand/vanilla";
 import { closeTools, panelShows, showTool } from "../../app/shell";
 import { commands, events } from "../../ipc/commands";
 import type { TerminalHeard, TerminalReading } from "../../ipc/types";
+import { plain, tokensOf } from "../../shared/ansi";
 import { stem } from "../../shared/format.js";
 import { look, tokenOf } from "../../shared/look";
 import { warn } from "../chat/state";
 import { addToMessage } from "../composer/store";
 import { project } from "../project/store";
+import { t } from "./copy";
+import { linksOf, webLinks } from "./links";
+import { keepReading } from "./readings";
 
 export interface Console {
   id: number;
@@ -43,37 +47,52 @@ let owed = false;
 const FIRST_SIZE = { cols: 80, rows: 24 };
 const RESIZE_PAUSE = 80;
 const TOGGLES = new Set(["`", "ñ"]);
+const CONTRAST = 4.5;
 
 const PAINT: [keyof ITheme, string][] = [
   ["background", "--panel"],
   ["foreground", "--dim"],
   ["cursor", "--focus"],
   ["cursorAccent", "--panel"],
-  ["selectionBackground", "--raise"],
+  ["selectionInactiveBackground", "--card"],
   ["scrollbarSliderBackground", "--raise"],
   ["scrollbarSliderHoverBackground", "--edge"],
   ["scrollbarSliderActiveBackground", "--edge"],
-  ["black", "--ansi-black"],
-  ["red", "--red"],
-  ["green", "--green"],
-  ["yellow", "--amber"],
-  ["blue", "--blue"],
-  ["magenta", "--ansi-magenta"],
-  ["cyan", "--ansi-cyan"],
-  ["white", "--dim"],
-  ["brightBlack", "--ghost"],
-  ["brightRed", "--red"],
-  ["brightGreen", "--green"],
-  ["brightYellow", "--amber"],
-  ["brightBlue", "--blue"],
-  ["brightMagenta", "--ansi-magenta"],
-  ["brightCyan", "--ansi-cyan"],
-  ["brightWhite", "--text"],
 ];
 
-export const themeNow = (): ITheme => Object.fromEntries(PAINT.map(([key, token]) => [key, tokenOf(token)]));
+const PALETTE: (keyof ITheme)[] = [
+  "black",
+  "red",
+  "green",
+  "yellow",
+  "blue",
+  "magenta",
+  "cyan",
+  "white",
+  "brightBlack",
+  "brightRed",
+  "brightGreen",
+  "brightYellow",
+  "brightBlue",
+  "brightMagenta",
+  "brightCyan",
+  "brightWhite",
+];
 
-export const endedLine = (code: number | null) => (code === null ? "La terminal se cerró." : `El proceso terminó con el código ${code}.`);
+const firstOf = (tokens: string[]) => tokens.map(tokenOf).find(Boolean) ?? "";
+
+export function themeNow(): ITheme {
+  const light = look.getState().shown === "light";
+  const colors: [keyof ITheme, string][] = [
+    ...PAINT.map(([key, token]): [keyof ITheme, string] => [key, tokenOf(token)]),
+    ["selectionBackground", tokenOf(light ? "--tint" : "--raise")],
+    ["selectionForeground", light ? tokenOf("--accent-soft") : ""],
+    ...PALETTE.map((key, slot): [keyof ITheme, string] => [key, firstOf(tokensOf(slot))]),
+  ];
+  return Object.fromEntries(colors.filter(([, color]) => color));
+}
+
+export const endedLine = (code: number | null) => (code === null ? t.closed : t.exited(code));
 
 export const runningConsoles = () => consoles.getState().open.filter((one) => !one.ended).length;
 
@@ -89,11 +108,16 @@ function makeScreen([{ Terminal }, { FitAddon }]: Xterm, id: number, cols: numbe
     rows,
     fontFamily: tokenOf("--mono"),
     fontSize: 12,
+    fontWeight: 400,
+    fontWeightBold: 600,
     lineHeight: 1.4,
     cursorBlink: true,
     scrollback: 5000,
+    minimumContrastRatio: CONTRAST,
+    linkHandler: webLinks,
     theme: themeNow(),
   });
+  xterm.registerLinkProvider(linksOf(xterm));
   const fit = new FitAddon();
   xterm.loadAddon(fit);
   const host = document.createElement("div");
@@ -213,11 +237,57 @@ function textBetween(xterm: Terminal, from: number, to: number) {
 
 const onScreen = (xterm: Terminal) => textBetween(xterm, xterm.buffer.active.viewportY, xterm.buffer.active.viewportY + xterm.rows);
 
-export function lastLines(xterm: Terminal, count: number) {
+function lastOf(xterm: Terminal, count: number): [number, number] {
   const buffer = xterm.buffer.active;
   let end = buffer.length;
   while (end > 0 && !buffer.getLine(end - 1)?.translateToString(true).trim()) end--;
-  return textBetween(xterm, end - count, end);
+  return [end - count, end];
+}
+
+const paletteCode = (color: number, low: number, high: number, wide: number) => (color < 8 ? `${low + color}` : color < 16 ? `${high + color - 8}` : `${wide};5;${color}`);
+
+const rgbCode = (color: number, wide: number) => `${wide};2;${(color >> 16) & 255};${(color >> 8) & 255};${color & 255}`;
+
+function sgrOf(cell: IBufferCell) {
+  const codes = [cell.isBold() && "1", cell.isDim() && "2", cell.isItalic() && "3", cell.isUnderline() && "4", cell.isInverse() && "7", cell.isInvisible() && "8", cell.isStrikethrough() && "9"];
+  if (cell.isFgPalette()) codes.push(paletteCode(cell.getFgColor(), 30, 90, 38));
+  else if (cell.isFgRGB()) codes.push(rgbCode(cell.getFgColor(), 38));
+  if (cell.isBgPalette()) codes.push(paletteCode(cell.getBgColor(), 40, 100, 48));
+  else if (cell.isBgRGB()) codes.push(rgbCode(cell.getBgColor(), 48));
+  return codes.filter(Boolean).join(";");
+}
+
+function coloredLine(line: IBufferLine, reused: IBufferCell) {
+  const cells: [string, string][] = [];
+  for (let x = 0; x < line.length; x++) {
+    const cell = line.getCell(x, reused);
+    if (cell?.getWidth()) cells.push([cell.getChars() || " ", sgrOf(cell)]);
+  }
+  while (cells.length && !cells[cells.length - 1][0].trim()) cells.pop();
+  let out = "";
+  let now = "";
+  for (const [chars, sgr] of cells) {
+    if (sgr !== now) out += `\x1b[${sgr ? `0;${sgr}` : "0"}m`;
+    now = sgr;
+    out += chars;
+  }
+  return now ? `${out}\x1b[0m` : out;
+}
+
+function coloredBetween(xterm: Terminal, from: number, to: number, text: string) {
+  const buffer = xterm.buffer.active;
+  const reused = buffer.getNullCell();
+  const lines: string[] = [];
+  for (let at = Math.max(0, from); at < Math.min(to, buffer.length); at++) {
+    const line = buffer.getLine(at);
+    if (!line) continue;
+    const colored = coloredLine(line, reused);
+    if (line.isWrapped && lines.length) lines[lines.length - 1] += colored;
+    else lines.push(colored);
+  }
+  while (lines.length && !plain(lines[lines.length - 1]).trim()) lines.pop();
+  const colored = lines.join("\n");
+  return plain(colored) === text ? colored : text;
 }
 
 export function fenced(text: string, language = "") {
@@ -259,7 +329,7 @@ function hear(heard: TerminalHeard) {
 
 export const nameOf = (one: Console) => stem(one.root) || one.shell;
 
-const told = (one: Console) => `${one.id} · ${nameOf(one)} (${one.shell}${one.ended ? ", terminada" : ""})`;
+const told = (one: Console) => t.told(one.id, nameOf(one), one.shell, one.ended);
 
 const folded = (path: string) => path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 
@@ -269,19 +339,18 @@ const inside = (root: string, folders: string[]) =>
 export function readScreen({ terminal, lines, within }: Omit<TerminalReading, "ask">) {
   const { shown } = consoles.getState();
   const open = consoles.getState().open.filter((one) => inside(one.root, within));
-  if (!open.length) return "No hay ninguna terminal abierta en la carpeta de esta sesión.";
+  if (!open.length) return t.noneHere;
   const wanted = terminal ?? (open.some((one) => one.id === shown) ? shown : open[open.length - 1].id);
   const chosen = open.find((one) => one.id === wanted);
   const listed = open.map(told).join("; ");
-  if (!chosen) return `No hay ninguna terminal ${wanted}. Abiertas: ${listed}.`;
+  if (!chosen) return t.noSuch(wanted, listed);
   const screen = screens.get(chosen.id);
-  const text = screen ? lastLines(screen.xterm, lines) : "";
-  return [
-    `Terminal ${chosen.id} · ${chosen.shell} en ${chosen.root || "la carpeta de usuario"}${chosen.ended ? " · el proceso ya terminó" : ""}`,
-    ...(open.length > 1 ? [`Abiertas: ${listed}`] : []),
-    "",
-    text || "(no hay nada en pantalla)",
-  ].join("\n");
+  const range = screen ? lastOf(screen.xterm, lines) : null;
+  const text = screen && range ? textBetween(screen.xterm, ...range) : "";
+  const head = [t.heading(chosen.id, chosen.shell, chosen.root, chosen.ended), ...(open.length > 1 ? [t.open(listed)] : []), ""];
+  const said = [...head, text || t.empty].join("\n");
+  if (screen && range && text) keepReading(said, [...head, coloredBetween(screen.xterm, ...range, text)].join("\n"));
+  return said;
 }
 
 const answerRead = (reading: TerminalReading) => commands.terminalScreen(reading.ask, readScreen(reading)).catch(() => {});

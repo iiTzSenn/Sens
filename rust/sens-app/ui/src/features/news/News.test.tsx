@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { News } from "../../ipc/types";
+import { showLanguage } from "../../shared/i18n";
 import { project } from "../project/store";
 import { updates } from "../updates/store";
 import { NewsView } from "./News";
@@ -42,6 +43,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   delete window.__SENS_NEWS__;
+  showLanguage("es");
 });
 
 describe("the news", () => {
@@ -144,5 +146,16 @@ describe("the news", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Ver en GitHub" }));
     expect(ipc.commands.openExternal).toHaveBeenCalledWith("https://github.com/iiTzSenn/Sens/releases/tag/v0.20.0");
+  });
+
+  it("speaks the language chosen, dates included", async () => {
+    showLanguage("en");
+    ipc.commands.news.mockResolvedValue([told("0.20.0"), told("0.19.2"), told("0.19.1")]);
+    atStart(true);
+
+    await screen.findByRole("heading", { name: "Lo que trae la 0.20.0" });
+    expect(screen.getByText("What’s new in Sens 0.20.0, and in 2 earlier versions you hadn’t seen.")).toBeTruthy();
+    expect(within(screen.getAllByRole("article")[0]).getByText("September 25, 2026")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close what’s new" })).toBeTruthy();
   });
 });

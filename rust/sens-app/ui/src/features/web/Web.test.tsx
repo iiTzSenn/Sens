@@ -4,6 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type { Heard } from "../../ipc/types";
 import { shell } from "../../app/shell";
 import { focused } from "../panes/store";
+import { showLanguage } from "../../shared/i18n";
 import { sheets } from "../../shared/sheets.js";
 import { project } from "../project/store";
 import { aimSite, forgetSite, hearBrowser, onProject, syncBrowser, web } from "./store";
@@ -52,6 +53,7 @@ afterEach(() => {
   address.remove();
   out.remove();
   forgetSite();
+  showLanguage("es");
 });
 
 const show = () => {
@@ -163,5 +165,16 @@ describe("web panel", () => {
     act(() => forgetSite());
     expect(ipc.commands.browserAct).toHaveBeenCalledWith("close");
     expect(screen.getByText(/Busca en la web/)).toBeTruthy();
+  });
+
+  it("speaks the language shown, and warns in it", async () => {
+    showLanguage("de");
+    show();
+    expect(screen.getByRole("textbox", { name: "Adresse oder Projektseite" }).getAttribute("placeholder")).toBe("Suchen oder Adresse eingeben");
+    expect(screen.getByRole("button", { name: "Neu laden" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Breite" }).textContent).toContain("Auto");
+    fireEvent.change(screen.getByRole("textbox", { name: "Adresse oder Projektseite" }), { target: { value: "ftp://example.com" } });
+    await act(async () => fireEvent.submit(screen.getByRole("textbox", { name: "Adresse oder Projektseite" })));
+    expect(focused().chat.getState().turns.at(-1)).toMatchObject({ kind: "notice", parts: ["Der Browser öffnet nur http- und https-Adressen."] });
   });
 });

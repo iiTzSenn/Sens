@@ -5,6 +5,7 @@ import type { Workspace } from "../../ipc/types";
 import { Dialog } from "../../app/Dialog";
 import { dialog } from "../../app/modal";
 import { chooseFolder, draft, dropShown, fresh, openBeside, resume, showView } from "../../app/session";
+import { showLanguage } from "../../shared/i18n";
 import { focused } from "../panes/store";
 import { profile } from "../profile/store";
 import { project } from "../project/store";
@@ -51,7 +52,10 @@ beforeEach(() => {
   dialog.setState(dialog.getInitialState(), true);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  showLanguage("es");
+});
 
 async function open() {
   render(<Rail />);
@@ -257,5 +261,18 @@ describe("the rail", () => {
 
     act(() => profile.setState({ person: { name: "", checkUpdates: true, welcomed: true, seen: "", notify: true } }));
     expect(screen.getByText("Sin nombre").dataset.empty).toBe("true");
+  });
+
+  it("speaks the language chosen", async () => {
+    showLanguage("ja");
+    await open();
+    expect(screen.getByRole("button", { name: "新しいセッション" })).toBeTruthy();
+    expect(within(row("Probar el instalador")).getByRole("button", { name: /Probar/ }).title).toBe("Probar el instalador · 2 件のメッセージ · アーカイブ済み");
+    fireEvent.click(within(row("Probar el instalador")).getByRole("button", { name: "セッションを管理" }));
+    expect(screen.getByRole("menuitem", { name: "アーカイブを解除" })).toBeTruthy();
+    showLanguage("de");
+    cleanup();
+    await open();
+    expect(document.querySelector("#new-session kbd")?.textContent).toBe("Strg");
   });
 });

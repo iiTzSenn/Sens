@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dialog } from "../../app/modal";
 import type { Opened } from "../../ipc/types";
+import { showLanguage } from "../../shared/i18n";
 import { paint } from "../../shared/syntax/paint";
 import { forgetEdits, noteEdit, project } from "../project/store";
 import { showSite } from "../web/store";
@@ -38,6 +39,7 @@ afterEach(() => {
   modes.remove();
   forgetEdits();
   dialog.setState(dialog.getInitialState(), true);
+  showLanguage("es");
 });
 
 const show = () => {
@@ -237,5 +239,18 @@ describe("file viewer", () => {
 
     act(() => forgetViewer());
     expect(screen.getByText("Elige un fichero.")).toBeTruthy();
+  });
+
+  it("speaks the language shown, sizes too", async () => {
+    showLanguage("fr");
+    show();
+    expect(head.querySelector(".where")?.textContent).toBe("Aucun fichier ouvert");
+    expect(screen.getByText("Choisissez un fichier.")).toBeTruthy();
+    ipc.commands.openFile.mockResolvedValueOnce({ kind: "tooBig", bytes: 12 * 1024 * 1024, cap: 8 * 1024 * 1024 });
+    await act(async () => openFile("fotos/panorama.png"));
+    expect(notice()).toEqual(["Trop volumineux", "Il pèse 12 Mo et la visionneuse affiche jusqu’à 8 Mo."]);
+    await act(async () => openFile("README.md"));
+    expect(button("Aperçu").getAttribute("aria-pressed")).toBe("true");
+    expect(button("Code").getAttribute("aria-pressed")).toBe("false");
   });
 });

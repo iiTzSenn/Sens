@@ -3,6 +3,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::progress;
+
 const FILE: &str = "look.json";
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
@@ -25,10 +27,10 @@ pub fn read(settings: &Path) -> Option<Look> {
 }
 
 pub fn write(settings: &Path, look: &Look) -> Result<(), String> {
-    fs::create_dir_all(settings).map_err(|error| format!("no pude crear {}: {error}", settings.display()))?;
+    fs::create_dir_all(settings).map_err(|error| progress::cannot_create(settings, &error))?;
     let path = settings.join(FILE);
     let text = serde_json::to_string(look).map_err(|error| error.to_string())?;
-    fs::write(&path, text).map_err(|error| format!("no pude escribir {}: {error}", path.display()))
+    fs::write(&path, text).map_err(|error| progress::cannot_write(&path, &error))
 }
 
 #[cfg(test)]

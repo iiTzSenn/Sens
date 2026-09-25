@@ -6,6 +6,7 @@ use windows::Win32::UI::Shell::{
 };
 use windows::core::GUID;
 
+use crate::language::said;
 use crate::registry;
 
 pub const APP: &str = "sens-app.exe";
@@ -77,7 +78,16 @@ impl Layout {
 }
 
 fn known(folder: &GUID) -> Result<PathBuf, String> {
-    let missing = |error: String| format!("no encuentro las carpetas de tu usuario en Windows: {error}");
+    let missing = |error: String| {
+        said!(
+            en: "can’t find your user folders in Windows: {error}",
+            es: "no encuentro las carpetas de tu usuario en Windows: {error}",
+            fr: "impossible de trouver les dossiers de votre utilisateur dans Windows : {error}",
+            de: "deine Benutzerordner in Windows wurden nicht gefunden: {error}",
+            ja: "Windows のユーザーフォルダーが見つかりません: {error}",
+            zh: "找不到你在 Windows 中的用户文件夹：{error}",
+        )
+    };
     unsafe {
         let path = SHGetKnownFolderPath(folder, KF_FLAG_DEFAULT, None).map_err(|error| missing(error.message()))?;
         let text = path.to_string();

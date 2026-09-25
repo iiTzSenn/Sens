@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useStore } from "zustand";
 import type { Card, Provider } from "../../ipc/types";
-import { compact } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { look } from "../../shared/look";
@@ -11,7 +10,12 @@ import { accountLine, chosenCard, chosenLabel, choose, models, modelsOf, offered
 import { useIds, usePane } from "../panes/context";
 import type { Pane } from "../panes/store";
 import { openSettings, settings } from "../settings/store";
-import { BYPASS, EFFORT_NAMES, MODES, chooseMode, compactNow, composer, effortLevels, effortNow, modeNow, pickEffort, toggleThinking, trustProject, trustedHere } from "./store";
+import { t } from "./knobs.copy";
+import { BYPASS, MODES, chooseMode, composer, effortLevels, effortNow, modeNow, pickEffort, toggleThinking, trustProject, trustedHere } from "./store";
+
+const modeName = (id: string) => (t.modes as Record<string, string>)[id] ?? id;
+const modeSaid = (id: string) => (t.modesSaid as Record<string, string>)[id] ?? "";
+const effortName = (level: string) => (t.efforts as Record<string, string>)[level] || level;
 
 // A choice in a knob's menu: its name, what it means, and a tick when chosen.
 function KnobRow({ label, sub, checked, risky, onPick }: { label: string; sub?: string; checked: boolean; risky?: boolean; onPick: () => void }) {
@@ -51,7 +55,7 @@ export function ModelPicker() {
   const note = useStore(models, (s) => s.note);
   useStore(models, (s) => s.account);
   useStore(models, (s) => s.accountFault);
-  useStore(models, (s) => s.usage);
+  useStore(models, (s) => s.limits);
   const behind = useStore(models, (s) => s.behind);
   const connecting = useStore(settings, (s) => s.connecting);
   const [editing, setEditing] = useState(false);
@@ -73,7 +77,7 @@ export function ModelPicker() {
       <PickerButton sheet={sheet} id={id("pick")}>
         <span id={id("crew")}>{chosenLabel(pane)}</span>
       </PickerButton>
-      <div className="sheet menu models knob-sheet model-sheet" id={id("picker")} role="menu" aria-label="Modelos" {...sheet.sheet}>
+      <div className="sheet menu models knob-sheet model-sheet" id={id("picker")} role="menu" aria-label={t.models} {...sheet.sheet}>
         <div id={id("model-rows")}>
           {catalog.map((provider) => (
             <ProviderRows key={provider.id} provider={provider} editing={editing} fetching={fetching} picked={() => sheet.shut()} />
@@ -96,19 +100,19 @@ export function ModelPicker() {
           onClick={toProviders}
         >
           <Icon svg={ICONS.logIn} />
-          <span>{connecting ? "Esperando al inicio de sesión…" : "Conectar Claude Code…"}</span>
+          <span>{connecting ? t.signingIn : t.connect}</span>
         </button>
-        <button className="menu-item tool" role="menuitem" tabIndex={-1} id={id("models-update")} hidden={!behind} title={`Hay una versión nueva: v${behind}`} onClick={toProviders}>
+        <button className="menu-item tool" role="menuitem" tabIndex={-1} id={id("models-update")} hidden={!behind} title={t.newer(behind)} onClick={toProviders}>
           <Icon svg={ICONS.update} />
-          <span>Actualizar Claude Code…</span>
+          <span>{t.update}</span>
         </button>
         <button className="menu-item tool models-refresh" role="menuitem" tabIndex={-1} id={id("models-refresh")} disabled={fetching} aria-busy={fetching} onClick={refreshModels}>
           <Icon svg={ICONS.refresh} />
-          <span>{fetching ? "Actualizando…" : "Actualizar modelos"}</span>
+          <span>{fetching ? t.refreshing : t.refresh}</span>
         </button>
         <button className="menu-item tool" role="menuitem" tabIndex={-1} id={id("models-edit")} onClick={() => setEditing(!editing)}>
           <Icon svg={editing ? ICONS.check : ICONS.settings} />
-          <span>{editing ? "Listo" : "Editar modelos…"}</span>
+          <span>{editing ? t.done : t.edit}</span>
         </button>
       </div>
     </div>
@@ -120,7 +124,7 @@ function ProviderRows({ provider, editing, fetching, picked }: { provider: Provi
   const row = (card: Card) => <ModelRow key={card.id} provider={provider} card={card} editing={editing} picked={picked} />;
   const latest = cards.filter((card) => card.latest);
   const older = cards.filter((card) => !card.latest);
-  const empty = fetching ? "Buscando modelos…" : modelsOf(provider).length ? "Todos ocultos" : "Sin modelos todavía";
+  const empty = fetching ? t.finding : modelsOf(provider).length ? t.allHidden : t.noModels;
   return (
     <>
       <div className="menu-head">
@@ -129,7 +133,7 @@ function ProviderRows({ provider, editing, fetching, picked }: { provider: Provi
       {cards.length ? (
         <>
           {latest.map(row)}
-          {older.length > 0 && <div className="menu-head">Anteriores</div>}
+          {older.length > 0 && <div className="menu-head">{t.older}</div>}
           {older.map(row)}
         </>
       ) : (
@@ -168,11 +172,11 @@ function ModelRow({ provider, card, editing, picked }: { provider: Provider; car
 
 function askTrust(pane: Pane, back: HTMLElement | null) {
   openPanel(
-    "¿Confías en este proyecto?",
-    <PanelForm submit="Confiar y activar" danger act={() => trustProject(pane)}>
-      <p>Sin control, Claude edita ficheros, ejecuta comandos y usa la red sin pedirte permiso en esta carpeta:</p>
+    t.trustTitle,
+    <PanelForm submit={t.trustGo} danger act={() => trustProject(pane)}>
+      <p>{t.trustSaid}</p>
       <p className="mono trust-root">{pane.desk.getState().root}</p>
-      <p>Sens recordará que confías en ella y no volverá a preguntarte aquí.</p>
+      <p>{t.trustKept}</p>
     </PanelForm>,
     back ?? undefined,
   );
@@ -189,16 +193,16 @@ export function ModePicker() {
   const now = MODES.find((one) => one.id === mode)!;
   return (
     <div className="pick-anchor">
-      <PickerButton sheet={sheet} id={id("mode-pick")} title={now.said} risky={now.risky}>
-        <span id={id("mode-label")}>{now.label}</span>
+      <PickerButton sheet={sheet} id={id("mode-pick")} title={modeSaid(now.id)} risky={now.risky}>
+        <span id={id("mode-label")}>{modeName(now.id)}</span>
       </PickerButton>
-      <div className="sheet menu models knob-sheet" id={id("mode-sheet")} role="menu" aria-label="Permisos" {...sheet.sheet}>
-        <div className="menu-head">Permisos</div>
+      <div className="sheet menu models knob-sheet" id={id("mode-sheet")} role="menu" aria-label={t.permissions} {...sheet.sheet}>
+        <div className="menu-head">{t.permissions}</div>
         {MODES.map((one) => (
           <KnobRow
             key={one.id}
-            label={one.label}
-            sub={one.said}
+            label={modeName(one.id)}
+            sub={modeSaid(one.id)}
             checked={one.id === mode}
             risky={one.risky}
             onPick={() => {
@@ -225,9 +229,9 @@ export function Think() {
   if (!card) return null;
   const always = card.thinking === "always";
   const on = always || thinking;
-  const title = always ? "Este modelo razona siempre" : on ? "Razona antes de responder. Pulsa para desactivarlo." : "Responde sin razonar. Pulsa para activarlo.";
+  const title = always ? t.thinkAlways : on ? t.thinkOn : t.thinkOff;
   return (
-    <button className="toggle" id={id("think")} aria-pressed={on} aria-disabled={always} aria-label="Razonamiento" title={title} onClick={() => toggleThinking(pane)}>
+    <button className="toggle" id={id("think")} aria-pressed={on} aria-disabled={always} aria-label={t.thinking} title={title} onClick={() => toggleThinking(pane)}>
       <span className="toggle-icon" aria-hidden="true">
         <Icon svg={ICONS.brain} />
       </span>
@@ -237,59 +241,6 @@ export function Think() {
     </button>
   );
 }
-
-const FULLISH = 0.7;
-const FULL = 0.9;
-
-export function ContextMeter() {
-  const pane = usePane();
-  const id = useIds();
-  const context = useStore(pane.chat, (s) => s.context);
-  const busy = useStore(pane.chat, (s) => s.busy);
-  const sheet = useSheet();
-  if (!context?.used) return null;
-  const share = Math.min(1, context.used / context.window);
-  const percent = Math.round(share * 100);
-  const said = `${compact(context.used)} de ${compact(context.window)} tokens`;
-  return (
-    <div className="pick-anchor meter" id={id("context")} data-level={share >= FULL ? "full" : share >= FULLISH ? "high" : undefined}>
-      <button
-        className="meter-btn"
-        id={id("context-pick")}
-        ref={sheet.anchor}
-        aria-haspopup="true"
-        aria-expanded={sheet.open}
-        aria-label={`Contexto usado: ${percent} %`}
-        title={`Contexto: ${said}`}
-        onClick={sheet.toggle}
-      >
-        <svg className="meter-ring" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-          <circle className="meter-track" cx="8" cy="8" r="6" />
-          <circle className="meter-fill" cx="8" cy="8" r="6" pathLength="100" strokeDasharray={`${percent} 100`} transform="rotate(-90 8 8)" />
-        </svg>
-        <span>{percent} %</span>
-      </button>
-      <div className="sheet meter-sheet" id={id("context-sheet")} aria-label="Contexto" {...sheet.sheet}>
-        <p className="meter-said">
-          Contexto <b>{said}</b>
-        </p>
-        <p className="mode-sub">Compactar resume lo hablado para liberar espacio. La sesión sigue siendo la misma.</p>
-        <button
-          className="quiet"
-          disabled={busy}
-          onClick={() => {
-            sheet.shut();
-            compactNow(pane);
-          }}
-        >
-          Compactar ahora
-        </button>
-      </div>
-    </div>
-  );
-}
-
-const EFFORT_HELP = "Cuánto razona el modelo antes de responder. Más esfuerzo tarda más y gasta más, pero acierta más en lo difícil.";
 
 // How hard the model thinks, on a slider of the levels it offers. At the top,
 // the track fills with Signal pixels.
@@ -307,7 +258,7 @@ export function Effort() {
 
   const at = Math.max(0, levels.indexOf(effortNow(card, pane)));
   const last = levels.length - 1;
-  const said = EFFORT_NAMES[levels[at]] || levels[at];
+  const level = effortName(levels[at]);
   const top = at === last;
   const atPointer = (x: number) => {
     const box = track.current!.getBoundingClientRect();
@@ -316,23 +267,23 @@ export function Effort() {
 
   return (
     <div className="pick-anchor effort" id={id("effort")} data-max={String(top)}>
-      <PickerButton sheet={sheet} id={id("effort-pick")} title={`Esfuerzo ${said}`}>
+      <PickerButton sheet={sheet} id={id("effort-pick")} title={t.effortIs(level)}>
         <span className="effort-label" id={id("effort-label")}>
-          {said}
+          {level}
         </span>
       </PickerButton>
-      <div className="sheet effort-sheet" id={id("effort-sheet")} aria-label="Esfuerzo" {...sheet.sheet}>
+      <div className="sheet effort-sheet" id={id("effort-sheet")} aria-label={t.effort} {...sheet.sheet}>
         <div className="effort-head">
           <span className="effort-name">
-            Esfuerzo <b id={id("effort-now")}>{said}</b>
+            {t.effort} <b id={id("effort-now")}>{level}</b>
           </span>
-          <span className="effort-help" id={id("effort-help")} tabIndex={0} role="note" title={EFFORT_HELP} aria-label={EFFORT_HELP}>
+          <span className="effort-help" id={id("effort-help")} tabIndex={0} role="note" title={t.effortHelp} aria-label={t.effortHelp}>
             <Icon svg={ICONS.question} />
           </span>
         </div>
         <div className="effort-ends">
-          <span>Más rápido</span>
-          <span>Más inteligente</span>
+          <span>{t.faster}</span>
+          <span>{t.smarter}</span>
         </div>
         <div
           className="effort-track"
@@ -340,12 +291,12 @@ export function Effort() {
           ref={track}
           role="slider"
           tabIndex={0}
-          aria-label="Esfuerzo"
+          aria-label={t.effort}
           aria-valuemin={0}
           aria-valuemax={last}
           aria-valuenow={at}
-          aria-valuetext={said}
-          title={`Esfuerzo ${said}`}
+          aria-valuetext={level}
+          title={t.effortIs(level)}
           style={{ "--at": String(at / last) } as CSSProperties}
           onPointerDown={(event) => {
             if (event.button !== 0) return;

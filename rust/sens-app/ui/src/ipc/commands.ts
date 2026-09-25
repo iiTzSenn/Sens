@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { Language } from "../shared/i18n";
 import type { Look } from "../shared/look";
 import type {
   Account,
   Adopted,
   Artifact,
+  AttachedFile,
   Attachments,
   Card,
   Capabilities,
@@ -53,8 +55,8 @@ export const commands = {
   setWelcomed: (on: boolean) => invoke<void>("set_welcomed", { on }),
   news: () => invoke<News[]>("news"),
   sawNews: () => invoke<void>("saw_news"),
-  look: () => invoke<Look>("look"),
   setLook: (look: Look) => invoke<void>("set_look", { look }),
+  setLanguage: (language: Language) => invoke<void>("set_language", { language }),
   welcomeScan: () => invoke<Found>("welcome_scan"),
   welcomeAdopt: (roots: string[]) => invoke<Adopted>("welcome_adopt", { roots }),
   welcomeServers: (ids: string[], roots: string[]) => invoke<Imported>("welcome_servers", { ids, roots }),
@@ -66,8 +68,8 @@ export const commands = {
   providersState: () => invoke<ProviderState[]>("providers_state"),
   // The providers Sens can chat through, and the models each offers now.
   providers: () => invoke<Provider[]>("providers"),
-  models: (provider: string) => invoke<Card[]>("models", { provider }),
-  claudeAccount: () => invoke<Account>("claude_account"),
+  models: (provider: string) => invoke<Card[] | null>("models", { provider }),
+  claudeAccount: () => invoke<Account | null>("claude_account"),
   setProviderMethod: (id: string, method: Method) => invoke<void>("set_provider_method", { id, method }),
   saveApiKey: (id: string, key: string) => invoke<void>("save_api_key", { id, key }),
   forgetApiKey: (id: string) => invoke<void>("forget_api_key", { id }),
@@ -141,6 +143,7 @@ export const commands = {
   openFile: (root: string, path: string) => invoke<Opened>("open_file", { root, path }),
   // Files or pictures to send with a message: pictures come back as data.
   attach: (root: string, paths: string[]) => invoke<Attachments>("attach", { root, paths }),
+  stageFile: (name: string, data: string) => invoke<AttachedFile>("stage_file", { name, data }),
   repo: (root: string) => invoke<Repo | null>("repo", { root }),
   checkout: (root: string, branch: string) => invoke<Repo>("checkout", { root, branch }),
   remember: (root: string) => invoke<void>("remember", { root }),

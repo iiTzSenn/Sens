@@ -1,7 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createStore } from "zustand/vanilla";
 import { commands } from "../../ipc/commands";
-import type { Card, Settings } from "../../ipc/types";
+import type { AttachedFile, Card, Refused, Settings } from "../../ipc/types";
 import { store, stored } from "../../shared/storage.js";
 import { forgetChanges } from "../changes/store";
 import { notice, send as sendChat, warm as warmChat, warn, whenTurnEnds } from "../chat/store";
@@ -11,30 +11,23 @@ import { chosenCard } from "../models/store";
 import { EFFORT, ISOLATE, THINKING, focused, panes, workOf, type Pane } from "../panes/store";
 import { forgetEdits, project } from "../project/store";
 import { failRail, loadRail } from "../rail/store";
+import { t } from "./copy";
+import { RAW_PICTURE_CAP, fitPicture, readAsUrl, type Fitted } from "./pictures";
 
 const MODE = "sens.mode";
 
 export const BYPASS = "bypassPermissions";
 
-export const EFFORT_NAMES: Record<string, string> = { low: "Bajo", medium: "Medio", high: "Alto", xhigh: "Extra", max: "Max" };
-
-export const MODES = [
-  { id: "default", label: "Preguntar", said: "Pide permiso antes de editar ficheros o ejecutar comandos." },
-  { id: "acceptEdits", label: "Aceptar ediciones", said: "Edita sin preguntar; pide permiso para los comandos." },
-  { id: "auto", label: "Automático", said: "Un clasificador aprueba o bloquea cada acción por ti." },
-  { id: "plan", label: "Planificar", said: "Explora y propone un plan sin tocar nada." },
-  {
-    id: BYPASS,
-    label: "Sin control",
-    said: "Lo hace todo sin pedir permiso: edita, ejecuta comandos y usa la red. Solo en proyectos de confianza.",
-    risky: true,
-  },
-];
+export const MODES: { id: string; risky?: boolean }[] = [{ id: "default" }, { id: "acceptEdits" }, { id: "auto" }, { id: "plan" }, { id: BYPASS, risky: true }];
 
 const COMPACT = "/compact";
 
-const PASTEABLE = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-const PICTURE_CAP = 5 * 1024 * 1024;
+export const PICTURES_MOST = 20;
+export const CLIPS_MOST = 50;
+export const STAGE_CAP = 20 * 1024 * 1024;
+export const LONG_PASTE = { characters: 2500, lines: 40 };
+const PASTED_TEXT = "pasted-text.txt";
+const TOLD_KEPT = 50;
 
 // A file attached from the project (or from outside it), and a picture pasted
 // or dropped, as the message will carry them.
@@ -43,9 +36,12 @@ export interface File {
   name: string;
   bytes: number;
   outside: boolean;
+  kind?: "file" | "folder" | "text";
+  entries?: number;
+  text?: string;
 }
 
-export interface Picture {
+export interface Picture extends Partial<Pick<Fitted, "width" | "height" | "was">> {
   name: string;
   bytes: number;
   mediaType: string;
@@ -135,8 +131,6 @@ export async function distrust(root: string) {
   await loadRail();
 }
 
-export const fileLabel = (file: File) => (file.outside ? file.name : file.path);
-
 export const writeMessage = (text: string, pane: Pane = focused()) => pane.desk.setState({ text });
 
 export function toggleIsolate(pane: Pane = focused()) {
@@ -157,6 +151,40 @@ export function addToMessage(addition: string, pane: Pane = focused()) {
   });
 }
 
+const MEGABYTES = STAGE_CAP / 1024 / 1024;
+
+const refusal = ({ name, why }: Refused) =>
+  ({ missing: t.missing, unreadable: t.unreadable, project: t.isProject, tooBig: (named: string) => t.tooBig(named, MEGABYTES) })[why](name);
+
+const asFile = (item: AttachedFile, kind: File["kind"] = "file"): File => ({ path: item.path, name: item.name, bytes: item.bytes, outside: item.outside, kind });
+
+const pictureOf = (name: string, fitted: Fitted): Picture => ({ name, ...fitted });
+
+function blobOf(data: string, mediaType: string) {
+  const raw = atob(data);
+  const bytes = new Uint8Array(raw.length);
+  for (let at = 0; at < raw.length; at++) bytes[at] = raw.charCodeAt(at);
+  return new Blob([bytes], { type: mediaType });
+}
+
+function keep(taken: (File | Picture)[], pane: Pane) {
+  const { attached, pasted } = pane.desk.getState();
+  const files = [...attached];
+  const pictures = [...pasted];
+  let over = { pictures: false, files: false };
+  for (const one of taken) {
+    if ("url" in one) {
+      if (pictures.length < PICTURES_MOST) pictures.push(one);
+      else over = { ...over, pictures: true };
+    } else if (files.some((file) => file.path === one.path)) continue;
+    else if (files.length < CLIPS_MOST) files.push(one);
+    else over = { ...over, files: true };
+  }
+  pane.desk.setState({ attached: files, pasted: pictures });
+  if (over.pictures) warn(t.tooManyPictures(PICTURES_MOST), pane);
+  if (over.files) warn(t.tooManyFiles(CLIPS_MOST), pane);
+}
+
 export async function attachPaths(paths: string[], pane: Pane = focused()) {
   const root = workOf(pane);
   if (!root || !paths.length) return;
@@ -166,42 +194,68 @@ export async function attachPaths(paths: string[], pane: Pane = focused()) {
   } catch (reason) {
     return warn(String(reason), pane);
   }
-  pane.desk.setState(({ attached, pasted }) => {
-    const files = [...attached];
-    const pictures = [...pasted];
-    for (const item of found.items) {
-      if (item.kind === "picture") pictures.push({ name: item.name, bytes: item.bytes, mediaType: item.mediaType, url: `data:${item.mediaType};base64,${item.data}` });
-      else if (!files.some((file) => file.path === item.path)) files.push(item);
+  for (const refused of found.refused) warn(refusal(refused), pane);
+  const taken: (File | Picture)[] = [];
+  for (const item of found.items) {
+    if (item.kind === "folder") taken.push({ path: item.path, name: item.name, bytes: 0, outside: item.outside, kind: "folder", entries: item.entries });
+    else if (item.kind === "file") taken.push(asFile(item));
+    else {
+      const fitted = await fitPicture(blobOf(item.data, item.mediaType));
+      if (fitted) taken.push(pictureOf(item.name, fitted));
+      else if (item.outside && item.bytes > STAGE_CAP) warn(t.tooBig(item.name, MEGABYTES), pane);
+      else taken.push(asFile({ ...item, kind: "file" }));
     }
-    return { attached: files, pasted: pictures };
-  });
-  for (const reason of found.refused) warn(reason, pane);
+  }
+  keep(taken, pane);
 }
 
-const readAsUrl = (file: Blob) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(String(reader.result)));
-    reader.addEventListener("error", () => reject(reader.error));
-    reader.readAsDataURL(file);
-  });
-
-// Pictures pasted into the message: only the kinds and sizes Claude takes.
-export async function takePictures(files: globalThis.File[], pane: Pane = focused()) {
-  const taken: Picture[] = [];
-  for (const file of files) {
-    const name = file.name || "imagen pegada";
-    if (!PASTEABLE.has(file.type)) {
-      warn(`${name} no se puede enviar · solo PNG, JPEG, GIF o WebP`, pane);
-      continue;
-    }
-    if (file.size > PICTURE_CAP) {
-      warn(`${name} pasa de 5 MB · redúcela antes de enviarla`, pane);
-      continue;
-    }
-    taken.push({ name, bytes: file.size, mediaType: file.type, url: await readAsUrl(file) });
+async function stage(blob: Blob, name: string, pane: Pane) {
+  if (blob.size > STAGE_CAP) {
+    warn(t.tooBig(name, MEGABYTES), pane);
+    return null;
   }
-  pane.desk.setState(({ pasted }) => ({ pasted: [...pasted, ...taken] }));
+  try {
+    const data = await readAsUrl(blob);
+    return asFile(await commands.stageFile(name, data.slice(data.indexOf(",") + 1)));
+  } catch (reason) {
+    warn(t.stageFailed(name, reason instanceof Error ? reason.message : String(reason)), pane);
+    return null;
+  }
+}
+
+export async function takeFiles(files: globalThis.File[], pane: Pane = focused()) {
+  const taken: (File | Picture)[] = [];
+  for (const file of files) {
+    const picture = file.type.startsWith("image/");
+    const name = file.name || (picture ? t.pastedPicture : t.pastedFile);
+    const fitted = picture && file.size <= RAW_PICTURE_CAP ? await fitPicture(file) : null;
+    const one = fitted ? pictureOf(name, fitted) : await stage(file, name, pane);
+    if (one) taken.push(one);
+  }
+  keep(taken, pane);
+}
+
+export const tooLong = (text: string) => text.length > LONG_PASTE.characters || text.split("\n").length > LONG_PASTE.lines;
+
+export async function pasteText(text: string, pane: Pane = focused()) {
+  const staged = await stage(new Blob([text], { type: "text/plain" }), PASTED_TEXT, pane);
+  if (staged) keep([{ ...staged, kind: "text", text }], pane);
+}
+
+export function inlineText(file: File, pane: Pane = focused()) {
+  const kept = pane.desk.getState().text.trimEnd();
+  const text = file.text ?? "";
+  dropFile(file.path, pane);
+  writeMessage(kept ? `${kept}\n\n${text}` : text, pane);
+}
+
+const told = new Map<string, string>();
+
+export const toldText = (path: string) => told.get(path);
+
+function remember(files: File[]) {
+  for (const file of files) if (file.text !== undefined) told.set(file.path, file.text);
+  for (const path of told.keys()) if (told.size > TOLD_KEPT) told.delete(path);
 }
 
 export const dropFile = (path: string, pane: Pane = focused()) => pane.desk.setState(({ attached }) => ({ attached: attached.filter((file) => file.path !== path) }));
@@ -236,7 +290,7 @@ export async function switchTo(name: string, pane: Pane = focused()) {
     nextRepoLap(one);
     one.desk.setState({ repo });
   }
-  notice(["rama · ", { bold: repo.branch }], "", pane);
+  notice([t.branchSwitched, { bold: repo.branch }], "", pane);
   if (root !== project.getState().work) return;
   forgetEdits();
   forgetChanges();
@@ -247,20 +301,22 @@ export async function switchTo(name: string, pane: Pane = focused()) {
 
 // A message goes when there is a project, a model and something to say.
 export function canSend(text: string, pane: Pane = focused()) {
-  const { root, choice, pasted } = pane.desk.getState();
-  return Boolean(root && choice.provider && (text.trim() || pasted.length));
+  const { root, choice, pasted, attached } = pane.desk.getState();
+  return Boolean(root && choice.provider && (text.trim() || pasted.length || attached.length));
 }
 
 export async function send(text: string, pane: Pane = focused()) {
   if (pane.chat.getState().busy || !canSend(text, pane)) return;
   const { attached, pasted } = pane.desk.getState();
+  const files = attached.map((file) => file.path);
   const message = {
     text: text.trim(),
-    files: attached.map((file) => file.path),
+    files,
     images: pasted.map((picture) => ({ mediaType: picture.mediaType, data: picture.url.slice(picture.url.indexOf(",") + 1) })),
   };
+  remember(attached);
   forgetClips(pane);
-  await sendChat({ message, shownFiles: attached.map(fileLabel), pictures: pasted.map((picture) => picture.url) }, currentSettings(pane), pane);
+  await sendChat({ message, shownFiles: files, pictures: pasted.map((picture) => picture.url) }, currentSettings(pane), pane);
 }
 
 export async function compactNow(pane: Pane = focused()) {

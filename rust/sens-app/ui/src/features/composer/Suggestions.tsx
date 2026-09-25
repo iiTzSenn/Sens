@@ -4,6 +4,7 @@ import { commands } from "../../ipc/commands";
 import type { Entry, Slash } from "../../ipc/types";
 import { FileIcon } from "../../shared/FileIcon";
 import { workOf, worktreePending, type Pane } from "../panes/store";
+import { t } from "./copy";
 import { writeMessage } from "./store";
 import { applied, commandOf, inFolder, mentionOf, rankFiles, rankSlashes, triggerAt } from "./suggest";
 
@@ -21,6 +22,7 @@ export function useSuggestions(pane: Pane, text: string, field: RefObject<HTMLTe
   const [found, setFound] = useState<Entry[]>([]);
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState("");
+  const [hushed, setHushed] = useState<string | null>(null);
 
   const trigger = useMemo(() => (focused ? triggerAt(text, caret) : null), [focused, text, caret]);
   const key = trigger ? `${trigger.kind}:${trigger.start}:${trigger.query}` : "";
@@ -49,7 +51,7 @@ export function useSuggestions(pane: Pane, text: string, field: RefObject<HTMLTe
 
   useEffect(() => setActive(0), [key]);
 
-  const open = Boolean(trigger) && key !== dismissed && items.length > 0;
+  const open = Boolean(trigger) && key !== dismissed && text !== hushed && items.length > 0;
   const at = Math.min(active, Math.max(items.length - 1, 0));
   const optionId = (index: number) => `${listId}-${index}`;
 
@@ -84,6 +86,7 @@ export function useSuggestions(pane: Pane, text: string, field: RefObject<HTMLTe
     pick,
     hover: setActive,
     keyDown,
+    hush: (said: string) => setHushed(said),
     follow: (event: SyntheticEvent<HTMLTextAreaElement>) => setCaret(event.currentTarget.selectionStart),
     focus: () => setFocused(true),
     blur: () => setFocused(false),
@@ -93,7 +96,7 @@ export function useSuggestions(pane: Pane, text: string, field: RefObject<HTMLTe
 export function Suggestions({ suggest }: { suggest: Suggest }) {
   if (!suggest.open) return null;
   return (
-    <div className="sheet menu suggest" id={suggest.listId} role="listbox" aria-label={suggest.kind === "file" ? "Ficheros del proyecto" : "Comandos de Claude Code"}>
+    <div className="sheet menu suggest" id={suggest.listId} role="listbox" aria-label={suggest.kind === "file" ? t.projectFiles : t.claudeCommands}>
       {suggest.items.map((item, index) => (
         <button
           key={item.key}

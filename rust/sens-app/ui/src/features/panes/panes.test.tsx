@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatEvent } from "../../ipc/types";
 import { closePane, openBeside, resume } from "../../app/session";
+import { showLanguage } from "../../shared/i18n";
 import { hearChat } from "../chat/store";
 import { currentSettings } from "../composer/store";
 import { choose, models } from "../models/store";
@@ -60,7 +61,10 @@ beforeEach(() => {
   drag.setState(drag.getInitialState(), true);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  showLanguage("es");
+});
 
 describe("two sessions side by side", () => {
   it("opens a session beside, follows the pane you use, and remembers the layout", async () => {
@@ -141,5 +145,21 @@ describe("two sessions side by side", () => {
     expect(drag.getState().phase).toBe("cancelling");
     await settle();
     expect(titles()).toEqual(["Sesión s1", "Sesión s2"]);
+  });
+
+  it("speaks the language chosen", async () => {
+    showLanguage("en");
+    render(
+      <section className="chat">
+        <Panes />
+      </section>,
+    );
+    await act(async () => openBeside("C:/demo", "s2"));
+    expect(document.querySelector(".pane-close")?.getAttribute("aria-label")).toBe("Close Sesión s1");
+    lift({ button: 0, clientX: 10, clientY: 10, currentTarget: document.createElement("button") } as never, { home: "C:/demo", id: "s3", title: "Sesión s3", folder: "demo" });
+    act(() => pointer("pointermove", 800, 300));
+    expect(document.querySelector(".snap-hint")?.textContent).toBe("Drop to replace “Sesión s2”");
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    await settle();
   });
 });

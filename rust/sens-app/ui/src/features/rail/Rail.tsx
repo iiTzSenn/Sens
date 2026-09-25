@@ -7,22 +7,18 @@ import { anchorMenu } from "../../shared/anchorMenu";
 import { Icon } from "../../shared/Icon";
 import { stem } from "../../shared/format.js";
 import { ICONS } from "../../shared/icons.js";
+import { shared } from "../../shared/copy";
 import { useSheet, type Sheet } from "../../shared/useSheet";
 import { distrust } from "../composer/store";
 import { useShown } from "../panes/context";
 import { drag, lift } from "../panes/drag";
 import { project, type View } from "../project/store";
+import { t } from "./copy";
 import { Me } from "./Me";
 import { activityOf, archiveSession, deleteSession, fold, rail, renameSession, type Activity } from "./store";
 
-const ACTIVITY_SAID: Record<Activity, string> = {
-  working: "Trabajando",
-  waiting: "Esperando tu respuesta",
-  done: "Terminó",
-};
-
 function ActivityMark({ activity }: { activity: Activity }) {
-  return <span className="activity" data-activity={activity} role="img" aria-label={ACTIVITY_SAID[activity]} />;
+  return <span className="activity" data-activity={activity} role="img" aria-label={t.activity[activity]} />;
 }
 
 const TITLE_LIMIT = 56;
@@ -39,9 +35,9 @@ export function Rail() {
   );
 }
 
-const VIEWS: { view: View; label: string; icon: string }[] = [
-  { view: "capabilities", label: "Capacidades", icon: ICONS.shapes },
-  { view: "artifacts", label: "Artefactos", icon: ICONS.files },
+const VIEWS: { view: Exclude<View, "" | "news">; icon: string }[] = [
+  { view: "capabilities", icon: ICONS.shapes },
+  { view: "artifacts", icon: ICONS.files },
 ];
 
 function Nav() {
@@ -53,9 +49,9 @@ function Nav() {
         <span className="nav-icon">
           <Icon svg={ICONS.pen} />
         </span>
-        <span className="nav-label">Sesión nueva</span>
+        <span className="nav-label">{shared.newSession}</span>
         <span className="hint-keys" aria-hidden="true">
-          <kbd>Ctrl</kbd>
+          <kbd>{shared.ctrl}</kbd>
           <kbd>N</kbd>
         </span>
       </button>
@@ -64,7 +60,7 @@ function Nav() {
           <span className="nav-icon">
             <Icon svg={one.icon} />
           </span>
-          <span className="nav-label">{one.label}</span>
+          <span className="nav-label">{t.view[one.view]}</span>
         </button>
       ))}
     </div>
@@ -160,10 +156,10 @@ function EmptyRail() {
   return (
     <div className="rail-empty">
       <Icon svg={ICONS.folder} />
-      <p>Todavía no hay sesiones.</p>
+      <p>{t.noSessionsYet}</p>
       <button onClick={() => chooseFolder()}>
         <Icon svg={ICONS.plus} />
-        Abrir proyecto
+        {t.openProject}
       </button>
     </div>
   );
@@ -196,14 +192,14 @@ function Project({ space, shut, renaming, managing, manage, beside, managingFold
           <span className="name">{space.name}</span>
           {shut && busiest && <ActivityMark activity={busiest} />}
         </button>
-        <button className="add" title={`Sesión nueva en ${space.name}`} aria-label={`Sesión nueva en ${space.name}`} onClick={() => draft(space.root)}>
+        <button className="add" title={t.newSessionIn(space.name)} aria-label={t.newSessionIn(space.name)} onClick={() => draft(space.root)}>
           <Icon svg={ICONS.plus} />
         </button>
         {space.trusted && (
           <button
             className="dots"
-            title={`Gestionar ${space.name}`}
-            aria-label={`Gestionar ${space.name}`}
+            title={t.manage(space.name)}
+            aria-label={t.manage(space.name)}
             aria-haspopup="menu"
             aria-expanded={managingFolder}
             onClick={(event) => manageFolder(event.currentTarget)}
@@ -226,7 +222,7 @@ function Project({ space, shut, renaming, managing, manage, beside, managingFold
               renamed={() => renamed(summary.id)}
             />
           ))}
-          {!space.sessions.length && <p className="none">Sin sesiones.</p>}
+          {!space.sessions.length && <p className="none">{t.noSessions}</p>}
         </div>
       </div>
     </div>
@@ -247,8 +243,8 @@ function SessionRow({ home, summary, renaming, managed, beside, manage, renamed 
   const current = useStore(project, (s) => !s.view && s.root === home && s.session === summary.id);
   const activity = useStore(rail, (s) => s.activity.get(summary.id));
   const lifted = useStore(drag, (s) => s.phase === "dragging" && s.dragged?.id === summary.id);
-  const doing = activity ? ACTIVITY_SAID[activity] : "";
-  const said = [summary.title, doing, `${summary.tasks} ${summary.tasks === 1 ? "mensaje" : "mensajes"}`, summary.archived ? "archivada" : ""];
+  const doing = activity ? t.activity[activity] : "";
+  const said = [summary.title, doing, t.messages(summary.tasks), summary.archived ? t.archived : ""];
   return (
     <div
       className="session-row"
@@ -276,8 +272,8 @@ function SessionRow({ home, summary, renaming, managed, beside, manage, renamed 
       </button>
       <button
         className="dots"
-        title="Gestionar sesión"
-        aria-label="Gestionar sesión"
+        title={t.manageSession}
+        aria-label={t.manageSession}
         aria-haspopup="menu"
         aria-expanded={managed}
         onClick={(event) => manage(event.currentTarget)}
@@ -316,7 +312,7 @@ function Rename({ home, summary, done }: { home: string; summary: SessionSummary
       maxLength={TITLE_LIMIT}
       spellCheck={false}
       autoComplete="off"
-      aria-label="Nombre de la sesión"
+      aria-label={t.sessionName}
       onChange={(event) => setTitle(event.target.value)}
       onKeyDown={(event) => {
         if (event.key !== "Enter" && event.key !== "Escape") return;
@@ -342,12 +338,12 @@ function FolderMenu({ menu, root }: { menu: Sheet; root: string | null }) {
   }
 
   return (
-    <div className="sheet menu float-menu" id="folder-menu" role="menu" aria-label="Gestionar carpeta" {...menu.sheet}>
+    <div className="sheet menu float-menu" id="folder-menu" role="menu" aria-label={t.manageFolder} {...menu.sheet}>
       <button className="menu-item" role="menuitem" tabIndex={-1} onClick={untrust}>
         <span className="act-icon">
           <Icon svg={ICONS.shieldOff} />
         </span>
-        <span className="act-text">Dejar de confiar</span>
+        <span className="act-text">{t.untrust}</span>
       </button>
     </div>
   );
@@ -371,7 +367,7 @@ function RowMenu({ menu, managed, shown, rename }: { menu: Sheet; managed: Manag
   const kept = managed?.summary.archived;
 
   return (
-    <div className="sheet menu float-menu" id="session-menu" role="menu" aria-label="Gestionar sesión" {...menu.sheet}>
+    <div className="sheet menu float-menu" id="session-menu" role="menu" aria-label={t.manageSession} {...menu.sheet}>
       {managed && !shown.includes(managed.summary.id) && (
         <button
           className="menu-item"
@@ -385,20 +381,20 @@ function RowMenu({ menu, managed, shown, rename }: { menu: Sheet; managed: Manag
           <span className="act-icon">
             <Icon svg={ICONS.splitView} />
           </span>
-          <span className="act-text">Abrir al lado</span>
+          <span className="act-text">{t.openBeside}</span>
         </button>
       )}
       <button className="menu-item" role="menuitem" tabIndex={-1} onClick={rename}>
         <span className="act-icon">
           <Icon svg={ICONS.pencil} />
         </span>
-        <span className="act-text">Renombrar</span>
+        <span className="act-text">{t.rename}</span>
       </button>
       <button className="menu-item" role="menuitem" tabIndex={-1} onClick={act((one) => archiveSession(one.home, one.summary))}>
         <span className="act-icon">
           <Icon svg={kept ? ICONS.unarchive : ICONS.archive} />
         </span>
-        <span className="act-text">{kept ? "Desarchivar" : "Archivar"}</span>
+        <span className="act-text">{kept ? t.unarchive : t.archive}</span>
       </button>
       <button
         className="menu-item risky"
@@ -417,7 +413,7 @@ function RowMenu({ menu, managed, shown, rename }: { menu: Sheet; managed: Manag
         <span className="act-icon">
           <Icon svg={ICONS.trash} />
         </span>
-        <span className="act-text">{armed ? "Confirmar" : "Eliminar"}</span>
+        <span className="act-text">{armed ? t.confirm : t.remove}</span>
       </button>
     </div>
   );

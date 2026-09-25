@@ -90,6 +90,18 @@ const CLAIMED = {
   workflow: null,
 };
 
+const TITLED = {
+  bat: "Batch",
+  log: "Log",
+  nushell: "Nushell",
+};
+
+const TAGS = {
+  "shell-session": "shellsession",
+  terminal: "shellsession",
+  dos: "bat",
+};
+
 const known = new Map();
 for (const info of bundledLanguagesInfo) {
   for (const name of [info.id, ...(info.aliases ?? [])]) known.set(name.toLowerCase(), info.id);
@@ -151,6 +163,11 @@ for (const [extension, grammar] of Object.entries(CLAIMED)) {
   else delete extensions[extension];
 }
 for (const [name, id] of known) aliases[name] = id;
+for (const [tag, id] of Object.entries(TAGS)) {
+  if (!known.has(id)) throw new Error(`shiki has no ${id} grammar for ${tag}`);
+  aliases[tag] ??= id;
+}
+const titles = Object.fromEntries(bundledLanguagesInfo.map((info) => [info.id, TITLED[info.id] ?? info.name]));
 
 const sorted = (table) => Object.fromEntries(Object.entries(table).sort(([one], [two]) => one.localeCompare(two)));
 const table = {
@@ -160,6 +177,7 @@ const table = {
   extensions: sorted(extensions),
   aliases: sorted(aliases),
   interpreters: sorted(interpreters),
+  titles: sorted(titles),
 };
 
 const target = path.join(here, "..", "src", "shared", "syntax", "languages.json");

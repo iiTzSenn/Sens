@@ -132,7 +132,6 @@ export interface Listing {
 /** market::SourceState */
 export interface SourceState {
   id: string;
-  label: string;
   fetchedAt: number;
   error: string;
 }
@@ -373,6 +372,29 @@ export interface Finished {
   error: string;
 }
 
+export interface LimitWindow {
+  utilization: number | null;
+  resetsAt: number | null;
+}
+
+export interface Overage {
+  status: string;
+  using: boolean;
+  resetsAt: number | null;
+  disabled: string;
+}
+
+export interface Limits {
+  kind: "limits";
+  status: string;
+  window: string;
+  utilization: number | null;
+  resetsAt: number | null;
+  threshold: number | null;
+  overage: Overage | null;
+  windows: Record<string, LimitWindow>;
+}
+
 export interface Slash {
   name: string;
   description: string;
@@ -389,7 +411,7 @@ export type ChatEvent =
   | { kind: "toolDone"; id: string; output: string; error: boolean; detail: ToolDetail | null }
   | Asking
   | { kind: "answered"; request: string; allowed: boolean; answers: Answers | null }
-  | { kind: "limits"; windows: Record<string, { utilization?: number }> }
+  | Limits
   | { kind: "consulted"; tool: string; links: Link[] }
   | { kind: "taskStarted" | "taskProgress" | "taskEnded" }
   | { kind: "compacted"; before: number; auto: boolean }
@@ -455,14 +477,22 @@ export interface Card {
 }
 
 /** artifacts::Attached, rust/sens-app/src/artifacts.rs */
+export type AttachedFile = { kind: "file"; path: string; name: string; bytes: number; outside: boolean };
+
 export type Attached =
-  | { kind: "file"; path: string; name: string; bytes: number; outside: boolean }
-  | { kind: "picture"; name: string; mediaType: string; data: string; bytes: number };
+  | AttachedFile
+  | { kind: "folder"; path: string; name: string; entries: number; outside: boolean }
+  | { kind: "picture"; path: string; name: string; mediaType: string; data: string; bytes: number; outside: boolean };
+
+export interface Refused {
+  name: string;
+  why: "missing" | "unreadable" | "tooBig" | "project";
+}
 
 /** artifacts::Attachments, rust/sens-app/src/artifacts.rs */
 export interface Attachments {
   items: Attached[];
-  refused: string[];
+  refused: Refused[];
 }
 
 /** git::Repo, rust/sens-app/src/git.rs */

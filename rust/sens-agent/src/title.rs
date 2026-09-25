@@ -3,7 +3,9 @@ use std::path::Path;
 use serde_json::Value;
 
 use crate::chat::Event;
+use crate::language::{self, Language};
 use crate::process::{claude, run};
+use crate::said;
 use crate::session::{self, Entry, Namer};
 
 const ASKING: &[&str] = &[
@@ -26,10 +28,27 @@ const ASKING: &[&str] = &[
     "--system-prompt",
 ];
 
-const BRIEF: &str = "Pones título a conversaciones entre una persona y un agente de programación. Responde solo con el título: de 3 a 6 palabras, en el idioma de la persona, que diga de qué trata el trabajo. Sin comillas, sin punto final, sin emojis y sin prefijos como \"Título:\".";
-
 const EXCERPT_CAP: usize = 1_500;
-const WRAPPERS: &[char] = &['"', '\'', '«', '»', '“', '”', '*', '`', '#'];
+const WRAPPERS: &[char] = &['"', '\'', '«', '»', '“', '”', '「', '」', '『', '』', '《', '》', '*', '`', '#'];
+const LABELS: &[&str] = &["title", "título", "titulo", "titre", "titel", "タイトル", "标题"];
+
+fn tongue(language: Language) -> &'static str {
+    match language {
+        Language::En => "English",
+        Language::Es => "Spanish as spoken in Spain",
+        Language::Fr => "French",
+        Language::De => "German",
+        Language::Ja => "Japanese",
+        Language::Zh => "Simplified Chinese",
+    }
+}
+
+fn brief() -> String {
+    let tongue = tongue(language::now());
+    format!(
+        "You title conversations between a person and a coding agent. Reply with the title only, written in {tongue} whatever language the conversation is in: a short phrase of about 3 to 6 words that says what the work is about. No quotes, no final period, no emojis and no prefix such as \"Title:\"."
+    )
+}
 
 pub fn suggest(root: &Path, id: &str) -> Result<Option<String>, String> {
     let entries = session::read(root, id);
@@ -37,14 +56,29 @@ pub fn suggest(root: &Path, id: &str) -> Result<Option<String>, String> {
         return Ok(None);
     };
     let mut args: Vec<String> = ASKING.iter().map(|arg| arg.to_string()).collect();
-    args.push(BRIEF.to_string());
+    args.push(brief());
 
     let mut asking = claude();
     asking.args(&args);
-    let answer: Value = serde_json::from_str(&run(asking, &opening)?)
-        .map_err(|error| format!("respuesta ilegible al pedir el título: {error}"))?;
+    let answer: Value = serde_json::from_str(&run(asking, &opening)?).map_err(|error| {
+        said!(
+            en: "unreadable reply when asking for the title: {error}",
+            es: "respuesta ilegible al pedir el título: {error}",
+            fr: "réponse illisible à la demande de titre : {error}",
+            de: "unlesbare Antwort auf die Titelanfrage: {error}",
+            ja: "タイトルを依頼したときの返信を読み取れませんでした: {error}",
+            zh: "请求标题时收到了无法读取的回复：{error}",
+        )
+    })?;
     if answer["is_error"] == true {
-        return Err("Claude Code no pudo poner título a la sesión".into());
+        return Err(said!(
+            en: "Claude Code couldn’t give the session a title",
+            es: "Claude Code no pudo poner título a la sesión",
+            fr: "Claude Code n’a pas pu donner de titre à la session",
+            de: "Claude Code konnte der Sitzung keinen Titel geben",
+            ja: "Claude Code はセッションにタイトルを付けられませんでした",
+            zh: "Claude Code 无法为会话设置标题",
+        ));
     }
     let title = cleaned(answer["result"].as_str().unwrap_or_default());
     if title.is_empty() {
@@ -69,7 +103,7 @@ fn opening(entries: &[Entry]) -> Option<String> {
         _ => None,
     })?;
     Some(format!(
-        "Mensaje de la persona:\n{}\n\nRespuesta del agente:\n{}\n",
+        "The person's message:\n{}\n\nThe agent's reply:\n{}\n",
         excerpt(asked),
         excerpt(answered)
     ))
@@ -86,15 +120,16 @@ fn excerpt(text: &str) -> String {
 fn cleaned(answer: &str) -> String {
     let line = answer.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or_default();
     let bare = line
-        .split_once(':')
-        .filter(|(label, _)| ["título", "titulo", "title"].contains(&label.trim().to_lowercase().as_str()))
+        .split_once([':', '：'])
+        .filter(|(label, _)| LABELS.contains(&label.trim().to_lowercase().as_str()))
         .map_or(line, |(_, rest)| rest);
-    bare.trim().trim_matches(WRAPPERS).trim().trim_end_matches('.').trim().to_string()
+    bare.trim().trim_matches(WRAPPERS).trim().trim_end_matches(['.', '。']).trim().to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::language::speaking;
 
     fn task(text: &str) -> Entry {
         Entry::Task { at: 1, text: text.into(), files: Vec::new(), images: Vec::new() }
@@ -135,5 +170,22 @@ mod tests {
         assert_eq!(cleaned("\n  **Refactor del parser**  \nextra"), "Refactor del parser");
         assert_eq!(cleaned("Hora: 10 y cuarto"), "Hora: 10 y cuarto");
         assert_eq!(cleaned("   "), "");
+    }
+
+    #[test]
+    fn a_label_or_quotes_in_any_language_sens_speaks_are_cleaned_too() {
+        assert_eq!(cleaned("Titre : « Mode sombre »"), "Mode sombre");
+        assert_eq!(cleaned("Titel: Dunkler Modus."), "Dunkler Modus");
+        assert_eq!(cleaned("タイトル：「ログインの修正」"), "ログインの修正");
+        assert_eq!(cleaned("标题：《深色模式》"), "深色模式");
+        assert_eq!(cleaned("深色模式。"), "深色模式");
+    }
+
+    #[test]
+    fn the_title_is_asked_in_the_language_sens_speaks() {
+        assert!(speaking(Language::Es, brief).contains("written in Spanish as spoken in Spain"));
+        assert!(speaking(Language::Ja, brief).contains("written in Japanese"));
+        assert!(speaking(Language::Zh, brief).contains("written in Simplified Chinese"));
+        assert!(!speaking(Language::De, brief).contains("French"));
     }
 }

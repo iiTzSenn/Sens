@@ -1,3 +1,4 @@
+use sens_agent::said;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
@@ -38,7 +39,14 @@ fn tell(app: &AppHandle, heard: Heard) {
 }
 
 fn failed(error: tauri::Error) -> String {
-    format!("el navegador no respondió: {error}")
+    said!(
+        en: "the browser didn’t respond: {error}",
+        es: "el navegador no respondió: {error}",
+        fr: "le navigateur n’a pas répondu : {error}",
+        de: "der Browser hat nicht reagiert: {error}",
+        ja: "ブラウザーが応答しませんでした: {error}",
+        zh: "浏览器没有响应：{error}",
+    )
 }
 
 fn view(app: &AppHandle) -> Option<Webview> {
@@ -54,9 +62,25 @@ pub fn allowed(url: &Url) -> bool {
 }
 
 fn aimed(address: &str) -> Result<Url, String> {
-    let url = Url::parse(address).map_err(|_| format!("{address} no es una dirección válida"))?;
+    let url = Url::parse(address).map_err(|_| {
+        said!(
+            en: "{address} isn’t a valid address",
+            es: "{address} no es una dirección válida",
+            fr: "{address} n’est pas une adresse valide",
+            de: "{address} ist keine gültige Adresse",
+            ja: "{address} は有効なアドレスではありません",
+            zh: "{address} 不是有效的地址",
+        )
+    })?;
     if !allowed(&url) {
-        return Err("El navegador solo abre direcciones http y https.".into());
+        return Err(said!(
+            en: "The browser only opens http and https addresses.",
+            es: "El navegador solo abre direcciones http y https.",
+            fr: "Le navigateur n’ouvre que les adresses http et https.",
+            de: "Der Browser öffnet nur http- und https-Adressen.",
+            ja: "ブラウザーで開けるのは http と https のアドレスだけです。",
+            zh: "浏览器只能打开 http 和 https 地址。",
+        ));
     }
     Ok(url)
 }
@@ -68,7 +92,16 @@ pub fn open(app: &AppHandle, address: &str, frame: Frame, zoom: f64) -> Result<(
         return place(app, frame, zoom);
     }
 
-    let window = app.get_window(HOST).ok_or("no encuentro la ventana de Sens")?;
+    let window = app.get_window(HOST).ok_or_else(|| {
+        said!(
+            en: "can’t find the Sens window",
+            es: "no encuentro la ventana de Sens",
+            fr: "fenêtre de Sens introuvable",
+            de: "Sens-Fenster nicht gefunden",
+            ja: "Sens のウィンドウが見つかりません",
+            zh: "找不到 Sens 窗口",
+        )
+    })?;
     let loads = app.clone();
     let titles = app.clone();
     let popups = app.clone();
@@ -130,7 +163,16 @@ pub fn act(app: &AppHandle, act: &str) -> Result<(), String> {
         "forward" => view.eval("history.forward()"),
         "reload" => view.reload(),
         "close" => view.close(),
-        other => return Err(format!("el navegador no sabe hacer {other}")),
+        other => {
+            return Err(said!(
+                en: "the browser doesn’t know the action {other}",
+                es: "el navegador no sabe hacer {other}",
+                fr: "le navigateur ne connaît pas l’action {other}",
+                de: "der Browser kennt die Aktion {other} nicht",
+                ja: "ブラウザーは「{other}」という操作に対応していません",
+                zh: "浏览器不支持操作 {other}",
+            ));
+        }
     }
     .map_err(failed)
 }
@@ -226,6 +268,7 @@ fn listen_console(_view: &Webview, _app: AppHandle) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sens_agent::language::{Language, speaking};
     use serde_json::json;
 
     #[test]
@@ -247,6 +290,13 @@ mod tests {
         assert!(aimed("ftp://x.org").is_err());
         assert!(aimed("no es una url").is_err());
         assert_eq!(aimed("https://example.com").unwrap().as_str(), "https://example.com/");
+    }
+
+    #[test]
+    fn a_refused_address_is_explained_in_the_language_spoken() {
+        assert_eq!(aimed("ftp://x.org").unwrap_err(), "The browser only opens http and https addresses.");
+        assert_eq!(speaking(Language::Es, || aimed("ftp://x.org")).unwrap_err(), "El navegador solo abre direcciones http y https.");
+        assert_eq!(speaking(Language::Zh, || aimed("no es una url")).unwrap_err(), "no es una url 不是有效的地址");
     }
 
     #[test]

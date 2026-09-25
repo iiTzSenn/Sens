@@ -16,6 +16,7 @@ brotli-decompressor = "5"
 winreg = "0.55"
 windows = { version = "0.61", features = [
     "Win32_Foundation",
+    "Win32_Globalization",
     "Win32_Storage_EnhancedStorage",
     "Win32_Storage_FileSystem",
     "Win32_System_Com",

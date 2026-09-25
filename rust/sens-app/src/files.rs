@@ -1,9 +1,11 @@
 use std::collections::HashSet;
+use std::fmt::Display;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use ignore::WalkBuilder;
+use sens_agent::said;
 use serde::Serialize;
 
 use crate::artifacts::{self, IMAGE_CAP, MEGABYTE};
@@ -30,9 +32,85 @@ pub enum Opened {
     Binary { bytes: u64 },
 }
 
+pub fn missing(path: &str) -> String {
+    said!(
+        en: "{path} doesn’t exist",
+        es: "{path} no existe",
+        fr: "{path} n’existe pas",
+        de: "{path} existiert nicht",
+        ja: "{path} は存在しません",
+        zh: "{path} 不存在",
+    )
+}
+
+pub fn outside(path: &str) -> String {
+    said!(
+        en: "{path} is outside the project",
+        es: "{path} está fuera del proyecto",
+        fr: "{path} est en dehors du projet",
+        de: "{path} liegt außerhalb des Projekts",
+        ja: "{path} はプロジェクトの外にあります",
+        zh: "{path} 不在项目内",
+    )
+}
+
+pub fn not_a_file(path: &str) -> String {
+    said!(
+        en: "{path} isn’t a file",
+        es: "{path} no es un fichero",
+        fr: "{path} n’est pas un fichier",
+        de: "{path} ist keine Datei",
+        ja: "{path} はファイルではありません",
+        zh: "{path} 不是文件",
+    )
+}
+
+pub fn unread(what: impl Display, error: impl Display) -> String {
+    said!(
+        en: "couldn’t read {what}: {error}",
+        es: "no pude leer {what}: {error}",
+        fr: "impossible de lire {what} : {error}",
+        de: "{what} konnte nicht gelesen werden: {error}",
+        ja: "{what} を読み取れませんでした: {error}",
+        zh: "无法读取 {what}：{error}",
+    )
+}
+
+pub fn uncreated(path: &Path, error: impl Display) -> String {
+    said!(
+        en: "couldn’t create {path}: {error}",
+        es: "no pude crear {path}: {error}",
+        fr: "impossible de créer {path} : {error}",
+        de: "{path} konnte nicht erstellt werden: {error}",
+        ja: "{path} を作成できませんでした: {error}",
+        zh: "无法创建 {path}：{error}",
+        path = path.display(),
+    )
+}
+
+pub fn unwritten(path: &Path, error: impl Display) -> String {
+    said!(
+        en: "couldn’t write {path}: {error}",
+        es: "no pude escribir {path}: {error}",
+        fr: "impossible d’écrire {path} : {error}",
+        de: "{path} konnte nicht geschrieben werden: {error}",
+        ja: "{path} に書き込めませんでした: {error}",
+        zh: "无法写入 {path}：{error}",
+        path = path.display(),
+    )
+}
+
 pub fn home(root: &Path) -> Result<PathBuf, String> {
-    root.canonicalize()
-        .map_err(|error| format!("proyecto ilegible: {error}"))
+    root.canonicalize().map_err(|error| {
+        said!(
+            en: "can’t read the project: {error}",
+            es: "proyecto ilegible: {error}",
+            fr: "projet illisible : {error}",
+            de: "Projekt nicht lesbar: {error}",
+            ja: "プロジェクトを読み取れません: {error}",
+            zh: "无法读取项目：{error}",
+        )
+    })
 }
 
 pub fn inside(root: &Path, path: &str) -> Result<PathBuf, String> {
@@ -40,19 +118,19 @@ pub fn inside(root: &Path, path: &str) -> Result<PathBuf, String> {
     let full = base
         .join(path)
         .canonicalize()
-        .map_err(|_| format!("{path} no existe"))?;
+        .map_err(|_| missing(path))?;
     if !full.starts_with(&base) {
-        return Err(format!("{path} está fuera del proyecto"));
+        return Err(outside(path));
     }
     Ok(full)
 }
 
 pub fn open(root: &Path, path: &str) -> Result<Opened, String> {
     let full = inside(root, path)?;
-    let unread = |error: std::io::Error| format!("no pude leer {path}: {error}");
+    let unread = |error: std::io::Error| unread(path, error);
     let meta = full.metadata().map_err(unread)?;
     if !meta.is_file() {
-        return Err(format!("{path} no es un fichero"));
+        return Err(not_a_file(path));
     }
     let bytes = meta.len();
 
@@ -107,7 +185,7 @@ pub fn folder(root: &Path, path: &str) -> Result<Vec<Entry>, String> {
         .map(|entry| entry.into_path())
         .collect();
 
-    let listed = std::fs::read_dir(&here).map_err(|error| format!("no pude leer {path}: {error}"))?;
+    let listed = std::fs::read_dir(&here).map_err(|error| unread(path, error))?;
     let mut entries: Vec<Entry> = listed
         .flatten()
         .filter(|entry| entry.file_name() != GIT)
@@ -174,6 +252,7 @@ fn relative(base: &Path, full: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sens_agent::language::{Language, speaking};
 
     fn scratch(name: &str) -> PathBuf {
         let here = std::env::temp_dir().join(format!("sens-files-{name}"));
@@ -311,8 +390,20 @@ mod tests {
         let here = scratch("open-missing");
         touch(&here, "src/app.ts");
 
-        assert_eq!(open(&here, "src"), Err("src no es un fichero".into()));
-        assert_eq!(open(&here, "nada.txt"), Err("nada.txt no existe".into()));
+        assert_eq!(open(&here, "src"), Err("src isn’t a file".into()));
+        assert_eq!(open(&here, "nada.txt"), Err("nada.txt doesn’t exist".into()));
+    }
+
+    #[test]
+    fn what_cannot_be_opened_is_said_in_the_language_spoken() {
+        let here = scratch("open-spoken");
+        touch(&here, "src/app.ts");
+        touch(&here, "secreto.txt");
+
+        assert_eq!(speaking(Language::Es, || open(&here, "src")), Err("src no es un fichero".into()));
+        assert_eq!(speaking(Language::Es, || open(&here, "nada.txt")), Err("nada.txt no existe".into()));
+        assert_eq!(speaking(Language::Fr, || open(&here, "nada.txt")), Err("nada.txt n’existe pas".into()));
+        assert_eq!(speaking(Language::Ja, || inside(&here.join("src"), "../secreto.txt")), Err("../secreto.txt はプロジェクトの外にあります".into()));
     }
 
     #[test]

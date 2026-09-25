@@ -14,6 +14,7 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GW_OWNER, GetWindow, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CLOSE};
 use windows::core::{BOOL, PWSTR};
 
+use crate::language::said;
 use crate::progress::{self, CANCELLED, Report, Step};
 
 const SHARING_VIOLATION: i32 = 32;
@@ -21,7 +22,6 @@ const PATIENCE: Duration = Duration::from_secs(30);
 const GRACE: Duration = Duration::from_secs(10);
 const POLL: Duration = Duration::from_millis(250);
 const GLANCE: Duration = Duration::from_millis(80);
-const STILL_OPEN: &str = "Sens sigue abierta y no se pudo cerrar";
 
 pub enum Closing<'a> {
     Ask(&'a dyn Fn()),
@@ -40,7 +40,7 @@ pub fn settle(app: &Path, closing: &Closing, cancel: &AtomicBool, report: Report
     if !is_open(app) {
         return Ok(());
     }
-    report(Step::Close, 0.06, progress::WAITING);
+    report(Step::Close, 0.06, &progress::waiting());
     let closed = match closing {
         Closing::Ask(ask) => {
             closed_unseen(app, report) || {
@@ -60,9 +60,16 @@ pub fn settle(app: &Path, closing: &Closing, cancel: &AtomicBool, report: Report
         Closing::Force => close(app, false) || close(app, true),
     };
     if !closed {
-        return Err(STILL_OPEN.into());
+        return Err(said!(
+            en: "Sens is still open and couldn’t be closed",
+            es: "Sens sigue abierta y no se pudo cerrar",
+            fr: "Sens est toujours ouvert et n’a pas pu être fermé",
+            de: "Sens ist noch geöffnet und konnte nicht geschlossen werden",
+            ja: "Sens が開いたままで、閉じられませんでした",
+            zh: "Sens 仍在运行，无法关闭",
+        ));
     }
-    report(Step::Close, 0.09, progress::CLOSED);
+    report(Step::Close, 0.09, &progress::closed());
     Ok(())
 }
 
@@ -75,7 +82,7 @@ fn closed_unseen(app: &Path, report: Report) -> bool {
     if ours.is_empty() || !main_windows(&ours).is_empty() {
         return false;
     }
-    report(Step::Close, 0.06, progress::UNSEEN);
+    report(Step::Close, 0.06, &progress::unseen());
     shut(app, &ours, true)
 }
 
@@ -259,7 +266,7 @@ mod tests {
 
         assert_eq!(settled, Ok(()));
         assert_eq!(asked.load(Ordering::SeqCst), 1);
-        assert_eq!(*lines.lock().unwrap(), [progress::WAITING, progress::CLOSED]);
+        assert_eq!(*lines.lock().unwrap(), [progress::waiting(), progress::closed()]);
         let _ = fs::remove_dir_all(app.parent().unwrap());
     }
 
@@ -286,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn cancelling_while_waiting_for_the_app_rejects_with_cancelado() {
+    fn cancelling_while_waiting_for_the_app_rejects_as_cancelled() {
         let app = scratch_app("cancelled");
         let lock = held(&app);
         let cancel = AtomicBool::new(false);
@@ -333,7 +340,7 @@ mod tests {
 
         assert_eq!(settled, Ok(()));
         assert_eq!(asked.load(Ordering::SeqCst), 0);
-        assert_eq!(*lines.lock().unwrap(), [progress::WAITING, progress::UNSEEN, progress::CLOSED]);
+        assert_eq!(*lines.lock().unwrap(), [progress::waiting(), progress::unseen(), progress::closed()]);
         assert!(stand_in.try_wait().unwrap().is_some());
         let _ = fs::remove_dir_all(app.parent().unwrap());
     }

@@ -1,8 +1,9 @@
-import type { Finished, Link, ToolDetail, ToolInput, Todo } from "../../ipc/types";
-import { compact, seconds } from "../../shared/format.js";
+import type { Link, ToolDetail, ToolInput, Todo } from "../../ipc/types";
 import { ICONS } from "../../shared/icons.js";
 import { addedRows, patchRows, type Row } from "../../shared/rows";
+import type { Shell } from "../../shared/syntax/shells";
 import { project } from "../project/store";
+import { t } from "./step.copy";
 
 // How a tool call reads in a step: its icon (or a site's favicon), a verb, what
 // it acts on, and whether that is a path to open; `ask` is how a permission
@@ -15,7 +16,8 @@ export interface Look {
   link?: string;
   site?: string;
   meta?: string;
-  ask?: string;
+  ask: string;
+  shell?: Shell;
 }
 
 // Tools the chat does not show as steps: their questions or plans come as asks.
@@ -37,39 +39,41 @@ export const oneLine = (text: unknown) => String(text || "").replace(/\s+/g, " "
 
 export const progressOf = (todos: Todo[] = []) => `${todos.filter((todo) => todo.status === "completed").length}/${todos.length}`;
 
-function pathLook(icon: string, verb: string, input: ToolInput): Look {
+function pathLook(icon: string, verb: string, ask: string, input: ToolInput): Look {
   const target = relative(input.file_path || input.notebook_path || "");
-  return { icon, verb, target, mono: true, link: target };
+  return { icon, verb, ask, target, mono: true, link: target };
 }
 
 function mcpLook(name: string): Look {
   const [, server, tool] = name.split("__");
-  return { icon: ICONS.plug, verb: server, target: tool || "", mono: true, ask: `usar ${server}` };
+  return { icon: ICONS.plug, verb: server, target: tool || "", mono: true, ask: t.wantsUse(server) };
 }
 
+const shellLook = (shell: Shell, input: ToolInput): Look => ({ icon: ICONS.terminal, verb: t.run, ask: t.wantsRun, target: oneLine(input.command), mono: true, shell });
+
 const LOOKS: Record<string, (input: ToolInput) => Look> = {
-  Read: (input) => pathLook(ICONS.fileText, "Leer", input),
-  Edit: (input) => pathLook(ICONS.pencil, "Editar", input),
-  MultiEdit: (input) => pathLook(ICONS.pencil, "Editar", input),
-  NotebookEdit: (input) => pathLook(ICONS.pencil, "Editar", input),
-  Write: (input) => pathLook(ICONS.filePlus, "Escribir", input),
-  Bash: (input) => ({ icon: ICONS.terminal, verb: "Ejecutar", target: oneLine(input.command), mono: true }),
-  PowerShell: (input) => ({ icon: ICONS.terminal, verb: "Ejecutar", target: oneLine(input.command), mono: true }),
-  Grep: (input) => ({ icon: ICONS.search, verb: "Buscar", target: String(input.pattern ?? ""), mono: true, meta: input.path ? `en ${relative(input.path)}` : "" }),
-  Glob: (input) => ({ icon: ICONS.files, verb: "Listar", target: String(input.pattern ?? ""), mono: true }),
-  WebFetch: (input) => ({ icon: ICONS.globe, site: input.url, verb: "Leer", target: String(input.url ?? ""), mono: true, ask: "abrir" }),
-  WebSearch: (input) => ({ icon: ICONS.globe, verb: "Buscar en la web", target: String(input.query ?? "") }),
-  TodoWrite: (input) => ({ icon: ICONS.listChecks, verb: "Tareas", target: progressOf(input.todos) }),
-  Task: (input) => ({ icon: ICONS.split, verb: "Delegar", target: input.description || input.subagent_type || "" }),
-  Agent: (input) => ({ icon: ICONS.split, verb: "Delegar", target: input.description || input.subagent_type || "" }),
-  Skill: (input) => ({ icon: ICONS.book, verb: "Usar skill", target: String(input.skill || input.command || "") }),
-  mcp__sens__read_terminal: () => ({ icon: ICONS.terminal, verb: "Leer la terminal", target: "" }),
+  Read: (input) => pathLook(ICONS.fileText, t.read, t.wantsRead, input),
+  Edit: (input) => pathLook(ICONS.pencil, t.edit, t.wantsEdit, input),
+  MultiEdit: (input) => pathLook(ICONS.pencil, t.edit, t.wantsEdit, input),
+  NotebookEdit: (input) => pathLook(ICONS.pencil, t.edit, t.wantsEdit, input),
+  Write: (input) => pathLook(ICONS.filePlus, t.write, t.wantsWrite, input),
+  Bash: (input) => shellLook("bash", input),
+  PowerShell: (input) => shellLook("powershell", input),
+  Grep: (input) => ({ icon: ICONS.search, verb: t.search, ask: t.wantsSearch, target: String(input.pattern ?? ""), mono: true, meta: input.path ? t.inPath(relative(input.path)) : "" }),
+  Glob: (input) => ({ icon: ICONS.files, verb: t.list, ask: t.wantsList, target: String(input.pattern ?? ""), mono: true }),
+  WebFetch: (input) => ({ icon: ICONS.globe, site: input.url, verb: t.read, ask: t.wantsOpen, target: String(input.url ?? ""), mono: true }),
+  WebSearch: (input) => ({ icon: ICONS.globe, verb: t.searchWeb, ask: t.wantsSearchWeb, target: String(input.query ?? "") }),
+  TodoWrite: (input) => ({ icon: ICONS.listChecks, verb: t.todos, ask: t.wantsTodos, target: progressOf(input.todos) }),
+  Task: (input) => ({ icon: ICONS.split, verb: t.delegate, ask: t.wantsDelegate, target: input.description || input.subagent_type || "" }),
+  Agent: (input) => ({ icon: ICONS.split, verb: t.delegate, ask: t.wantsDelegate, target: input.description || input.subagent_type || "" }),
+  Skill: (input) => ({ icon: ICONS.book, verb: t.useSkill, ask: t.wantsSkill, target: String(input.skill || input.command || "") }),
+  mcp__sens__read_terminal: () => ({ icon: ICONS.terminal, verb: t.readTerminal, ask: t.wantsReadTerminal, target: "" }),
 };
 
 export function describe(name: string, input: ToolInput = {}): Look {
   if (LOOKS[name]) return LOOKS[name](input);
   if (name.startsWith("mcp__")) return mcpLook(name);
-  return { icon: ICONS.wrench, verb: name, target: "" };
+  return { icon: ICONS.wrench, verb: name, ask: t.wantsUse(name), target: "" };
 }
 
 // What the live line says while a tool runs.
@@ -86,7 +90,7 @@ export function hostOf(url: string) {
   }
 }
 
-export const consulting = (links: Link[]) => (links.length === 1 ? `Consultando ${hostOf(links[0].url)}` : `Revisando ${links.length} fuentes`);
+export const consulting = (links: Link[]) => (links.length === 1 ? t.consulting(hostOf(links[0].url)) : t.reviewing(links.length));
 
 // What an edit changed, as rows: from the patch Claude Code reports, or every
 // line of a file it created. `path` is relative to the project.
@@ -121,15 +125,3 @@ export const searchSummary = (output: string) =>
     .replace(/^Web search results for query:.*\n+/, "")
     .replace(/^Links: \[.*\]\n*/m, "")
     .trim();
-
-// How long a turn took and what it wrote, under the reply.
-export const FOOT_JOIN = " · ";
-export const TOKENS = " tokens";
-
-export const compactedLine = (before: number, auto: boolean) =>
-  [auto ? "Claude Code compactó la conversación" : "Conversación compactada", before ? `tenía ${compact(before)}${TOKENS}` : ""].filter(Boolean).join(FOOT_JOIN);
-
-export const footOf = (event: Finished) =>
-  [event.millis ? seconds(event.millis) : "", event.tokensOut ? `${compact(event.tokensOut)}${TOKENS}` : "", event.stopped ? "detenido" : ""]
-    .filter(Boolean)
-    .join(FOOT_JOIN);

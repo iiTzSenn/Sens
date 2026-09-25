@@ -4,7 +4,7 @@ use std::path::Path;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use sens_agent::account::{self, Account};
-use sens_agent::{catalog, process};
+use sens_agent::{catalog, process, said};
 use serde::{Deserialize, Serialize};
 
 use crate::store;
@@ -52,7 +52,7 @@ fn stored(base: &Path) -> BTreeMap<String, Stored> {
 }
 
 fn known(id: &str) -> Result<(), String> {
-    catalog::provider(id).map(drop).ok_or_else(|| format!("no conozco el proveedor {id}"))
+    catalog::provider(id).map(drop).ok_or_else(|| catalog::unknown(id))
 }
 
 fn change(base: &Path, id: &str, apply: impl FnOnce(&mut Stored) -> Result<(), String>) -> Result<(), String> {
@@ -91,7 +91,7 @@ pub fn state(base: &Path) -> Vec<State> {
                 method: mine.method,
                 key_hint: opened_key(&mine).map(|key| hint(&key)).unwrap_or_default(),
                 version: version.clone().unwrap_or_default(),
-                account: signed.as_ref().and_then(|found| found.as_ref().ok().cloned()),
+                account: signed.as_ref().and_then(|found| found.as_ref().ok().cloned()).flatten(),
                 error,
                 installed,
             }
@@ -102,7 +102,14 @@ pub fn state(base: &Path) -> Vec<State> {
 pub fn set_method(base: &Path, id: &str, method: Method) -> Result<(), String> {
     change(base, id, |mine| {
         if method == Method::ApiKey && mine.sealed_key.is_empty() {
-            return Err("guarda antes una clave de API".into());
+            return Err(said!(
+                en: "save an API key first",
+                es: "guarda antes una clave de API",
+                fr: "enregistrez d’abord une clé API",
+                de: "speichere zuerst einen API-Schlüssel",
+                ja: "先に API キーを保存してください",
+                zh: "请先保存 API 密钥",
+            ));
         }
         mine.method = method;
         Ok(())
@@ -112,7 +119,14 @@ pub fn set_method(base: &Path, id: &str, method: Method) -> Result<(), String> {
 fn vetted_key(key: &str) -> Result<&str, String> {
     let key = key.trim();
     if !key.starts_with(KEY_PREFIX) || key.len() < KEY_FLOOR || key.chars().any(char::is_whitespace) {
-        return Err(format!("eso no parece una clave de la Consola de Anthropic (empiezan por {KEY_PREFIX})"));
+        return Err(said!(
+            en: "that doesn’t look like an Anthropic Console key (they start with {KEY_PREFIX})",
+            es: "eso no parece una clave de la Consola de Anthropic (empiezan por {KEY_PREFIX})",
+            fr: "cela ne ressemble pas à une clé de la Console Anthropic (elles commencent par {KEY_PREFIX})",
+            de: "das sieht nicht nach einem Schlüssel aus der Anthropic Console aus (sie beginnen mit {KEY_PREFIX})",
+            ja: "Anthropic Console のキーではないようです（キーは {KEY_PREFIX} で始まります）",
+            zh: "这看起来不像 Anthropic Console 的密钥（密钥以 {KEY_PREFIX} 开头）",
+        ));
     }
     Ok(key)
 }
@@ -162,7 +176,16 @@ fn protect(data: &[u8], sealing: bool) -> Result<Vec<u8>, String> {
             false => CryptUnprotectData(&input, None, None, None, None, CRYPTPROTECT_UI_FORBIDDEN, &mut output),
         }
     };
-    done.map_err(|error| format!("Windows no pudo proteger la clave: {error}"))?;
+    done.map_err(|error| {
+        said!(
+            en: "Windows couldn’t protect the key: {error}",
+            es: "Windows no pudo proteger la clave: {error}",
+            fr: "Windows n’a pas pu protéger la clé : {error}",
+            de: "Windows konnte den Schlüssel nicht schützen: {error}",
+            ja: "Windows でキーを保護できませんでした: {error}",
+            zh: "Windows 无法保护该密钥：{error}",
+        )
+    })?;
     let bytes = unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec() };
     unsafe {
         let _ = LocalFree(Some(HLOCAL(output.pbData as _)));
@@ -172,21 +195,40 @@ fn protect(data: &[u8], sealing: bool) -> Result<Vec<u8>, String> {
 
 #[cfg(not(windows))]
 fn protect(_data: &[u8], _sealing: bool) -> Result<Vec<u8>, String> {
-    Err("guardar una clave solo funciona en Windows por ahora".into())
+    Err(said!(
+        en: "saving a key only works on Windows for now",
+        es: "guardar una clave solo funciona en Windows por ahora",
+        fr: "l’enregistrement d’une clé ne fonctionne que sous Windows pour l’instant",
+        de: "Schlüssel lassen sich vorerst nur unter Windows speichern",
+        ja: "キーの保存は今のところ Windows でのみ使えます",
+        zh: "目前仅在 Windows 上支持保存密钥",
+    ))
 }
 
 fn seal(key: &str) -> Result<String, String> {
     Ok(STANDARD.encode(protect(key.as_bytes(), true)?))
 }
 
+fn damaged() -> String {
+    said!(
+        en: "the saved key is damaged",
+        es: "la clave guardada está dañada",
+        fr: "la clé enregistrée est endommagée",
+        de: "der gespeicherte Schlüssel ist beschädigt",
+        ja: "保存されたキーが壊れています",
+        zh: "已保存的密钥已损坏",
+    )
+}
+
 fn unseal(sealed: &str) -> Result<String, String> {
-    let bytes = STANDARD.decode(sealed).map_err(|_| "la clave guardada está dañada".to_string())?;
-    String::from_utf8(protect(&bytes, false)?).map_err(|_| "la clave guardada está dañada".to_string())
+    let bytes = STANDARD.decode(sealed).map_err(|_| damaged())?;
+    String::from_utf8(protect(&bytes, false)?).map_err(|_| damaged())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sens_agent::language::{Language, speaking};
 
     const KEY: &str = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz-WXYZ";
 
@@ -236,12 +278,22 @@ mod tests {
     #[test]
     fn the_key_method_needs_a_key_and_only_anthropic_keys_are_taken() {
         let base = temp_root("rules");
-        assert!(set_method(&base, "claude", Method::ApiKey).unwrap_err().contains("clave"));
+        assert!(set_method(&base, "claude", Method::ApiKey).unwrap_err().contains("API key"));
         for bad in ["", "sk-ant-", "hola", "sk-proj-abcdefghijklmnopqrstuvwxyz", "sk-ant-api03 con espacios dentro"] {
             assert!(save_key(&base, "claude", bad).is_err(), "{bad}");
         }
-        assert!(set_method(&base, "otro", Method::Console).unwrap_err().contains("no conozco"));
+        assert!(set_method(&base, "otro", Method::Console).unwrap_err().contains("unknown provider"));
         assert_eq!(method(&base), Method::Subscription);
+    }
+
+    #[test]
+    fn a_refused_key_is_explained_in_the_language_spoken() {
+        let base = temp_root("spoken");
+
+        assert_eq!(speaking(Language::Es, || set_method(&base, "claude", Method::ApiKey)).unwrap_err(), "guarda antes una clave de API");
+        assert_eq!(speaking(Language::Ja, || set_method(&base, "claude", Method::ApiKey)).unwrap_err(), "先に API キーを保存してください");
+        assert_eq!(speaking(Language::Es, || save_key(&base, "claude", "hola")).unwrap_err(), "eso no parece una clave de la Consola de Anthropic (empiezan por sk-ant-)");
+        assert_eq!(save_key(&base, "claude", "hola").unwrap_err(), "that doesn’t look like an Anthropic Console key (they start with sk-ant-)");
     }
 
     #[test]

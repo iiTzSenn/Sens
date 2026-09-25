@@ -5,6 +5,7 @@
     --sens-carbon-700: #252927;
     --sens-carbon-600: #363b38;
     --sens-alloy-600: #595f5c;
+    --sens-alloy-550: #666d69;
     --sens-alloy-500: #747b77;
     --sens-alloy-400: #929995;
     --sens-alloy-300: #b5bbb7;
@@ -13,6 +14,12 @@
     --sens-bone-100: #eceae3;
     --sens-bone-50: #f4f1ea;
     --sens-paper: #fbfaf6;
+    --sens-chalk-0: #ffffff;
+    --sens-chalk-50: #f7f9f8;
+    --sens-chalk-100: #ebeeed;
+    --sens-chalk-200: #e1e5e3;
+    --sens-chalk-300: #d4d9d6;
+    --sens-chalk-400: #bcc2bf;
     --sens-signal-800: #4e700d;
     --sens-signal-700: #78aa12;
     --sens-signal-600: #a9e52d;
@@ -21,6 +28,8 @@
     --sens-signal-100: #f0ffd0;
     --sens-signal-tint-900: #1a1f16;
     --sens-signal-tint-700: #353e2a;
+    --sens-signal-tint-100: #eff7e5;
+    --sens-signal-tint-300: #d0e1b6;
     --sens-ice-800: #007082;
     --sens-ice-700: #009bb4;
     --sens-ice-600: #00c9e9;
@@ -29,6 +38,8 @@
     --sens-ice-100: #e9fbff;
     --sens-ice-tint-900: #131f22;
     --sens-ice-tint-700: #243f45;
+    --sens-ice-tint-100: #e2f8fe;
+    --sens-ice-tint-300: #ace4f1;
     --sens-iris-800: #665798;
     --sens-iris-700: #836cca;
     --sens-iris-600: #a184f7;
@@ -37,6 +48,8 @@
     --sens-iris-100: #f7f5ff;
     --sens-iris-tint-900: #1d1c25;
     --sens-iris-tint-700: #3b374b;
+    --sens-iris-tint-100: #f4f1ff;
+    --sens-iris-tint-300: #dad2fe;
     --sens-rose-800: #914669;
     --sens-rose-700: #c15588;
     --sens-rose-600: #ed69a8;
@@ -45,6 +58,8 @@
     --sens-rose-100: #fff3f7;
     --sens-rose-tint-900: #241a1e;
     --sens-rose-tint-700: #49333c;
+    --sens-rose-tint-100: #ffedf5;
+    --sens-rose-tint-300: #fac9dc;
     --sens-success: #43c878;
     --sens-warning: #e7b84b;
     --sens-danger: #e7655f;
@@ -53,6 +68,10 @@
     --sens-warning-700: #895b00;
     --sens-danger-700: #b63132;
     --sens-info-700: #2e6b9c;
+    --sens-success-300: #79e29b;
+    --sens-warning-300: #f8ce73;
+    --sens-danger-300: #fe8b83;
+    --sens-info-300: #90c4f2;
     --sens-lang-amber: #d8b24a;
     --sens-lang-azure: #5b8fc9;
     --sens-lang-ember: #d08248;
@@ -72,6 +91,16 @@
     --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   }
 
+  :lang(ja) {
+    --ui: "Space Grotesk", "Yu Gothic UI", "Meiryo UI", "Hiragino Sans", "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, "Yu Gothic UI", "Meiryo UI", "Hiragino Sans", "Noto Sans JP", monospace;
+  }
+  :lang(zh) {
+    --ui: "Space Grotesk", "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", monospace;
+  }
+  :where([lang]:not(:root)) { font-family: var(--ui); }
+
   :root, [data-accent="signal"] {
     --accent-100: var(--sens-signal-100);
     --accent-200: var(--sens-signal-200);
@@ -81,6 +110,8 @@
     --accent-800: var(--sens-signal-800);
     --accent-tint-900: var(--sens-signal-tint-900);
     --accent-tint-700: var(--sens-signal-tint-700);
+    --accent-tint-100: var(--sens-signal-tint-100);
+    --accent-tint-300: var(--sens-signal-tint-300);
   }
 
   [data-accent="ice"] {
@@ -92,6 +123,8 @@
     --accent-800: var(--sens-ice-800);
     --accent-tint-900: var(--sens-ice-tint-900);
     --accent-tint-700: var(--sens-ice-tint-700);
+    --accent-tint-100: var(--sens-ice-tint-100);
+    --accent-tint-300: var(--sens-ice-tint-300);
   }
 
   [data-accent="iris"] {
@@ -103,6 +136,8 @@
     --accent-800: var(--sens-iris-800);
     --accent-tint-900: var(--sens-iris-tint-900);
     --accent-tint-700: var(--sens-iris-tint-700);
+    --accent-tint-100: var(--sens-iris-tint-100);
+    --accent-tint-300: var(--sens-iris-tint-300);
   }
 
   [data-accent="rose"] {
@@ -114,6 +149,8 @@
     --accent-800: var(--sens-rose-800);
     --accent-tint-900: var(--sens-rose-tint-900);
     --accent-tint-700: var(--sens-rose-tint-700);
+    --accent-tint-100: var(--sens-rose-tint-100);
+    --accent-tint-300: var(--sens-rose-tint-300);
   }
 
   [data-accent="neutral"] {
@@ -125,6 +162,8 @@
     --accent-800: var(--sens-carbon-900);
     --accent-tint-900: var(--sens-carbon-800);
     --accent-tint-700: var(--sens-carbon-700);
+    --accent-tint-100: var(--sens-chalk-100);
+    --accent-tint-300: var(--sens-chalk-300);
   }
 
   :root, [data-mode="dark"] {
@@ -146,8 +185,21 @@
     --amber: var(--sens-warning);
     --blue: var(--sens-info);
     --ansi-black: var(--sens-carbon-600);
+    --ansi-red: var(--sens-danger);
+    --ansi-green: var(--sens-success);
+    --ansi-yellow: var(--sens-warning);
+    --ansi-blue: var(--sens-info);
     --ansi-magenta: var(--sens-lang-iris);
     --ansi-cyan: var(--sens-ice-600);
+    --ansi-white: var(--sens-alloy-300);
+    --ansi-bright-black: var(--sens-alloy-400);
+    --ansi-bright-red: var(--sens-danger-300);
+    --ansi-bright-green: var(--sens-success-300);
+    --ansi-bright-yellow: var(--sens-warning-300);
+    --ansi-bright-blue: var(--sens-info-300);
+    --ansi-bright-magenta: var(--sens-iris-500);
+    --ansi-bright-cyan: var(--sens-ice-500);
+    --ansi-bright-white: var(--sens-bone-50);
     --scrim: color-mix(in srgb, var(--sens-carbon-950) 72%, transparent);
 
     --primary: var(--sens-bone-50);
@@ -177,43 +229,56 @@
   [data-mode="light"] {
     color-scheme: light;
 
-    --ground: var(--sens-bone-50);
-    --panel: var(--sens-paper);
-    --card: var(--sens-bone-100);
-    --raise: var(--sens-bone-200);
-    --hair: var(--sens-bone-200);
-    --hair-strong: var(--sens-bone-300);
-    --edge: var(--sens-alloy-300);
+    --ground: var(--sens-chalk-0);
+    --panel: var(--sens-chalk-50);
+    --card: var(--sens-chalk-100);
+    --raise: var(--sens-chalk-200);
+    --hair: var(--sens-chalk-200);
+    --hair-strong: var(--sens-chalk-300);
+    --edge: var(--sens-chalk-400);
     --text: var(--sens-carbon-950);
     --dim: var(--sens-carbon-600);
     --faint: var(--sens-alloy-600);
-    --ghost: var(--sens-alloy-500);
+    --ghost: var(--sens-alloy-550);
     --red: var(--sens-danger-700);
     --green: var(--sens-success-700);
     --amber: var(--sens-warning-700);
     --blue: var(--sens-info-700);
     --ansi-black: var(--sens-carbon-950);
+    --ansi-red: var(--sens-danger-700);
+    --ansi-green: var(--sens-success-700);
+    --ansi-yellow: var(--sens-warning-700);
+    --ansi-blue: var(--sens-info-700);
     --ansi-magenta: var(--sens-iris-800);
     --ansi-cyan: var(--sens-ice-800);
+    --ansi-white: var(--sens-carbon-600);
+    --ansi-bright-black: var(--sens-alloy-600);
+    --ansi-bright-red: var(--sens-danger-700);
+    --ansi-bright-green: var(--sens-success-700);
+    --ansi-bright-yellow: var(--sens-warning-700);
+    --ansi-bright-blue: var(--sens-info-700);
+    --ansi-bright-magenta: var(--sens-iris-800);
+    --ansi-bright-cyan: var(--sens-ice-800);
+    --ansi-bright-white: var(--sens-carbon-950);
     --scrim: color-mix(in srgb, var(--sens-carbon-950) 28%, transparent);
 
     --primary: var(--sens-carbon-900);
-    --primary-ink: var(--sens-paper);
+    --primary-ink: var(--sens-chalk-0);
     --primary-hover: var(--sens-carbon-700);
-    --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbfaf6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+    --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
     --mark-body: var(--sens-carbon-900);
 
     --focus: var(--accent-800);
     --accent-text: var(--accent-800);
     --accent-soft: var(--accent-800);
-    --accent-line: var(--accent-600);
+    --accent-line: var(--accent-700);
     --accent-fill: var(--accent-600);
     --accent-fill-hover: var(--accent-500);
     --accent-ink: var(--sens-carbon-950);
-    --tint: var(--accent-100);
-    --tint-edge: var(--accent-200);
+    --tint: var(--accent-tint-100);
+    --tint-edge: var(--accent-tint-300);
     --glint-edge: var(--accent-800);
-    --glint-peak: var(--accent-600);
+    --glint-peak: var(--accent-700);
     --glow: var(--accent-500);
     --glow-hot: var(--accent-100);
     --grain-1: var(--accent-600);
@@ -222,13 +287,11 @@
   }
 
   [data-accent="neutral"][data-mode="light"], [data-accent="neutral"] [data-mode="light"] {
-    --accent-line: var(--sens-alloy-400);
     --accent-fill: var(--sens-carbon-900);
     --accent-fill-hover: var(--sens-carbon-700);
-    --accent-ink: var(--sens-paper);
-    --tint: var(--sens-bone-100);
-    --tint-edge: var(--sens-bone-200);
-    --glint-peak: var(--sens-alloy-400);
+    --accent-ink: var(--sens-chalk-0);
+    --glow: var(--sens-chalk-50);
+    --glow-hot: var(--sens-chalk-0);
     --grain-1: var(--sens-alloy-400);
     --grain-2: var(--sens-carbon-600);
     --grain-3: var(--sens-carbon-900);

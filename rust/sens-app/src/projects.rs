@@ -2,11 +2,11 @@ use std::cmp::Reverse;
 use std::path::Path;
 
 use sens_agent::chat::BYPASS;
+use sens_agent::said;
 use sens_agent::session::{self, Summary};
 use serde::{Deserialize, Serialize};
 
 const FILE: &str = "projects.json";
-const UNTRUSTED: &str = "Sin control solo actúa en proyectos de confianza: confía en esta carpeta desde el selector de permisos";
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -91,7 +91,14 @@ pub fn trusted(registry: &Registry, root: &str) -> bool {
 
 pub fn allows(registry: &Registry, root: &str, mode: &str) -> Result<(), String> {
     match mode == BYPASS && !trusted(registry, root) {
-        true => Err(UNTRUSTED.into()),
+        true => Err(said!(
+            en: "No checks only acts in trusted projects: trust this folder from the permissions picker",
+            es: "Sin control solo actúa en proyectos de confianza: confía en esta carpeta desde el selector de permisos",
+            fr: "Sans contrôle n’agit que dans les projets de confiance : faites confiance à ce dossier depuis le sélecteur d’autorisations",
+            de: "Ohne Kontrolle wirkt nur in vertrauenswürdigen Projekten: vertraue diesem Ordner in der Auswahl der Berechtigungen",
+            ja: "「確認なし」は信頼できるプロジェクトでのみ使えます。権限の選択からこのフォルダーを信頼してください",
+            zh: "“无需确认”仅在受信任的项目中生效：请在权限选择器中信任此文件夹",
+        )),
         false => Ok(()),
     }
 }
@@ -142,6 +149,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+    use sens_agent::language::{Language, speaking};
     use sens_agent::session::Entry;
 
     fn temp_root(name: &str) -> PathBuf {
@@ -235,6 +243,15 @@ mod tests {
 
         trust(&base, "C:/nunca", false).unwrap();
         assert_eq!(load(&base).projects.len(), 2);
+    }
+
+    #[test]
+    fn an_untrusted_folder_is_explained_in_the_language_spoken() {
+        let registry = Registry::default();
+
+        assert!(allows(&registry, "C:/a", BYPASS).unwrap_err().starts_with("No checks only acts in trusted projects"));
+        assert!(speaking(Language::Es, || allows(&registry, "C:/a", BYPASS)).unwrap_err().starts_with("Sin control solo actúa"));
+        assert!(speaking(Language::De, || allows(&registry, "C:/a", BYPASS)).unwrap_err().starts_with("Ohne Kontrolle"));
     }
 
     #[test]

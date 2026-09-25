@@ -1,26 +1,24 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useStore } from "zustand";
 import { showView } from "../../app/session";
+import { looks } from "../../shared/copy";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
-import { ACCENTS, MODES, look, type Look } from "../../shared/look";
+import { LanguagePicker } from "../../shared/LanguagePicker";
+import { accentName, look, modeName, type Look } from "../../shared/look";
 import { AccentPicker, ModePicker } from "../../shared/LookPicker";
 import { Mark } from "../../shared/Mark";
 import { chooseLook } from "../look/store";
+import { useLanguageChoice } from "../look/useLanguageChoice";
 import { setNotices } from "../notify/store";
 import { profile, saveProfileName } from "../profile/store";
 import { checkUpdates, setAutomatic, updateState, updates } from "../updates/store";
 import { openUpdate } from "../updates/UpdatePanel";
 import { openWelcome, type Step } from "../welcome/store";
+import { t } from "./copy";
 import { ProvidersSection } from "./ProvidersSection";
 import { settingsSheet } from "./sheet";
-import { closeSettings, enterSettings, settings, settingsClosed, showSection, type Section } from "./store";
-
-const SECTIONS: [Section, string][] = [
-  ["general", "General"],
-  ["look", "Apariencia"],
-  ["providers", "Proveedores"],
-];
+import { SECTIONS, closeSettings, enterSettings, settings, settingsClosed, showSection, type Section } from "./store";
 
 export function SettingsDialog() {
   const open = useStore(settingsSheet, (s) => s.open);
@@ -56,14 +54,14 @@ export function Settings() {
         <div className="settings-top">
           <div>
             <h2 className="label" id="settings-title">
-              Ajustes
+              {t.title}
             </h2>
-            <p>Tu perfil, cómo se ve Sens y con quién trabaja.</p>
+            <p>{t.lead}</p>
           </div>
           <span className="settings-keys" aria-hidden="true">
             <kbd>Esc</kbd>
           </span>
-          <button className="icon-btn" id="settings-close" title="Cerrar (Esc)" aria-label="Cerrar ajustes" onClick={closeSettings}>
+          <button className="icon-btn" id="settings-close" title={t.closeHint} aria-label={t.closeSettings} onClick={closeSettings}>
             <Icon svg={ICONS.dismiss} />
           </button>
         </div>
@@ -72,6 +70,7 @@ export function Settings() {
       <div className="settings-pane" id="settings-pane" role="tabpanel" aria-labelledby={`settings-tab-${section}`}>
         {section === "general" && <GeneralSection key={visits} />}
         {section === "look" && <LookSection key={visits} />}
+        {section === "language" && <LanguageSection key={visits} />}
         {section === "providers" && <ProvidersSection key={visits} />}
       </div>
     </div>
@@ -80,7 +79,6 @@ export function Settings() {
 
 function SectionTabs({ at }: { at: Section }) {
   const bar = useRef<HTMLDivElement>(null);
-  const ids = SECTIONS.map(([id]) => id);
 
   function go(section: Section) {
     showSection(section);
@@ -88,18 +86,18 @@ function SectionTabs({ at }: { at: Section }) {
   }
 
   function onKeyDown(event: KeyboardEvent) {
-    const from = ids.indexOf(at);
-    const to = ({ ArrowRight: from + 1, ArrowLeft: from - 1, Home: 0, End: ids.length - 1 } as Record<string, number>)[event.key];
+    const from = SECTIONS.indexOf(at);
+    const to = ({ ArrowRight: from + 1, ArrowLeft: from - 1, Home: 0, End: SECTIONS.length - 1 } as Record<string, number>)[event.key];
     if (to === undefined) return;
     event.preventDefault();
-    const next = ids[(to + ids.length) % ids.length];
+    const next = SECTIONS[(to + SECTIONS.length) % SECTIONS.length];
     go(next);
     bar.current?.querySelector<HTMLElement>(`[data-tab="${next}"]`)?.focus();
   }
 
   return (
-    <div className="tabs settings-tabs" id="settings-tabs" role="tablist" aria-label="Secciones de ajustes" ref={bar} onKeyDown={onKeyDown}>
-      {SECTIONS.map(([id, name]) => (
+    <div className="tabs settings-tabs" id="settings-tabs" role="tablist" aria-label={t.sections} ref={bar} onKeyDown={onKeyDown}>
+      {SECTIONS.map((id) => (
         <button
           key={id}
           className="tab"
@@ -111,7 +109,7 @@ function SectionTabs({ at }: { at: Section }) {
           tabIndex={id === at ? 0 : -1}
           onClick={() => go(id)}
         >
-          {name}
+          {t.section[id]}
         </button>
       ))}
     </div>
@@ -121,8 +119,6 @@ function SectionTabs({ at }: { at: Section }) {
 function LookSection() {
   const chosen = useStore(look, (s) => s.chosen);
   const [fault, setFault] = useState("");
-  const mode = MODES.find((one) => one.id === chosen.mode)!.label;
-  const accent = ACCENTS.find((one) => one.id === chosen.accent)!.label;
 
   async function choose(next: Look) {
     setFault("");
@@ -137,20 +133,37 @@ function LookSection() {
     <>
       <div className="view-focus look-now">
         <div>
-          <span className="label">Ahora</span>
-          <p className="tally" aria-live="polite">{`${mode} · ${accent}`}</p>
-          <p className="note">El color marca lo que Sens está haciendo: el corte, enviar, el paso en curso, el esfuerzo al máximo.</p>
+          <span className="label">{t.now}</span>
+          <p className="tally" aria-live="polite">{`${modeName(chosen.mode)} · ${accentName(chosen.accent)}`}</p>
+          <p className="note">{t.accentNote}</p>
         </div>
         <Mark key={chosen.accent} className="look-mark" />
       </div>
       <div className="pair">
-        <span className="label">Modo</span>
+        <span className="label">{looks.mode}</span>
         <ModePicker chosen={chosen.mode} pick={(next) => choose({ ...chosen, mode: next })} />
-        <p className="note">Sistema sigue el modo claro u oscuro de Windows.</p>
+        <p className="note">{t.systemNote}</p>
       </div>
       <div className="pair">
-        <span className="label">Color</span>
+        <span className="label">{looks.color}</span>
         <AccentPicker chosen={chosen.accent} pick={(next) => choose({ ...chosen, accent: next })} />
+      </div>
+      <p className="note fault" role="alert" hidden={!fault}>
+        {fault}
+      </p>
+    </>
+  );
+}
+
+function LanguageSection() {
+  const { current, fault, choose } = useLanguageChoice();
+
+  return (
+    <>
+      <div className="pair">
+        <span className="label">{looks.language}</span>
+        <LanguagePicker chosen={current} pick={choose} />
+        <p className="note">{t.languageNote}</p>
       </div>
       <p className="note fault" role="alert" hidden={!fault}>
         {fault}
@@ -170,7 +183,7 @@ function GeneralSection() {
     setSaid(({ text }) => ({ text, failed: false }));
     try {
       await saveProfileName(name);
-      setSaid({ text: "Guardado.", failed: false });
+      setSaid({ text: t.saved, failed: false });
     } catch (reason) {
       setSaid({ text: String(reason), failed: true });
     }
@@ -181,7 +194,7 @@ function GeneralSection() {
     <>
       <div className="pair">
         <label className="label" htmlFor="settings-name">
-          Nombre
+          {t.name}
         </label>
         <form className="settings-row" onSubmit={save}>
           <input
@@ -193,7 +206,7 @@ function GeneralSection() {
             spellCheck={false}
           />
           <button className="primary" disabled={saving}>
-            Guardar
+            {t.save}
           </button>
         </form>
         <p className={said.failed ? "note fault" : "note"} role="status">
@@ -215,14 +228,14 @@ function welcomeAgain(step?: Step) {
 function WelcomeBlock() {
   return (
     <div className="pair">
-      <span className="label">Bienvenida</span>
-      <p className="note">Tu nombre, Claude Code y lo que traes de Claude Code y de otras apps.</p>
+      <span className="label">{t.welcome}</span>
+      <p className="note">{t.welcomeNote}</p>
       <div className="settings-row">
         <button className="quiet" onClick={() => welcomeAgain()}>
-          Volver a verla
+          {t.welcomeAgain}
         </button>
         <button className="quiet" onClick={() => welcomeAgain("import")}>
-          Importar de Claude Code
+          {t.importClaudeCode}
         </button>
       </div>
     </div>
@@ -233,22 +246,20 @@ function UpdatesBlock() {
   const known = useStore(updates);
   const { current, latest, installable, checking, fault } = known;
   const state = updateState(known);
-  const version = [current && `Sens ${current}`, !installable && "build de desarrollo: comprueba pero no instala"]
-    .filter(Boolean)
-    .join(" · ");
+  const version = [current && `Sens ${current}`, !installable && t.devBuild].filter(Boolean).join(" · ");
   return (
     <div className="pair">
-      <span className="label">Actualizaciones</span>
+      <span className="label">{t.updates}</span>
       <p className="note">{version}</p>
       <p className={fault && !checking ? "note fault" : "note"} role="status" hidden={!state}>
         {state}
       </p>
       <div className="settings-row">
         <button className="primary" hidden={!latest} onClick={(event) => openUpdate(event.currentTarget)}>
-          {latest ? `Ver Sens ${latest.version}` : ""}
+          {latest ? t.viewVersion(latest.version) : ""}
         </button>
         <button className="quiet" disabled={checking} onClick={() => checkUpdates(true)}>
-          Buscar actualizaciones
+          {t.checkUpdates}
         </button>
         <button
           className="quiet"
@@ -257,7 +268,7 @@ function UpdatesBlock() {
             showView("news");
           }}
         >
-          Ver novedades
+          {t.whatsNew}
         </button>
       </div>
       <UpdateSwitch />
@@ -280,10 +291,10 @@ function NoticesBlock() {
 
   return (
     <div className="pair">
-      <span className="label">Avisos</span>
+      <span className="label">{t.notices}</span>
       <div className="settings-switch">
         <button className="switch" id="settings-notify" role="switch" aria-checked={on} onClick={flip} />
-        <label htmlFor="settings-notify">Avisar cuando Claude termina o te necesita y Sens no está delante</label>
+        <label htmlFor="settings-notify">{t.noticesSwitch}</label>
       </div>
       <p className="note fault" role="alert" hidden={!fault}>
         {fault}
@@ -312,7 +323,7 @@ function UpdateSwitch() {
     <>
       <div className="settings-switch">
         <button className="switch" id="settings-update-check" role="switch" aria-checked={on} onClick={flip} />
-        <label htmlFor="settings-update-check">Buscar al abrir Sens</label>
+        <label htmlFor="settings-update-check">{t.checkAtStart}</label>
       </div>
       <p className="note fault" role="alert" hidden={!fault}>
         {fault}

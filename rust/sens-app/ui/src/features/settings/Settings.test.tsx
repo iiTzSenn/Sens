@@ -6,6 +6,7 @@ import { dialog } from "../../app/modal";
 import { models, readAccount, refreshModels } from "../models/store";
 import { project } from "../project/store";
 import { profile } from "../profile/store";
+import { languageNow, showLanguage } from "../../shared/i18n";
 import { look } from "../../shared/look";
 import { updates } from "../updates/store";
 import { Settings, SettingsDialog } from "./Settings";
@@ -29,6 +30,7 @@ const ipc = vi.hoisted(() => ({
     claudeCodeNewer: vi.fn(),
     claudeCodeUpdate: vi.fn(),
     setLook: vi.fn(),
+    setLanguage: vi.fn(),
     news: vi.fn(),
   },
   heard: { claudeCode: (_: ClaudeCodeProgress) => {} },
@@ -97,7 +99,10 @@ beforeEach(() => {
   delete document.documentElement.dataset.accent;
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  showLanguage("es");
+});
 
 describe("general settings", () => {
   it("saves the name and reloads the profile the rail footer paints from", async () => {
@@ -180,8 +185,10 @@ describe("the settings sheet", () => {
     expect(screen.getByRole("tabpanel").textContent).toContain("Oscuro · Señal");
 
     await act(async () => fireEvent.keyDown(screen.getByRole("tab", { name: "Apariencia" }), { key: "ArrowRight" }));
+    expect(settings.getState().section).toBe("language");
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Idioma" }));
+    await act(async () => fireEvent.keyDown(screen.getByRole("tab", { name: "Idioma" }), { key: "ArrowRight" }));
     expect(settings.getState().section).toBe("providers");
-    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Proveedores" }));
 
     await act(async () => fireEvent.click(screen.getByLabelText("Cerrar ajustes")));
     expect(settingsSheet.getState().open).toBe(false);
@@ -218,7 +225,36 @@ describe("appearance settings", () => {
   });
 });
 
+describe("language settings", () => {
+  it("names each language in its own words, keeps the one chosen and speaks it at once", async () => {
+    await open("language");
+    expect(screen.getByRole("radiogroup", { name: "Idioma" })).toBeTruthy();
+    expect(screen.getAllByRole("radio").map((one) => one.parentElement!.textContent)).toEqual(["English", "Español", "Français", "Deutsch", "日本語", "简体中文"]);
+    expect(screen.getByRole("radio", { name: "Español" })).toHaveProperty("checked", true);
+
+    await act(async () => fireEvent.click(screen.getByRole("radio", { name: "Français" })));
+
+    expect(ipc.commands.setLanguage).toHaveBeenCalledWith("fr");
+    expect(languageNow()).toBe("fr");
+    expect(document.documentElement.lang).toBe("fr-FR");
+    expect(screen.getByRole("radio", { name: "Français" })).toHaveProperty("checked", true);
+    expect(screen.getByText("Sens passe immédiatement à cette langue. Claude vous répond dans la langue dans laquelle vous écrivez.")).toBeTruthy();
+  });
+
+  it("stays in the language it had when the new one cannot be kept", async () => {
+    ipc.commands.setLanguage.mockRejectedValue("sin permiso");
+    await open("language");
+
+    await act(async () => fireEvent.click(screen.getByRole("radio", { name: "Deutsch" })));
+
+    expect(languageNow()).toBe("es");
+    expect(screen.getByRole("radio", { name: "Español" })).toHaveProperty("checked", true);
+    expect(screen.getByRole("alert").textContent).toBe("sin permiso");
+  });
+});
+
 describe("providers settings", () => {
+
   it("asks for a key before telling Rust to use one", async () => {
     await open("providers");
     await act(async () => fireEvent.click(screen.getByLabelText(/Clave de API/)));

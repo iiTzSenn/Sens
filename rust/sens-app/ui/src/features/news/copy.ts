@@ -1,0 +1,96 @@
+import { copy } from "../../shared/i18n";
+
+export const t = copy({
+  en: {
+    title: "What’s new",
+    leadAll: "What’s new in each version of Sens.",
+    leadOne: (version: string) => `What’s new in Sens ${version}.`,
+    leadMore: (version: string, count: number) =>
+      count === 1 ? `What’s new in Sens ${version}, and in 1 earlier version you hadn’t seen.` : `What’s new in Sens ${version}, and in ${count} earlier versions you hadn’t seen.`,
+    close: "Close what’s new",
+    reading: "Reading the release notes from GitHub…",
+    viewOnGitHub: "View on GitHub",
+    noneYetFor: (version: string) => `Sens ${version} has no release notes published yet.`,
+    noneYet: "This version has no release notes published yet.",
+    next: "Continue",
+    installed: "Installed",
+    noNotes: "This version has no release notes.",
+  },
+  es: {
+    title: "Novedades",
+    leadAll: "Lo que trae cada versión de Sens.",
+    leadOne: (version: string) => `Lo que trae Sens ${version}.`,
+    leadMore: (version: string, count: number) =>
+      `Lo que trae Sens ${version}, y ${count === 1 ? "1 versión anterior" : `${count} versiones anteriores`} que no habías visto.`,
+    close: "Cerrar novedades",
+    reading: "Leyendo las notas de GitHub…",
+    viewOnGitHub: "Ver en GitHub",
+    noneYetFor: (version: string) => `Sens ${version} todavía no tiene notas publicadas.`,
+    noneYet: "Esta versión todavía no tiene notas publicadas.",
+    next: "Continuar",
+    installed: "Instalada",
+    noNotes: "Esta versión no trae notas.",
+  },
+  fr: {
+    title: "Nouveautés",
+    leadAll: "Les nouveautés de chaque version de Sens.",
+    leadOne: (version: string) => `Les nouveautés de Sens ${version}.`,
+    leadMore: (version: string, count: number) =>
+      count === 1
+        ? `Les nouveautés de Sens ${version}, et d’une version précédente que vous n’aviez pas vue.`
+        : `Les nouveautés de Sens ${version}, et de ${count} versions précédentes que vous n’aviez pas vues.`,
+    close: "Fermer les nouveautés",
+    reading: "Lecture des notes de version sur GitHub…",
+    viewOnGitHub: "Voir sur GitHub",
+    noneYetFor: (version: string) => `Les notes de version de Sens ${version} ne sont pas encore publiées.`,
+    noneYet: "Les notes de cette version ne sont pas encore publiées.",
+    next: "Continuer",
+    installed: "Installée",
+    noNotes: "Cette version n’a pas de notes de version.",
+  },
+  de: {
+    title: "Neuigkeiten",
+    leadAll: "Was jede Version von Sens mitbringt.",
+    leadOne: (version: string) => `Neu in Sens ${version}.`,
+    leadMore: (version: string, count: number) =>
+      count === 1
+        ? `Neu in Sens ${version} und in einer früheren Version, die du noch nicht gesehen hast.`
+        : `Neu in Sens ${version} und in ${count} früheren Versionen, die du noch nicht gesehen hast.`,
+    close: "Neuigkeiten schließen",
+    reading: "Versionshinweise werden von GitHub geladen…",
+    viewOnGitHub: "Auf GitHub ansehen",
+    noneYetFor: (version: string) => `Für Sens ${version} gibt es noch keine Versionshinweise.`,
+    noneYet: "Für diese Version gibt es noch keine Versionshinweise.",
+    next: "Weiter",
+    installed: "Installiert",
+    noNotes: "Diese Version hat keine Versionshinweise.",
+  },
+  ja: {
+    title: "新機能",
+    leadAll: "Sens の各バージョンの新機能です。",
+    leadOne: (version: string) => `Sens ${version} の新機能です。`,
+    leadMore: (version: string, count: number) => `Sens ${version} と、まだ見ていない過去の ${count} バージョンの新機能です。`,
+    close: "新機能を閉じる",
+    reading: "GitHub からリリースノートを読み込んでいます…",
+    viewOnGitHub: "GitHub で見る",
+    noneYetFor: (version: string) => `Sens ${version} のリリースノートはまだ公開されていません。`,
+    noneYet: "このバージョンのリリースノートはまだ公開されていません。",
+    next: "続ける",
+    installed: "インストール済み",
+    noNotes: "このバージョンにはリリースノートがありません。",
+  },
+  zh: {
+    title: "新功能",
+    leadAll: "Sens 每个版本带来的新功能。",
+    leadOne: (version: string) => `Sens ${version} 的新功能。`,
+    leadMore: (version: string, count: number) => `Sens ${version} 以及你尚未看过的 ${count} 个早期版本的新功能。`,
+    close: "关闭新功能",
+    reading: "正在从 GitHub 读取发布说明…",
+    viewOnGitHub: "在 GitHub 上查看",
+    noneYetFor: (version: string) => `Sens ${version} 的发布说明尚未公布。`,
+    noneYet: "此版本的发布说明尚未公布。",
+    next: "继续",
+    installed: "已安装",
+    noNotes: "此版本没有发布说明。",
+  },
+});

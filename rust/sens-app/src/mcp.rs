@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
+use sens_agent::said;
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -21,8 +22,29 @@ const HEAD_CAP: usize = 16 * 1024;
 const BODY_CAP: usize = 1024 * 1024;
 const LINES: u64 = 200;
 const MOST_LINES: u64 = 1000;
-const BROKEN: &str = "el puente con Claude Code se rompió";
 const LATE: &str = "Sens no contestó a tiempo: la ventana puede estar cerrada o bloqueada.";
+
+fn broken() -> String {
+    said!(
+        en: "the bridge to Claude Code broke",
+        es: "el puente con Claude Code se rompió",
+        fr: "le pont avec Claude Code est rompu",
+        de: "die Brücke zu Claude Code ist abgebrochen",
+        ja: "Claude Code との連携が切れました",
+        zh: "与 Claude Code 的连接已中断",
+    )
+}
+
+fn unopened(error: std::io::Error) -> String {
+    said!(
+        en: "couldn’t open the bridge to Claude Code: {error}",
+        es: "no pude abrir el puente con Claude Code: {error}",
+        fr: "impossible d’ouvrir le pont avec Claude Code : {error}",
+        de: "die Brücke zu Claude Code konnte nicht geöffnet werden: {error}",
+        ja: "Claude Code との連携を開始できませんでした: {error}",
+        zh: "无法建立与 Claude Code 的连接：{error}",
+    )
+}
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Reading {
@@ -70,7 +92,7 @@ impl Waiting {
     }
 
     fn answer(&self, ask: u64, text: String) -> Result<(), String> {
-        let waiting = self.answers.lock().map_err(|_| BROKEN)?.remove(&ask);
+        let waiting = self.answers.lock().map_err(|_| broken())?.remove(&ask);
         if let Some(answer) = waiting {
             let _ = answer.send(text);
         }
@@ -91,12 +113,12 @@ pub struct Bridge {
 
 impl Bridge {
     pub fn config(&self, within: Vec<String>, ask: impl Fn(Reading) + Send + Sync + 'static) -> Result<String, String> {
-        let mut open = self.open.lock().map_err(|_| BROKEN)?;
+        let mut open = self.open.lock().map_err(|_| broken())?;
         if open.is_none() {
             *open = Some(start(Arc::new(ask))?);
         }
-        let served = open.as_ref().ok_or(BROKEN)?;
-        let scope = served.waiting.scope(within).ok_or(BROKEN)?;
+        let served = open.as_ref().ok_or_else(broken)?;
+        let scope = served.waiting.scope(within).ok_or_else(broken)?;
         Ok(json!({
             "mcpServers": {
                 SERVER: {
@@ -110,7 +132,7 @@ impl Bridge {
     }
 
     pub fn answer(&self, ask: u64, text: String) -> Result<(), String> {
-        let open = self.open.lock().map_err(|_| BROKEN)?;
+        let open = self.open.lock().map_err(|_| broken())?;
         match open.as_ref() {
             Some(served) => served.waiting.answer(ask, text),
             None => Ok(()),
@@ -123,11 +145,8 @@ pub fn allowed() -> String {
 }
 
 fn start(ask: Ask) -> Result<Served, String> {
-    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|error| format!("no pude abrir el puente con Claude Code: {error}"))?;
-    let port = listener
-        .local_addr()
-        .map_err(|error| format!("no pude abrir el puente con Claude Code: {error}"))?
-        .port();
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(unopened)?;
+    let port = listener.local_addr().map_err(unopened)?.port();
     let pass = pass();
     let waiting = Arc::new(Waiting::default());
     let serving = waiting.clone();

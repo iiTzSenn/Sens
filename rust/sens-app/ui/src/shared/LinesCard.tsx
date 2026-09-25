@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { code } from "./copy";
 import type { Row } from "./rows";
 import { paintRows, type Look, type Runs } from "./syntax/paint";
 
@@ -40,7 +41,7 @@ export function LinesCard({ rows, preview, language }: { rows: Row[]; preview: n
       </div>
       {!all && rows.length > preview && (
         <button className="more" onClick={() => setAll(true)}>
-          mostrar {rows.length - preview} líneas más
+          {code.moreLines(rows.length - preview)}
         </button>
       )}
     </div>

@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { AgentEvent } from "../../ipc/types";
+import { showLanguage } from "../../shared/i18n";
 import { afterEvent, inOrder, shellEnding, tally, taskTime, taskUsage, type Calls, type Task } from "./tasks";
 
 function run(events: [AgentEvent, number?][]) {
@@ -70,5 +71,21 @@ describe("what a task says", () => {
     expect(tally(tasks)).toBe("1 en marcha");
     expect(tally(new Map([["old", tasks.get("old")!]]))).toBe("1 tarea");
     expect(tally(new Map())).toBe("");
+  });
+
+  describe("in another language", () => {
+    afterEach(() => showLanguage("es"));
+
+    it("says the same things in English and Japanese", () => {
+      showLanguage("en");
+      expect(taskTime({ ...base, status: "completed", ended: 1500 }, 0)).toBe("0.5 s");
+      expect(taskUsage({ ...base, status: "completed", tools: 2, tokens: 12500 })).toBe("2 tools · 12.5k tokens");
+      expect(shellEnding({ ...base, status: "failed", summary: "exit code 2" })).toBe("Failed · exit code 2");
+      expect(tally(new Map([["t", base]]))).toBe("1 running");
+      showLanguage("ja");
+      expect(taskUsage(base)).toBe("作業中…");
+      expect(shellEnding({ ...base, status: "completed", summary: "exit code 0" })).toBe("終了コード 0");
+      expect(tally(new Map([["t", { ...base, status: "completed" }]]))).toBe("1 件のタスク");
+    });
   });
 });

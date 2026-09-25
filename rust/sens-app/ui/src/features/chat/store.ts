@@ -15,31 +15,13 @@ import { forgetTasks, noteTask, settleTasks } from "../tasks/store";
 import { TASK_EVENTS } from "../tasks/tasks";
 import { onProject, reloadSite } from "../web/store";
 import { SILENT, consulting, editOf, statusOf } from "./looks";
-import { notice, warn } from "./state";
+import { notice, spend, unspent, warn } from "./state";
+import { t } from "./store.copy";
 import { CLOSING, answered, heard, nextKey, opening, type Picture, type Reply } from "./turns";
 
 export { notice, warn };
 
-const HINTS = [
-  "Pregunta lo que necesites, pega un error o señálame un fichero.",
-  "Cuéntame qué quieres cambiar y empiezo por leer el proyecto.",
-  "Pégame una traza y busco de dónde sale.",
-  "Pregúntame por un símbolo y te digo quién lo usa.",
-  "¿Por dónde empezamos? Describe el problema y lo miro.",
-  "Dime un fichero y te lo explico antes de tocarlo.",
-  "Empieza por lo que te esté bloqueando ahora mismo.",
-  "Pídeme un resumen del proyecto y te lo cuento por dentro.",
-];
-const NO_ROOT = "Elige una carpeta de trabajo para empezar.";
-
-let lastHint = -1;
-
-function nextHint() {
-  let at = lastHint;
-  while (HINTS.length > 1 && at === lastHint) at = Math.floor(Math.random() * HINTS.length);
-  lastHint = at;
-  return HINTS[Math.max(at, 0)];
-}
+let hellos = 0;
 
 const session = (pane: Pane) => pane.desk.getState().session;
 const setSession = (pane: Pane, id: string) => pane.desk.setState({ session: id });
@@ -47,7 +29,7 @@ const rootOf = (pane: Pane) => pane.desk.getState().root;
 const onScreen = (pane: Pane) => workOf(pane) === project.getState().work;
 
 // The empty chat invites to start, or to pick a folder first.
-export const hello = (pane: Pane = focused()) => pane.chat.setState({ hint: rootOf(pane) ? nextHint() : NO_ROOT });
+export const hello = (pane: Pane = focused()) => pane.chat.setState({ hint: String((hellos += 1)) });
 
 function onReply(pane: Pane, key: number | null, change: (reply: Reply) => Reply) {
   if (key === null) return;
@@ -83,6 +65,7 @@ export function blank(id: string, pane: Pane = focused()) {
   pane.warmed = "";
   pane.reading = null;
   pane.chat.setState({ turns: [], context: null });
+  unspent(pane);
   forgetTasks(id);
 }
 
@@ -98,6 +81,7 @@ function touched(edit: { path: string; lines: number[]; plus: number; minus: num
 // One event on the reply it goes to, and what the live line says of it.
 function route(pane: Pane, key: number, event: ChatEvent, live: boolean) {
   onReply(pane, key, (reply) => heard(reply, event, live));
+  if (event.kind === "finished") spend(pane, event);
   if (event.kind === "finished" && event.window) pane.chat.setState({ context: { used: event.context ?? 0, window: event.window } });
   if (event.kind === "started") {
     const who = nameOf(pane, event.model);
@@ -119,15 +103,15 @@ function route(pane: Pane, key: number, event: ChatEvent, live: boolean) {
 function working(event: ChatEvent) {
   switch (event.kind) {
     case "started":
-      return "Trabajando…";
+      return t.working;
     case "delta":
-      return event.thinking ? "Trabajando…" : "Escribiendo…";
+      return event.thinking ? t.working : t.writing;
     case "tool":
       return SILENT.has(event.name) ? "" : statusOf(event.name, event.input || {});
     case "consulted":
       return consulting(event.links);
     case "asking":
-      return "Esperando tu respuesta";
+      return t.waiting;
     default:
       return "";
   }
@@ -180,7 +164,7 @@ export async function load(id: string, pane: Pane = focused()) {
 
   const busy = running && midTurn;
   pane.replying = reply ?? (busy ? open(pane, "") : null);
-  if (busy) onReply(pane, pane.replying, (open) => ({ ...open, working: "Trabajando…" }));
+  if (busy) onReply(pane, pane.replying, (open) => ({ ...open, working: t.working }));
   settleTasks(alive, id);
   noteActivity(id, busy ? (asking ? "waiting" : "working") : null);
   idle(!busy, pane);
@@ -215,7 +199,7 @@ export async function send({ message, shownFiles, pictures }: Outgoing, settings
   const root = rootOf(pane);
   asked(pane, message.text, shownFiles, pictures);
   pane.replying = open(pane, settings.model);
-  onReply(pane, pane.replying, (reply) => ({ ...reply, working: "Enviando…" }));
+  onReply(pane, pane.replying, (reply) => ({ ...reply, working: t.sending }));
   idle(false, pane);
   try {
     const id = session(pane) || (await commands.openSession(root, pane.pendingId ? await pane.pendingId : null));
@@ -241,7 +225,7 @@ async function isolateIfAsked(pane: Pane, id: string, message: Message): Promise
     if (still()) pane.desk.setState({ worktree });
   } catch (reason) {
     if (still()) pane.desk.setState({ isolate: false });
-    throw new Error(`No pude crear el worktree: ${reason}. Si vuelves a enviar, Claude trabajará en la carpeta del proyecto.`);
+    throw new Error(t.noWorktree(String(reason)));
   }
   return { ...message, files: message.files.map((file) => (ABSOLUTE.test(file) ? file : inRoot(pane, file))) };
 }
@@ -250,7 +234,7 @@ export async function halt(pane: Pane = focused()) {
   const { stopping } = pane.chat.getState();
   if (stopping || !session(pane)) return;
   pane.chat.setState({ stopping: true });
-  onReply(pane, pane.replying, (reply) => ({ ...reply, working: "Parando…" }));
+  onReply(pane, pane.replying, (reply) => ({ ...reply, working: t.stopping }));
   try {
     await commands.chatStop(session(pane));
   } catch (reason) {
@@ -315,7 +299,7 @@ const activityAfter = (kind: string, seen: boolean): Activity | null =>
 
 export const hearChat = () =>
   events.chat((from, event) => {
-    if (event.kind === "limits") return noteLimits(event.windows);
+    if (event.kind === "limits") return noteLimits(event);
     tellAway(from, event);
     const pane = paneOf(from);
     if (!TASK_EVENTS.has(event.kind)) noteActivity(from, activityAfter(event.kind, Boolean(pane)));

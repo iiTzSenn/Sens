@@ -96,3 +96,5 @@ body {
 .setup .mode-choice { height: 44px; font-size: 14px; }
 .setup .swatch { width: 30px; height: 30px; }
 .setup[data-screen="look"] .actions { margin-top: 30px; }
+.setup[data-screen="language"] .actions { margin-top: 30px; }
+.foot .link.spoken { margin-left: auto; }

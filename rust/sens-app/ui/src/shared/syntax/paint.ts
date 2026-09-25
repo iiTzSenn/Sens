@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import type { Look, Painted } from "./tokenize";
 
 export type { Look, Painted } from "./tokenize";
@@ -102,19 +101,6 @@ function inWorker() {
       answers.set(++asked, answer);
       worker.postMessage({ id: asked, text, language });
     });
-}
-
-// The colors of a text for a component: plain until they arrive.
-export function usePainted(text: string, language: string | null) {
-  const [done, setDone] = useState<{ text: string; language: string | null; painted: Painted | null }>();
-  useEffect(() => {
-    let live = true;
-    paint(text, language, () => live).then((painted) => live && setDone({ text, language, painted }));
-    return () => {
-      live = false;
-    };
-  }, [text, language]);
-  return done?.text === text && done.language === language ? done.painted : paintedNow(text, language);
 }
 
 export interface Row {

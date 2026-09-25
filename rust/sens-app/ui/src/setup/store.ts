@@ -1,29 +1,23 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { createStore } from "zustand/vanilla";
+import { languageNow, showLanguage, type Language } from "../shared/i18n";
 import { FIRST_LOOK, lookOf, showLook, type Look } from "../shared/look";
-import { heard, setup, type Place, type Progress, type SetupState, type Step } from "./ipc";
+import { t } from "./copy";
+import { heard, setup, type Place, type Progress, type SetupState, type Step, type Stopped } from "./ipc";
 
-export type Screen = "welcome" | "custom" | "look" | "busy" | "running" | "done" | "error";
+export type Screen = "language" | "welcome" | "custom" | "look" | "busy" | "running" | "done" | "error";
+
+export type Closing = "" | "closing" | "forcing" | "stillOpen";
 
 const STEP_AT_LEAST = 280;
 const FORCE_AFTER = 10_000;
 const UPDATE_PAUSE = 900;
 
-export const STEPS: Record<Step, string> = {
-  check: "Comprobando…",
-  close: "Esperando a que Sens se cierre…",
-  extract: "Copiando archivos…",
-  swap: "Colocando la versión nueva…",
-  register: "Registrando Sens en Windows…",
-  shortcuts: "Creando accesos…",
-  done: "Listo.",
-  remove: "Quitando Sens…",
-};
-
 export const installer = createStore(() => ({
   info: null as SetupState | null,
   screen: "welcome" as Screen,
   before: "welcome" as Screen,
+  spoke: false,
   look: FIRST_LOOK,
   dir: "",
   desktop: true,
@@ -34,10 +28,11 @@ export const installer = createStore(() => ({
   working: false,
   cancelling: false,
   progress: 0,
-  status: STEPS.check,
+  step: "check" as Step,
   lines: [] as string[],
   details: false,
-  closing: "",
+  closing: "" as Closing,
+  closeFault: "",
   force: false,
   fault: "",
   opening: false,
@@ -55,6 +50,7 @@ let forceTimer = 0;
 export const uninstalling = () => info().mode === "uninstall";
 export const unattended = () => info().mode === "update" || info().passive;
 export const choosing = () => info().mode === "install" && !info().installed && !unattended();
+export const speaking = () => !uninstalling() && !unattended();
 
 export function compare(a: string, b: string) {
   const parts = (version: string) => version.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -65,11 +61,20 @@ export function compare(a: string, b: string) {
   return 0;
 }
 
+export const stoppedOf = (reason: unknown): Stopped =>
+  typeof reason === "object" && reason !== null && "cancelled" in reason
+    ? { cancelled: Boolean((reason as Stopped).cancelled), reason: String((reason as Stopped).reason ?? "") }
+    : { cancelled: false, reason: String(reason) };
+
+export function titleNow() {
+  document.title = installer.getState().info?.mode === "uninstall" ? t.uninstallPage : t.install;
+}
+
 function present(progress: Progress) {
   set(({ screen, lines }) => ({
     screen: screen === "running" ? "busy" : screen,
     progress: progress.progress,
-    status: STEPS[progress.step] ?? progress.line,
+    step: progress.step,
     lines: progress.line ? [...lines, progress.line] : lines,
   }));
 }
@@ -94,7 +99,7 @@ async function settled() {
 
 function running() {
   clearTimeout(forceTimer);
-  set({ screen: "running", closing: "", force: false });
+  set({ screen: "running", closing: "", closeFault: "", force: false });
   forceTimer = window.setTimeout(() => set({ force: true }), FORCE_AFTER);
 }
 
@@ -109,6 +114,9 @@ export async function boot() {
     const look = lookOf(state.look ?? FIRST_LOOK);
     set({ info: state, dir: state.dir, desktop: state.installed ? state.desktop : true, look });
     showLook(look);
+    titleNow();
+    setup.language(languageNow()).catch(() => {});
+    if (choosing()) set({ screen: "language", before: "welcome", spoke: true });
   } catch (reason) {
     set({ screen: "error", fault: String(reason) });
     return;
@@ -137,13 +145,27 @@ export const toLook = () => set(({ screen }) => ({ screen: "look", before: scree
 
 export const leaveLook = () => set(({ before }) => ({ screen: before }));
 
+export const toLanguage = () => set(({ screen }) => ({ screen: "language", before: screen, spoke: true }));
+
+export function leaveLanguage() {
+  const { before } = installer.getState();
+  set({ screen: before });
+  if (before === "custom") checkDir();
+}
+
+export function chooseLanguage(chosen: Language) {
+  showLanguage(chosen);
+  titleNow();
+  setup.language(chosen).catch(() => {});
+}
+
 export function chooseLook(look: Look) {
   set({ look });
   showLook(look);
 }
 
 export async function pickDir() {
-  const picked = await open({ directory: true, title: "Elige dónde instalar Sens", defaultPath: installer.getState().dir });
+  const picked = await open({ directory: true, title: t.pickDir, defaultPath: installer.getState().dir });
   if (typeof picked !== "string") return;
   const named = picked.replace(/[\\/]+$/, "");
   set({ dir: /[\\/]sens$/i.test(named) ? named : `${named}\\Sens` });
@@ -151,26 +173,26 @@ export async function pickDir() {
 }
 
 export async function run() {
-  const { working, dir, desktop, startMenu, removeData, look } = installer.getState();
+  const { working, dir, desktop, startMenu, removeData, look, spoke } = installer.getState();
   if (working) return;
   queue.length = 0;
-  set({ working: true, cancelling: false, progress: 0, lines: [], status: STEPS.check, screen: "busy" });
+  set({ working: true, cancelling: false, progress: 0, lines: [], step: "check", screen: "busy" });
   try {
     if (uninstalling()) await setup.uninstall(removeData);
-    else await setup.install({ dir, desktop, startMenu, look: choosing() ? look : null });
+    else await setup.install({ dir, desktop, startMenu, look: choosing() ? look : null, language: speaking() && spoke ? languageNow() : null });
     await settled();
     await finish();
   } catch (reason) {
     await settled();
-    await stopped(String(reason));
+    await stopped(stoppedOf(reason));
   } finally {
     clearTimeout(forceTimer);
     set({ working: false });
   }
 }
 
-async function stopped(reason: string) {
-  if (reason !== "cancelado") return set({ screen: "error", fault: reason.charAt(0).toUpperCase() + reason.slice(1) });
+async function stopped({ cancelled, reason }: Stopped) {
+  if (!cancelled) return set({ screen: "error", fault: reason.charAt(0).toUpperCase() + reason.slice(1) });
   if (unattended()) return setup.quit();
   set({ screen: "welcome" });
 }
@@ -187,12 +209,12 @@ async function finish() {
 }
 
 export async function closeApp(force: boolean) {
-  set({ closing: force ? "Forzando el cierre…" : "Cerrando Sens…" });
+  set({ closing: force ? "forcing" : "closing", closeFault: "" });
   try {
     const gone = await setup.closeApp(force);
-    set(gone ? { closing: "" } : { closing: "Sens no se ha cerrado todavía.", force: true });
+    set(gone ? { closing: "" } : { closing: "stillOpen", force: true });
   } catch (reason) {
-    set({ closing: String(reason), force: true });
+    set({ closing: "", closeFault: String(reason), force: true });
   }
 }
 

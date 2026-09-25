@@ -4,16 +4,17 @@ import { useStore } from "zustand";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { titleOf } from "../rail/store";
+import { t } from "./copy";
 import { drag, type Target } from "./drag";
 import { focused, panes, type Pane } from "./store";
 
 type Span = { left: number; width: number };
 
 const HINTS: Record<Target["kind"], (leaving: string) => string> = {
-  open: () => "Suelta para abrirla aquí",
-  replace: (leaving) => `Suelta para ponerla en lugar de «${leaving}»`,
-  same: () => "Ya está abierta aquí",
-  narrow: () => "Ensancha la ventana para ver dos sesiones a la vez",
+  open: () => t.dropOpen,
+  replace: (leaving) => t.dropReplace(leaving),
+  same: () => t.dropSame,
+  narrow: () => t.dropNarrow,
 };
 
 function spanOf(target: Target, split: boolean, share: number): Span {

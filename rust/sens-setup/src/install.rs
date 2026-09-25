@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use serde::Serialize;
 
+use crate::language::{self, Language, said};
 use crate::layout::Layout;
 use crate::look::{self, Look};
 use crate::payload;
@@ -26,6 +27,7 @@ pub struct Job<'a> {
     pub closing: Closing<'a>,
     pub cancel: &'a AtomicBool,
     pub look: Option<&'a Look>,
+    pub language: Option<Language>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -51,21 +53,42 @@ pub fn assess(dir: &Path, needed: u64, probe: bool) -> Place {
 
 fn fits(dir: &Path, needed: u64, free: Option<u64>, probe: bool) -> Result<(), String> {
     if !dir.is_absolute() {
-        return Err("elige una carpeta con su ruta completa".into());
+        return Err(progress::not_absolute());
     }
+    let shown = dir.display();
     if dir.is_file() {
-        return Err(format!("{} es un fichero, no una carpeta", dir.display()));
+        return Err(said!(
+            en: "{shown} is a file, not a folder",
+            es: "{shown} es un fichero, no una carpeta",
+            fr: "{shown} est un fichier, pas un dossier",
+            de: "{shown} ist eine Datei, kein Ordner",
+            ja: "{shown} はフォルダーではなくファイルです",
+            zh: "{shown} 是文件，不是文件夹",
+        ));
     }
-    let existing = system::nearest_existing(dir).ok_or_else(|| format!("{} no está en ninguna unidad de este equipo", dir.display()))?;
+    let existing = system::nearest_existing(dir).ok_or_else(|| {
+        said!(
+            en: "{shown} isn’t on any drive of this computer",
+            es: "{shown} no está en ninguna unidad de este equipo",
+            fr: "{shown} ne se trouve sur aucun lecteur de cet ordinateur",
+            de: "{shown} liegt auf keinem Laufwerk dieses Computers",
+            ja: "{shown} はこのコンピューターのどのドライブにもありません",
+            zh: "{shown} 不在这台电脑的任何驱动器上",
+        )
+    })?;
     if probe {
         system::writable(&existing)?;
     }
     match free {
-        Some(free) if free < needed => Err(format!(
-            "no cabe en {}: hacen falta {} y quedan {}",
-            dir.display(),
-            progress::amount(needed),
-            progress::amount(free)
+        Some(free) if free < needed => Err(said!(
+            en: "not enough room in {shown}: it needs {needed} and {free} is left",
+            es: "no cabe en {shown}: hacen falta {needed} y quedan {free}",
+            fr: "pas assez de place dans {shown} : il faut {needed} et il reste {free}",
+            de: "in {shown} ist nicht genug Platz: {needed} werden gebraucht, {free} sind frei",
+            ja: "{shown} の空き容量が足りません。{needed} 必要ですが、残りは {free} です",
+            zh: "{shown} 空间不足：需要 {needed}，仅剩 {free}",
+            needed = progress::amount(needed),
+            free = progress::amount(free),
         )),
         _ => Ok(()),
     }
@@ -77,7 +100,14 @@ pub fn run(job: &Job, report: Report) -> Result<(), Failure> {
         place(job, report).map_err(|reason| Failure { reason, placed: false })?;
     }
     complete(job, report).map_err(|reason| Failure {
-        reason: format!("sens-app.exe ya está en su sitio, pero {reason}"),
+        reason: said!(
+            en: "sens-app.exe is already in place, but {reason}",
+            es: "sens-app.exe ya está en su sitio, pero {reason}",
+            fr: "sens-app.exe est déjà en place, mais {reason}",
+            de: "sens-app.exe ist schon an seinem Platz, aber {reason}",
+            ja: "sens-app.exe は配置済みですが、{reason}",
+            zh: "sens-app.exe 已就位，但{reason}",
+        ),
         placed: true,
     })?;
     report(Step::Done, 1.0, &progress::finished(started.elapsed()));
@@ -106,7 +136,7 @@ fn check(job: &Job, report: Report) -> Result<(), String> {
     let needed = payload::size(job.payload)? + system::file_size(job.uninstaller);
     report(Step::Check, 0.02, &progress::space(system::free_space(dir)));
     stop_if_cancelled(job.cancel)?;
-    fs::create_dir_all(dir).map_err(|error| format!("no pude crear {}: {error}", dir.display()))?;
+    fs::create_dir_all(dir).map_err(|error| progress::cannot_create(dir, &error))?;
     fits(dir, needed, system::free_space(dir), true)
 }
 
@@ -128,13 +158,29 @@ fn swap(layout: &Layout, report: Report) -> Result<(), String> {
     let _ = fs::remove_file(&old);
     let replacing = app.exists();
     if replacing {
-        fs::rename(&app, &old).map_err(|error| format!("no pude apartar la sens-app.exe anterior: {error}"))?;
+        fs::rename(&app, &old).map_err(|error| {
+            said!(
+                en: "couldn’t move the previous sens-app.exe aside: {error}",
+                es: "no pude apartar la sens-app.exe anterior: {error}",
+                fr: "impossible de mettre de côté l’ancien sens-app.exe : {error}",
+                de: "die bisherige sens-app.exe konnte nicht beiseitegelegt werden: {error}",
+                ja: "以前の sens-app.exe を退避できませんでした: {error}",
+                zh: "无法移开旧的 sens-app.exe：{error}",
+            )
+        })?;
     }
     if let Err(error) = fs::rename(&fresh, &app) {
         if replacing {
             let _ = fs::rename(&old, &app);
         }
-        return Err(format!("no pude colocar sens-app.exe: {error}"));
+        return Err(said!(
+            en: "couldn’t put sens-app.exe in place: {error}",
+            es: "no pude colocar sens-app.exe: {error}",
+            fr: "impossible de mettre sens-app.exe en place : {error}",
+            de: "sens-app.exe konnte nicht abgelegt werden: {error}",
+            ja: "sens-app.exe を配置できませんでした: {error}",
+            zh: "无法放置 sens-app.exe：{error}",
+        ));
     }
     let _ = fs::remove_file(&old);
     Ok(())
@@ -142,13 +188,23 @@ fn swap(layout: &Layout, report: Report) -> Result<(), String> {
 
 fn complete(job: &Job, report: Report) -> Result<(), String> {
     let layout = job.layout;
-    report(Step::Register, 0.86, progress::UNINSTALLER);
+    report(Step::Register, 0.86, &progress::uninstaller());
     if !system::same_path(job.uninstaller, &layout.uninstaller()) {
-        fs::copy(job.uninstaller, layout.uninstaller()).map_err(|error| format!("no pude copiar el desinstalador: {error}"))?;
+        fs::copy(job.uninstaller, layout.uninstaller()).map_err(|error| {
+            said!(
+                en: "couldn’t copy the uninstaller: {error}",
+                es: "no pude copiar el desinstalador: {error}",
+                fr: "impossible de copier le programme de désinstallation : {error}",
+                de: "das Deinstallationsprogramm konnte nicht kopiert werden: {error}",
+                ja: "アンインストーラーをコピーできませんでした: {error}",
+                zh: "无法复制卸载程序：{error}",
+            )
+        })?;
     }
-    report(Step::Register, 0.9, progress::REGISTERING);
+    report(Step::Register, 0.9, &progress::registering());
     registry::write(layout, job.version, footprint(layout))?;
     keep_look(job, report);
+    keep_language(job, report);
     link(job, report)
 }
 
@@ -156,9 +212,19 @@ fn keep_look(job: &Job, report: Report) {
     let Some(chosen) = job.look else {
         return;
     };
-    report(Step::Register, 0.92, progress::LOOK);
+    report(Step::Register, 0.92, &progress::saving_look());
     if let Err(reason) = look::write(&job.layout.settings, chosen) {
         report(Step::Register, 0.92, &progress::unsaved_look(&reason));
+    }
+}
+
+fn keep_language(job: &Job, report: Report) {
+    let Some(chosen) = job.language else {
+        return;
+    };
+    report(Step::Register, 0.93, &progress::saving_language());
+    if let Err(reason) = language::write(&job.layout.settings, chosen) {
+        report(Step::Register, 0.93, &progress::unsaved_language(&reason));
     }
 }
 
@@ -170,12 +236,12 @@ fn footprint(layout: &Layout) -> u32 {
 fn link(job: &Job, report: Report) -> Result<(), String> {
     let layout = job.layout;
     let wanted = [
-        (job.start_menu, &layout.start_menu, progress::START_MENU, 0.94),
-        (job.desktop, &layout.desktop, progress::DESKTOP, 0.97),
+        (job.start_menu, &layout.start_menu, progress::start_menu(), 0.94),
+        (job.desktop, &layout.desktop, progress::desktop(), 0.97),
     ];
     for (asked, at, line, share) in wanted {
         if asked && (!job.update || at.exists()) {
-            report(Step::Shortcuts, share, line);
+            report(Step::Shortcuts, share, &line);
             shortcut::create(at, &layout.app(), &layout.dir)?;
         }
     }
@@ -194,6 +260,7 @@ mod tests {
     use winreg::enums::REG_DWORD;
 
     use super::*;
+    use crate::language::speaking;
     use crate::layout::sandbox::Sandbox;
     use crate::payload::{packed, sample_app};
 
@@ -234,6 +301,7 @@ mod tests {
             closing: Closing::Force,
             cancel,
             look: None,
+            language: None,
         }
     }
 
@@ -282,7 +350,7 @@ mod tests {
             [Step::Check, Step::Extract, Step::Swap, Step::Register, Step::Shortcuts, Step::Done]
         );
         assert!(lines.said(&progress::extracting(400_000)));
-        assert!(lines.said(progress::START_MENU) && lines.said(progress::DESKTOP));
+        assert!(lines.said(&progress::start_menu()) && lines.said(&progress::desktop()));
     }
 
     #[test]
@@ -313,7 +381,7 @@ mod tests {
         let failure = run(&job(&sandbox, &payload, &setup, &cancel), &|_, _, _| {}).unwrap_err();
 
         assert!(!failure.placed);
-        assert!(failure.reason.contains("dañado"), "{}", failure.reason);
+        assert!(failure.reason.contains("damaged"), "{}", failure.reason);
         assert_eq!(fs::read(layout.app()).unwrap(), b"sens 0.16.0");
         assert!(!layout.fresh_app().exists());
         assert!(!layout.uninstaller().exists());
@@ -322,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    fn a_cancelled_install_rejects_with_cancelado_and_touches_nothing() {
+    fn a_cancelled_install_rejects_as_cancelled_and_touches_nothing() {
         let sandbox = Sandbox::new("cancelled");
         let layout = &sandbox.layout;
         fs::create_dir_all(&layout.dir).unwrap();
@@ -470,14 +538,16 @@ mod tests {
     fn a_folder_is_judged_by_its_path_its_space_and_whether_it_takes_files() {
         let sandbox = Sandbox::new("assess");
 
-        assert_eq!(assess(Path::new(r"Sens"), 1, true).problem, "elige una carpeta con su ruta completa");
+        assert_eq!(assess(Path::new(r"Sens"), 1, true).problem, "choose a folder with its full path");
         let fine = assess(&sandbox.root.join("Nueva").join("Sens"), 1, true);
         assert_eq!(fine.problem, "");
         assert!(fine.free.is_some_and(|free| free > 0));
         assert!(!sandbox.root.join("Nueva").exists());
         let file = sandbox.file("fichero", b"x");
-        assert!(assess(&file, 1, true).problem.contains("es un fichero"));
-        assert!(assess(&sandbox.root, u64::MAX, true).problem.starts_with("no cabe en"));
+        assert!(assess(&file, 1, true).problem.ends_with("is a file, not a folder"));
+        assert!(assess(&sandbox.root, u64::MAX, true).problem.starts_with("not enough room in"));
+        let spanish = speaking(Language::Es, || assess(&sandbox.root, u64::MAX, true).problem);
+        assert!(spanish.starts_with("no cabe en") && spanish.contains(" y quedan "), "{spanish}");
     }
 
     #[test]
@@ -499,7 +569,7 @@ mod tests {
         run(&choosing, &lines.report()).unwrap();
 
         assert_eq!(look::read(&sandbox.layout.settings), Some(chosen));
-        assert!(lines.said(progress::LOOK));
+        assert!(lines.said(&progress::saving_look()));
     }
 
     #[test]
@@ -518,6 +588,58 @@ mod tests {
         run(&job(&sandbox, &payload, &setup, &cancel), &lines.report()).unwrap();
 
         assert_eq!(look::read(&sandbox.layout.settings), Some(saved));
-        assert!(!lines.said(progress::LOOK));
+        assert!(!lines.said(&progress::saving_look()));
+    }
+
+    #[test]
+    fn a_fresh_install_keeps_the_chosen_language_where_the_app_reads_it() {
+        let sandbox = Sandbox::new("language");
+        let payload = packed(&sample_app(10_000));
+        let setup = sandbox.file("setup.exe", b"setup");
+        let cancel = AtomicBool::new(false);
+        let lines = Lines::new();
+        let choosing = Job {
+            language: Some(Language::Fr),
+            ..job(&sandbox, &payload, &setup, &cancel)
+        };
+
+        run(&choosing, &lines.report()).unwrap();
+
+        assert_eq!(language::read(&sandbox.layout.settings), Some(Language::Fr));
+        assert!(lines.said(&progress::saving_language()));
+    }
+
+    #[test]
+    fn an_update_that_asked_nothing_leaves_the_saved_language_alone() {
+        let sandbox = Sandbox::new("kept-language");
+        language::write(&sandbox.layout.settings, Language::Ja).unwrap();
+        let payload = packed(&sample_app(10_000));
+        let setup = sandbox.file("setup.exe", b"setup");
+        let cancel = AtomicBool::new(false);
+        let lines = Lines::new();
+        let update = Job {
+            update: true,
+            ..job(&sandbox, &payload, &setup, &cancel)
+        };
+
+        run(&update, &lines.report()).unwrap();
+
+        assert_eq!(language::read(&sandbox.layout.settings), Some(Language::Ja));
+        assert!(!lines.said(&progress::saving_language()));
+    }
+
+    #[test]
+    fn the_install_reports_its_steps_in_the_language_spoken() {
+        let sandbox = Sandbox::new("spoken");
+        let payload = packed(&sample_app(10_000));
+        let setup = sandbox.file("setup.exe", b"setup");
+        let cancel = AtomicBool::new(false);
+        let lines = Lines::new();
+
+        speaking(Language::De, || run(&job(&sandbox, &payload, &setup, &cancel), &lines.report())).unwrap();
+
+        assert!(lines.said("Sens wird in Windows registriert"));
+        assert!(lines.said("Verknüpfung im Startmenü"));
+        assert!(!lines.said(&progress::registering()));
     }
 }

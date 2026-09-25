@@ -10,6 +10,7 @@ import {
   type PaletteToken,
 } from "../src/brand/tokens.js";
 import { markSvg, markMonoSvg, cutPath, cutWidth } from "../src/brand/mark.js";
+import { SLOTS } from "../rust/sens-app/ui/src/shared/ansi.js";
 
 const root = path.join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(path.join(root, p), "utf8");
@@ -74,7 +75,7 @@ describe("themes", () => {
 
   it("offers in the interface exactly the accents the brand defines", () => {
     const look = read("rust/sens-app/ui/src/shared/look.ts");
-    const offered = [...look.matchAll(/\{ id: "(\w+)", label: "[^"]+" \}/g)].map((m) => m[1]).filter((id) => !["dark", "light", "system"].includes(id));
+    const offered = [...(look.match(/export const ACCENTS[^=]*= \[([^\]]*)\]/)?.[1] ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1]);
     expect(offered).toEqual([...accents]);
   });
 
@@ -97,6 +98,131 @@ describe("themes", () => {
     expect(tokens).toContain(":root:not([data-mode]) body { display: none; }");
     expect(read("rust/sens-app/ui/src/main.ts")).toContain("showLook(lookOf(window.__SENS_LOOK__));");
     expect(read("rust/sens-app/ui/src/setup/main.ts")).toContain("showLook(FIRST_LOOK);");
+  });
+});
+
+describe("the light theme", () => {
+  const tokens = read("rust/sens-app/ui/src/shared/tokens.css");
+  const block = (selector: string) => {
+    const at = tokens.indexOf(`${selector} {`);
+    expect(at, selector).toBeGreaterThanOrEqual(0);
+    return tokens.slice(at, tokens.indexOf("}", at));
+  };
+  const values = (css: string) => Object.fromEntries([...css.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
+  const light = block(`[data-mode="light"]`);
+  const neutralLight = block(`[data-accent="neutral"][data-mode="light"], [data-accent="neutral"] [data-mode="light"]`);
+  const primitives = Object.fromEntries(Object.entries(palette).map(([token, value]) => [`--sens-${token}`, value]));
+  const scope = (accent: string, mode: string) => {
+    const accentRule = values(block(accent === "signal" ? `:root, [data-accent="signal"]` : `[data-accent="${accent}"]`));
+    const modeRule = values(block(mode === "light" ? `[data-mode="light"]` : `:root, [data-mode="dark"]`));
+    return { ...primitives, ...accentRule, ...modeRule, ...(mode === "light" && accent === "neutral" ? values(neutralLight) : {}) };
+  };
+  const resolve = (names: Record<string, string>, name: string): string => {
+    const value = names[name];
+    expect(value, name).toBeDefined();
+    const alias = value.match(/^var\((--[\w-]+)\)$/);
+    return alias ? resolve(names, alias[1]) : value;
+  };
+  const channels = (hex: string) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+  const luminance = (hex: string) => {
+    const [r, g, b] = channels(hex).map((value) => value / 255).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (one: string, other: string) => {
+    const [high, low] = [luminance(one), luminance(other)].sort((a, b) => b - a);
+    return (high + 0.05) / (low + 0.05);
+  };
+  const expectContrast = (names: Record<string, string>, ink: string, surface: string, least: number, accent: string) => {
+    const ratio = contrast(resolve(names, ink), resolve(names, surface));
+    expect(ratio, `${accent}: ${ink} on ${surface} is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(least);
+  };
+
+  it("paints the page white and builds every surface from chalk, never from bone or paper", () => {
+    const names = scope("signal", "light");
+    expect(resolve(names, "--ground")).toBe("#ffffff");
+    for (const role of ["--ground", "--panel", "--card", "--raise", "--hair", "--hair-strong", "--edge"]) {
+      expect(light, role).toMatch(new RegExp(`${role}: var\\(--sens-chalk-\\d+\\);`));
+    }
+    expect(light).not.toMatch(/bone|paper|fbfaf6/);
+    expect(neutralLight).not.toMatch(/bone|paper/);
+  });
+
+  it("keeps every light surface neutral, never warmer than its green", () => {
+    for (const [token, value] of Object.entries(palette).filter(([token]) => token.startsWith("chalk-"))) {
+      const [red, green, blue] = channels(value);
+      expect(red, token).toBeLessThanOrEqual(green);
+      expect(red, token).toBeLessThanOrEqual(blue);
+    }
+  });
+
+  it("steps down from white in order: panel, card, raise, hairlines, edge", () => {
+    const names = scope("signal", "light");
+    const order = ["--ground", "--panel", "--card", "--raise", "--hair-strong", "--edge"].map((role) => luminance(resolve(names, role)));
+    expect(order).toEqual([...order].sort((a, b) => b - a));
+    expect(new Set(order).size).toBe(order.length);
+  });
+
+  it("reads every text role on every light surface, in every accent", () => {
+    for (const accent of accents) {
+      const names = scope(accent, "light");
+      for (const surface of ["--ground", "--panel", "--card", "--tint"]) {
+        for (const ink of ["--text", "--dim", "--faint", "--ghost", "--focus", "--accent-text", "--accent-soft"]) expectContrast(names, ink, surface, 4.5, accent);
+      }
+      for (const ink of ["--text", "--dim", "--faint", "--focus"]) expectContrast(names, ink, "--raise", 4.5, accent);
+      expectContrast(names, "--ghost", "--raise", 3, accent);
+      expectContrast(names, "--accent-ink", "--accent-fill", 4.5, accent);
+      expectContrast(names, "--accent-ink", "--accent-fill-hover", 4.5, accent);
+      expectContrast(names, "--primary-ink", "--primary", 4.5, accent);
+      expectContrast(names, "--primary-ink", "--primary-hover", 4.5, accent);
+    }
+  });
+
+  it("keeps status colours legible on white, on panels and on hover", () => {
+    const names = scope("signal", "light");
+    for (const surface of ["--ground", "--panel", "--card"]) {
+      for (const ink of ["--red", "--green", "--amber", "--blue"]) expectContrast(names, ink, surface, 4.5, "signal");
+    }
+  });
+
+  it("gives every ANSI slot a colour that reads where output shows, in both modes", () => {
+    for (const mode of ["light", "dark"]) {
+      const names = scope("signal", mode);
+      for (const slot of SLOTS.filter((one) => mode === "light" || one !== "black")) {
+        for (const surface of ["--ground", "--panel"]) expectContrast(names, `--ansi-${slot}`, surface, 4.5, mode);
+      }
+    }
+  });
+
+  it("keeps the ANSI status hues on their meanings and Signal out of the terminal", () => {
+    const signal = new Set(Object.entries(palette).filter(([token]) => token.startsWith("signal-")).map(([, value]) => value));
+    for (const mode of ["light", "dark"]) {
+      const rule = block(mode === "light" ? `[data-mode="light"]` : `:root, [data-mode="dark"]`);
+      for (const [slot, meaning] of [["red", "danger"], ["green", "success"], ["yellow", "warning"], ["blue", "info"]]) {
+        expect(rule, `${mode} ${slot}`).toMatch(new RegExp(`--ansi-${slot}: var\\(--sens-${meaning}[-;)]`));
+        expect(rule, `${mode} bright ${slot}`).toMatch(new RegExp(`--ansi-bright-${slot}: var\\(--sens-${meaning}[-;)]`));
+      }
+      const names = scope("signal", mode);
+      for (const slot of SLOTS) expect(signal, `${mode} ${slot}`).not.toContain(resolve(names, `--ansi-${slot}`));
+    }
+  });
+
+  it("draws the featured surface off the page, with an edge that holds as a line", () => {
+    for (const accent of accents) {
+      const names = scope(accent, "light");
+      expect(contrast(resolve(names, "--tint"), resolve(names, "--ground")), accent).toBeGreaterThan(1.05);
+      expect(contrast(resolve(names, "--tint-edge"), resolve(names, "--ground")), accent).toBeGreaterThanOrEqual(1.35);
+    }
+  });
+
+  it("opens the window on the colour the page paints first", () => {
+    const look = read("rust/sens-app/src/look.rs");
+    const before = (name: string) => {
+      const found = look.match(new RegExp(`${name}: Color = Color\\(0x(\\w\\w), 0x(\\w\\w), 0x(\\w\\w), 0xff\\);`));
+      expect(found, name).not.toBeNull();
+      return `#${found!.slice(1, 4).join("")}`.toLowerCase();
+    };
+    expect(before("LIGHT_GROUND")).toBe(resolve(scope("signal", "light"), "--ground"));
+    expect(before("DARK_GROUND")).toBe(resolve(scope("signal", "dark"), "--ground"));
   });
 });
 
@@ -202,7 +328,7 @@ describe("the desktop shell", () => {
 
   it("builds the model picker from the backend catalogue", () => {
     expect(shell).toContain('invoke<Provider[]>("providers")');
-    expect(shell).toContain('invoke<Card[]>("models", { provider })');
+    expect(shell).toContain('invoke<Card[] | null>("models", { provider })');
     expect(shell).not.toContain("claude-sonnet-5");
     expect(shell).not.toContain("claude-haiku");
   });
@@ -245,10 +371,10 @@ describe("the desktop shell", () => {
     const paired = [
       ['.step[data-state="stopped"] .step-state { border:', "a stopped step is a ring, not a colour"],
       ['if (state === "failed" && box.current) box.current.open = true;', "a failed step opens on its error"],
-      ['failed ? "Terminó con error"', "a failed command says so"],
-      ['allowed: (answers) => answersText(answers) || "Permitido"', "a settled permission names its outcome"],
-      ['refused: () => "Rechazado"', "a refused permission says so"],
-      ['expired: () => "Sin respuesta"', "an expired question says it went unanswered"],
+      ["failed ? t.endedWithError", "a failed command says so"],
+      ["allowed: (answers) => answersText(answers) || t.allowed", "a settled permission names its outcome"],
+      ["refused: () => t.denied", "a refused permission says so"],
+      ["expired: () => t.unanswered", "an expired question says it went unanswered"],
       ['<span className="state" data-state={file.state}', "a changed file carries its status letter"],
     ];
     for (const [snippet, why] of paired) expect(shell, why).toContain(snippet);

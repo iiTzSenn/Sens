@@ -7,6 +7,7 @@ mod claude_code;
 mod files;
 mod icon;
 mod git;
+mod language;
 mod look;
 mod market;
 mod mcp;
@@ -32,6 +33,8 @@ use std::sync::Arc;
 use sens_agent::account;
 use sens_agent::catalog;
 use sens_agent::chat::{self, Decision, Engine, Event, Message, Settings, Sink, Slash};
+use sens_agent::language::Language;
+use sens_agent::said;
 use sens_agent::session;
 use sens_agent::title;
 use serde::Serialize;
@@ -74,20 +77,25 @@ fn attach(root: String, paths: Vec<String>) -> artifacts::Attachments {
     artifacts::attach(Path::new(&root), &paths)
 }
 
+#[tauri::command(async)]
+fn stage_file(app: AppHandle, name: String, data: String) -> Result<artifacts::Attached, String> {
+    artifacts::stage(&data_dir(&app)?.join("staged"), &name, &data)
+}
+
 #[tauri::command]
 fn providers() -> &'static [catalog::Provider] {
     catalog::PROVIDERS
 }
 
 #[tauri::command(async)]
-fn models(provider: String) -> Result<Vec<catalog::Card>, String> {
+fn models(provider: String) -> Result<Option<Vec<catalog::Card>>, String> {
     let served = std::thread::spawn(served::models);
     let offered = catalog::discover(&provider)?;
-    Ok(catalog::with_served(offered, &served.join().unwrap_or_default()))
+    Ok(offered.map(|offered| catalog::with_served(offered, &served.join().unwrap_or_default())))
 }
 
 #[tauri::command(async)]
-fn claude_account() -> Result<account::Account, String> {
+fn claude_account() -> Result<Option<account::Account>, String> {
     account::read()
 }
 
@@ -129,7 +137,14 @@ fn provider_sign_in(method: providers::Method) -> Result<(), String> {
     match method {
         providers::Method::Subscription => account::sign_in(account::Door::Subscription),
         providers::Method::Console => account::sign_in(account::Door::Console),
-        providers::Method::ApiKey => Err("con una clave de API no hace falta iniciar sesión".into()),
+        providers::Method::ApiKey => Err(said!(
+            en: "with an API key there’s no need to sign in",
+            es: "con una clave de API no hace falta iniciar sesión",
+            fr: "avec une clé API, inutile de se connecter",
+            de: "mit einem API-Schlüssel musst du dich nicht anmelden",
+            ja: "API キーを使う場合、サインインは不要です",
+            zh: "使用 API 密钥时无需登录",
+        )),
     }
 }
 
@@ -179,7 +194,7 @@ fn chat_send(
     mut settings: Settings,
 ) -> Result<(), String> {
     if engine.busy(&session_id) {
-        return Err(chat::BUSY.into());
+        return Err(chat::still_working());
     }
     let here = Path::new(&root);
     equip(&app, &root, &session_id, &mut settings)?;
@@ -265,18 +280,31 @@ fn task_output(path: String) -> Result<String, String> {
     let file = PathBuf::from(&path);
     let in_tasks = file.parent().and_then(Path::file_name).is_some_and(|name| name == "tasks");
     if !in_tasks || file.extension().is_none_or(|extension| extension != "output") {
-        return Err("esa ruta no es la salida de una tarea".into());
+        return Err(said!(
+            en: "that path isn’t the output of a task",
+            es: "esa ruta no es la salida de una tarea",
+            fr: "ce chemin n’est pas la sortie d’une tâche",
+            de: "dieser Pfad ist nicht die Ausgabe einer Aufgabe",
+            ja: "このパスはタスクの出力ではありません",
+            zh: "该路径不是任务的输出",
+        ));
     }
-    let mut opened = std::fs::File::open(&file).map_err(|error| format!("no pude leer la salida: {error}"))?;
+    let unread = |error: std::io::Error| {
+        said!(
+            en: "couldn’t read the output: {error}",
+            es: "no pude leer la salida: {error}",
+            fr: "impossible de lire la sortie : {error}",
+            de: "die Ausgabe konnte nicht gelesen werden: {error}",
+            ja: "出力を読み取れませんでした: {error}",
+            zh: "无法读取输出：{error}",
+        )
+    };
+    let mut opened = std::fs::File::open(&file).map_err(unread)?;
     let size = opened.metadata().map(|meta| meta.len()).unwrap_or_default();
     let skipped = size.saturating_sub(TASK_TAIL);
-    opened
-        .seek(SeekFrom::Start(skipped))
-        .map_err(|error| format!("no pude leer la salida: {error}"))?;
+    opened.seek(SeekFrom::Start(skipped)).map_err(unread)?;
     let mut bytes = Vec::new();
-    opened
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("no pude leer la salida: {error}"))?;
+    opened.read_to_end(&mut bytes).map_err(unread)?;
     let text = String::from_utf8_lossy(&bytes);
     Ok(match skipped {
         0 => text.into_owned(),
@@ -377,9 +405,16 @@ fn replay(root: String, id: String) -> Vec<session::Entry> {
 }
 
 fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .app_data_dir()
-        .map_err(|error| format!("no encuentro la carpeta de datos: {error}"))
+    app.path().app_data_dir().map_err(|error| {
+        said!(
+            en: "can’t find the data folder: {error}",
+            es: "no encuentro la carpeta de datos: {error}",
+            fr: "dossier de données introuvable : {error}",
+            de: "Datenordner nicht gefunden: {error}",
+            ja: "データフォルダーが見つかりません: {error}",
+            zh: "找不到数据文件夹：{error}",
+        )
+    })
 }
 
 fn registry(app: &AppHandle) -> Result<projects::Registry, String> {
@@ -434,7 +469,16 @@ fn open_external(app: AppHandle, target: String) -> Result<(), String> {
         artifacts::Outside::File(path) => opener.open_path(path, None::<&str>),
         artifacts::Outside::Folder(path) => opener.reveal_item_in_dir(path),
     }
-    .map_err(|error| format!("no pude abrir {target}: {error}"))
+    .map_err(|error| {
+        said!(
+            en: "couldn’t open {target}: {error}",
+            es: "no pude abrir {target}: {error}",
+            fr: "impossible d’ouvrir {target} : {error}",
+            de: "{target} konnte nicht geöffnet werden: {error}",
+            ja: "{target} を開けませんでした: {error}",
+            zh: "无法打开 {target}：{error}",
+        )
+    })
 }
 
 #[tauri::command]
@@ -464,7 +508,16 @@ fn notify(app: AppHandle, title: String, body: String) -> Result<(), String> {
         .title(title)
         .body(body)
         .show()
-        .map_err(|error| format!("no pude avisar: {error}"))
+        .map_err(|error| {
+            said!(
+                en: "couldn’t send the notification: {error}",
+                es: "no pude avisar: {error}",
+                fr: "impossible d’envoyer la notification : {error}",
+                de: "die Benachrichtigung konnte nicht gesendet werden: {error}",
+                ja: "通知を送れませんでした: {error}",
+                zh: "无法发送通知：{error}",
+            )
+        })
 }
 
 #[tauri::command]
@@ -483,13 +536,15 @@ fn saw_news(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn look(app: AppHandle) -> Result<look::Look, String> {
-    Ok(look::load(&data_dir(&app)?))
+fn set_look(app: AppHandle, look: look::Look) -> Result<(), String> {
+    look::save(&data_dir(&app)?, look)
 }
 
 #[tauri::command]
-fn set_look(app: AppHandle, look: look::Look) -> Result<(), String> {
-    look::save(&data_dir(&app)?, look)
+fn set_language(app: AppHandle, language: Language) -> Result<(), String> {
+    language::save(&data_dir(&app)?, language)?;
+    sens_agent::language::set(language);
+    Ok(())
 }
 
 const UNPAINTED: std::time::Duration = std::time::Duration::from_secs(4);
@@ -507,6 +562,7 @@ fn open_window(app: &App) -> tauri::Result<()> {
         .background_color(look::ground(theme.unwrap_or(Theme::Dark)))
         .initialization_script(look.script())
         .initialization_script(person.script())
+        .initialization_script(language::script(base.as_deref().and_then(language::load)))
         .build()?;
     if theme.is_none() {
         window.set_background_color(Some(look::ground(window.theme()?)))?;
@@ -666,9 +722,11 @@ fn main() {
         .manage(terminal::Consoles::default())
         .manage(mcp::Bridge::default())
         .setup(|app| {
+            let base = data_dir(app.handle());
+            language::speak(base.as_deref().ok());
             open_window(app)?;
             icon::sharpen(app);
-            if let Ok(base) = data_dir(app.handle()) {
+            if let Ok(base) = base {
                 share_environment(&base);
                 update::sweep(&base);
                 claude_code::sweep(&base);
@@ -699,6 +757,7 @@ fn main() {
             claude_code_newer,
             claude_code_update,
             attach,
+            stage_file,
             open_session,
             archive_session,
             delete_session,
@@ -725,8 +784,8 @@ fn main() {
             set_welcomed,
             news,
             saw_news,
-            look,
             set_look,
+            set_language,
             welcome_scan,
             welcome_adopt,
             welcome_servers,
