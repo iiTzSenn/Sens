@@ -1437,6 +1437,41 @@
   .prose :is(th, td) { padding: 6px 12px; border: 1px solid var(--hair-strong); text-align: left; vertical-align: top; }
   .prose th { font-weight: 600; color: var(--text); background: var(--card); }
 
+  .news { max-width: 720px; }
+  .news-top { align-items: flex-start; }
+  .news-top > div { flex: 1; min-width: 0; }
+  .news-state { margin: 24px 0 0; font-size: 13px; line-height: 19px; color: var(--faint); }
+  .news-state .fault { margin: 0; color: var(--red); overflow-wrap: anywhere; }
+  .news-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .news-actions .quiet { border: 1px solid var(--hair-strong); }
+  .news-release { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--hair); }
+  .news-release + .news-release { margin-top: 32px; }
+  .news-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; font-size: 12px; line-height: 16px; color: var(--faint); }
+  .news-version { font-family: var(--mono); color: var(--text); }
+  .news-now {
+    padding: 1px 7px; border: 1px solid var(--tint-edge); border-radius: 999px;
+    background: var(--tint); color: var(--focus); font-size: 11px; line-height: 14px;
+  }
+  .news-link {
+    display: inline-flex; align-items: center; gap: 4px; margin-left: auto;
+    border-radius: var(--r-control); color: var(--faint);
+    transition: color var(--fast) var(--curve);
+  }
+  .news-link:hover { color: var(--text); }
+  .news-link svg { width: 12px; height: 12px; }
+  .news-release h2 {
+    margin: 10px 0 16px; font-size: 20px; line-height: 28px; font-weight: 600;
+    letter-spacing: -0.01em; color: var(--text); text-wrap: balance;
+  }
+  .news-notes { max-width: none; padding: 0; font-size: 14px; line-height: 22px; user-select: text; }
+  .news-notes :is(h1, h2, h3, h4, h5, h6) {
+    margin: 24px 0 8px; font-size: 11px; line-height: 16px; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
+  }
+  .news-notes li + li { margin-top: 8px; }
+  .news-none { margin: 0; font-size: 13px; color: var(--faint); }
+  .news-foot { display: flex; justify-content: flex-end; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--hair); }
+
   .panel {
     width: 420px; max-width: calc(100vw - 32px); padding: 0;
     border: 1px solid var(--hair-strong); border-radius: var(--r-sheet);

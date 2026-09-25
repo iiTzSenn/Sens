@@ -9,6 +9,7 @@ mod icon;
 mod git;
 mod look;
 mod market;
+mod news;
 mod preview;
 mod profile;
 mod projects;
@@ -399,6 +400,16 @@ fn set_welcomed(app: AppHandle, on: bool) -> Result<(), String> {
     profile::set_welcomed(&data_dir(&app)?, on)
 }
 
+#[tauri::command(async)]
+fn news(app: AppHandle) -> Result<Vec<news::News>, String> {
+    news::since(&profile::load(&data_dir(&app)?).seen)
+}
+
+#[tauri::command]
+fn saw_news(app: AppHandle) -> Result<(), String> {
+    profile::saw_news(&data_dir(&app)?)
+}
+
 #[tauri::command]
 fn look(app: AppHandle) -> Result<look::Look, String> {
     Ok(look::load(&data_dir(&app)?))
@@ -633,6 +644,8 @@ fn main() {
             save_profile,
             set_update_check,
             set_welcomed,
+            news,
+            saw_news,
             look,
             set_look,
             welcome_scan,

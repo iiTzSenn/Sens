@@ -84,7 +84,7 @@ npm run dev:setup -w sens-app-ui   # the installer in a browser: ?mode=update, ?
 npm run setup:dev        # the installer in its real window, as a demo that writes nothing
 ```
 
-The app's own dev server shows the welcome with `?welcome` in the URL, and any look with `?look=light.iris`.
+The app's own dev server shows the welcome with `?welcome` in the URL, the news after an update with `?news`, and any look with `?look=light.iris`.
 
 Anything visual — interface, asset, terminal output, marketing — follows [the Sens visual identity](docs/brand/identity.md). Colours live in `src/brand/tokens.ts` and the mark's geometry in `src/brand/mark.ts`: import the token instead of retyping a hex, and edit the generator rather than the generated asset.
 

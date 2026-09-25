@@ -2,6 +2,7 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import { useStore } from "zustand";
 import { Shelf } from "../features/artifacts/Shelf";
 import { Capabilities } from "../features/capabilities/Capabilities";
+import { NewsView } from "../features/news/News";
 import { Panes } from "../features/panes/Panes";
 import { project } from "../features/project/store";
 import { Rail } from "../features/rail/Rail";
@@ -93,6 +94,11 @@ export function App() {
           <section className="view" id="capabilities-view" aria-label="Capacidades" hidden={view !== "capabilities"}>
             <div className="view-inner" id="capabilities-body">
               <Capabilities />
+            </div>
+          </section>
+          <section className="view" id="news-view" aria-label="Novedades" hidden={view !== "news"}>
+            <div className="view-inner news">
+              <NewsView />
             </div>
           </section>
           <Splitter id="panel-split" label="Ancho del panel de herramientas" name="--tools-width" host={body} pane={code} grow={-1} />

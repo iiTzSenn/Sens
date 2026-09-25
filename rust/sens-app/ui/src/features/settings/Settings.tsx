@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useStore } from "zustand";
+import { showView } from "../../app/session";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { ACCENTS, MODES, look, type Look } from "../../shared/look";
@@ -246,6 +247,15 @@ function UpdatesBlock() {
         </button>
         <button className="quiet" disabled={checking} onClick={() => checkUpdates(true)}>
           Buscar actualizaciones
+        </button>
+        <button
+          className="quiet"
+          onClick={() => {
+            closeSettings();
+            showView("news");
+          }}
+        >
+          Ver novedades
         </button>
       </div>
       <UpdateSwitch />

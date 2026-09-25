@@ -2,6 +2,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::update;
+
 const FILE: &str = "profile.json";
 
 #[derive(Serialize, Deserialize)]
@@ -10,6 +12,7 @@ pub struct Profile {
     pub name: String,
     pub check_updates: bool,
     pub welcomed: bool,
+    pub seen: String,
 }
 
 impl Default for Profile {
@@ -18,13 +21,18 @@ impl Default for Profile {
             name: String::new(),
             check_updates: true,
             welcomed: false,
+            seen: String::new(),
         }
     }
 }
 
 impl Profile {
+    pub fn owes_news(&self, version: &str) -> bool {
+        self.welcomed && update::number(version) > update::number(&self.seen)
+    }
+
     pub fn script(&self) -> String {
-        format!("window.__SENS_WELCOMED__ = {};", self.welcomed)
+        format!("window.__SENS_WELCOMED__ = {}; window.__SENS_NEWS__ = {};", self.welcomed, self.owes_news(update::current()))
     }
 }
 
@@ -41,7 +49,16 @@ pub fn set_update_check(base: &Path, on: bool) -> Result<(), String> {
 }
 
 pub fn set_welcomed(base: &Path, on: bool) -> Result<(), String> {
-    change(base, |profile| profile.welcomed = on)
+    change(base, |profile| {
+        profile.welcomed = on;
+        if on {
+            profile.seen = update::current().to_string();
+        }
+    })
+}
+
+pub fn saw_news(base: &Path) -> Result<(), String> {
+    change(base, |profile| profile.seen = update::current().to_string())
 }
 
 fn change(base: &Path, apply: impl FnOnce(&mut Profile)) -> Result<(), String> {
@@ -120,10 +137,63 @@ mod tests {
     #[test]
     fn the_page_learns_before_it_draws_whether_to_welcome() {
         let base = temp_root("script");
-        assert_eq!(load(&base).script(), "window.__SENS_WELCOMED__ = false;");
+        assert_eq!(load(&base).script(), "window.__SENS_WELCOMED__ = false; window.__SENS_NEWS__ = false;");
 
         set_welcomed(&base, true).unwrap();
-        assert_eq!(load(&base).script(), "window.__SENS_WELCOMED__ = true;");
+        assert_eq!(load(&base).script(), "window.__SENS_WELCOMED__ = true; window.__SENS_NEWS__ = false;");
+    }
+
+    #[test]
+    fn the_page_learns_before_it_draws_whether_to_tell_the_news() {
+        let base = temp_root("script-news");
+        std::fs::write(base.join(FILE), r#"{ "welcomed": true, "seen": "0.0.1" }"#).unwrap();
+
+        assert_eq!(load(&base).script(), "window.__SENS_WELCOMED__ = true; window.__SENS_NEWS__ = true;");
+    }
+
+    #[test]
+    fn news_are_owed_once_for_each_newer_version() {
+        let seen = Profile { welcomed: true, seen: "0.19.2".into(), ..Profile::default() };
+
+        assert!(seen.owes_news("0.20.0"));
+        assert!(seen.owes_news("0.19.10"));
+        assert!(!seen.owes_news("0.19.2"));
+        assert!(!seen.owes_news("0.19.1"));
+    }
+
+    #[test]
+    fn a_profile_saved_before_the_news_existed_is_owed_the_installed_version() {
+        let base = temp_root("before-news");
+        std::fs::write(base.join(FILE), r#"{ "name": "Sofía", "welcomed": true }"#).unwrap();
+
+        assert!(load(&base).owes_news("0.20.0"));
+    }
+
+    #[test]
+    fn nothing_is_owed_before_the_welcome() {
+        assert!(!Profile::default().owes_news("0.20.0"));
+    }
+
+    #[test]
+    fn the_news_seen_are_the_running_version_and_keep_the_rest() {
+        let base = temp_root("saw-news");
+        std::fs::write(base.join(FILE), r#"{ "name": "Sofía", "checkUpdates": false, "welcomed": true }"#).unwrap();
+        saw_news(&base).unwrap();
+
+        let profile = load(&base);
+        assert_eq!(profile.seen, update::current());
+        assert!(!profile.owes_news(update::current()));
+        assert_eq!(profile.name, "Sofía");
+        assert!(!profile.check_updates);
+        assert!(profile.welcomed);
+    }
+
+    #[test]
+    fn a_new_install_owes_no_news_for_the_version_it_was_welcomed_in() {
+        let base = temp_root("welcomed-news");
+        set_welcomed(&base, true).unwrap();
+
+        assert!(!load(&base).owes_news(update::current()));
     }
 
     #[test]

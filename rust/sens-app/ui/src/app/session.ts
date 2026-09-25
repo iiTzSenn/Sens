@@ -8,6 +8,7 @@ import { forgetClips, readRepo, readTrust } from "../features/composer/store";
 import { forgetTree, loadFiles } from "../features/files/store";
 import { forgetViewer } from "../features/files/view";
 import { settle } from "../features/models/store";
+import { loadNews } from "../features/news/store";
 import { slideAway } from "../features/panes/motion";
 import { close, focused, keptLayout, newPane, other, paneOf, panes, place, setFocus, sideOf, split, type Kept, type Pane, type Setup, type Side } from "../features/panes/store";
 import { forgetEdits, project, type View } from "../features/project/store";
@@ -20,6 +21,7 @@ import { forgetSite } from "../features/web/store";
 const LOADS: Record<Exclude<View, "">, () => unknown> = {
   capabilities: enterCapabilities,
   artifacts: loadShelf,
+  news: loadNews,
 };
 
 export function showView(view: View) {
@@ -56,7 +58,6 @@ async function enter(root: string, pane: Pane) {
 }
 
 async function visit(home: string, then: (pane: Pane) => Promise<unknown>, pane: Pane = focused()) {
-  toChat();
   try {
     if (home !== pane.desk.getState().root) await enter(home, pane);
     await then(pane);
@@ -65,24 +66,25 @@ async function visit(home: string, then: (pane: Pane) => Promise<unknown>, pane:
   }
 }
 
+const blankIn = (home: string) => async (pane: Pane) => {
+  fold(home, false);
+  blank("", pane);
+  idle(true, pane);
+  hello(pane);
+  if (pane === focused()) document.getElementById("task")?.focus();
+  await loadRail();
+};
+
 // A new session in `home`: the empty chat, the message ready to write.
-export const draft = (home: string, pane: Pane = focused()) =>
-  visit(
-    home,
-    async (pane) => {
-      fold(home, false);
-      blank("", pane);
-      idle(true, pane);
-      hello(pane);
-      if (pane === focused()) document.getElementById("task")?.focus();
-      await loadRail();
-    },
-    pane,
-  );
+export function draft(home: string, pane: Pane = focused()) {
+  toChat();
+  return visit(home, blankIn(home), pane);
+}
 
 export function resume(home: string, id: string) {
   const shown = paneOf(id);
   if (shown) return focusPane(shown).then(toChat);
+  toChat();
   return visit(home, (pane) => load(id, pane));
 }
 
@@ -97,8 +99,12 @@ export async function focusPane(pane: Pane) {
 
 const besideSide = (): Side => (split() ? sideOf(other(focused())!) : "right");
 
-export async function openBeside(home: string, id: string, side: Side = besideSide()) {
+export function openBeside(home: string, id: string, side: Side = besideSide()) {
   toChat();
+  return beside(home, id, side);
+}
+
+async function beside(home: string, id: string, side: Side) {
   const shown = paneOf(id);
   if (shown) return focusPane(shown);
   const before = project.getState().root;
@@ -150,7 +156,7 @@ async function restore(kept: Kept) {
   const both = kept.panes.filter(known);
   if (both.length < 2) return false;
   await visit(both[0].root, (pane) => load(both[0].session, pane));
-  await openBeside(both[1].root, both[1].session, "right");
+  await beside(both[1].root, both[1].session, "right");
   panes.getState().open.forEach((pane, at) => {
     const { choice, effort, thinking } = both[at];
     if (choice) pane.desk.setState({ choice, effort, thinking });
@@ -168,7 +174,7 @@ export async function boot() {
   try {
     if (kept && kept.panes.length > 1 && (await restore(kept))) return;
     const last = await commands.lastProject();
-    if (last) return draft(last);
+    if (last) return visit(last, blankIn(last));
   } catch (reason) {
     oweRail(reason);
   }

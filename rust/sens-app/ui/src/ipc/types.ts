@@ -6,6 +6,7 @@ export interface Profile {
   name: string;
   checkUpdates: boolean;
   welcomed: boolean;
+  seen: string;
 }
 
 /** update::Release, rust/sens-app/src/update.rs */
@@ -23,6 +24,14 @@ export type UpdateStage = "downloading" | "verifying" | "installing";
 export interface UpdateCheck {
   latest: Release | null;
   installable: boolean;
+}
+
+export interface News {
+  version: string;
+  title: string;
+  notes: string;
+  page: string;
+  published: string;
 }
 
 /** providers::Method, rust/sens-app/src/providers.rs */

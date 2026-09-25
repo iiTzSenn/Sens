@@ -3,18 +3,52 @@
 // inside Tauri the real IPC is already there, so it steps aside.
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import type { Capabilities, Found } from "../ipc/types";
+import type { Capabilities, Found, News } from "../ipc/types";
 import { lookOf } from "../shared/look";
 import { store, stored } from "../shared/storage.js";
 
 const now = Date.now();
 const HOUR = 3_600_000;
 const ROOT = "C:/Proyectos/demo";
-const person = { name: "Demo", checkUpdates: false, welcomed: !new URLSearchParams(location.search).has("welcome") };
+const asking = new URLSearchParams(location.search);
+const person = { name: "Demo", checkUpdates: false, welcomed: !asking.has("welcome"), seen: "" };
 const LOOK = "sens.dev.look";
 const asked = new URLSearchParams(location.search).get("look")?.split(".");
 const kept = asked ? { mode: asked[0], accent: asked[1] } : stored(LOOK, null);
 const DAY = 24 * HOUR;
+
+const told: News[] = [
+  {
+    version: "0.0.0-dev",
+    title: "Sens tells you what changed after it updates",
+    notes: [
+      "The first time Sens opens after an update, it shows what the new version brings, and once you close it, it stays closed.",
+      "",
+      "### New",
+      "- **What changed, right after updating.** *Novedades* opens over the chat with the notes of the version you just installed, and of any you skipped on the way.",
+      "- **Read them again whenever you like** from *Ajustes › General › Ver novedades*.",
+      "",
+      "### Fixed",
+      "- **Opening the last project no longer covers a view already on screen.**",
+    ].join("\n"),
+    page: "https://github.com/iiTzSenn/Sens/releases",
+    published: new Date(now).toISOString(),
+  },
+  {
+    version: "0.19.2",
+    title: "Sens keeps answering, and stopping a session stops what it started",
+    notes: [
+      "Sens keeps answering at the end of each turn, long chats stay fast, and stopping a session stops everything it started.",
+      "",
+      "### Fixed",
+      "- **Stopping Claude Code stops what it started.** The MCP servers, dev servers and background tasks it launched now end with it.",
+      "- **Long chats stay fast.** Each piece of a reply as it streams in redraws only that reply.",
+      "- **Your conversations stay out of your project's git.** The `.sens` folder now ignores itself.",
+    ].join("\n"),
+    page: "https://github.com/iiTzSenn/Sens/releases/tag/v0.19.2",
+    published: "2026-09-25T09:16:31Z",
+  },
+];
 
 const found: Found = {
   claude: "C:/Users/demo/.claude",
@@ -458,6 +492,8 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   save_profile: ({ name }) => void (person.name = String(name).trim()),
   set_update_check: ({ on }) => void (person.checkUpdates = Boolean(on)),
   update_check: () => ({ latest: null, installable: false }),
+  news: () => pause(600).then(() => told),
+  saw_news: () => void (person.seen = "0.0.0-dev"),
   "plugin:app|version": () => "0.0.0-dev",
   "plugin:window|is_maximized": () => false,
 };
@@ -465,6 +501,7 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
 if (!("__TAURI_INTERNALS__" in window)) {
   window.__SENS_LOOK__ = kept;
   window.__SENS_WELCOMED__ = person.welcomed;
+  window.__SENS_NEWS__ = asking.has("news");
   mockWindows("main");
   mockIPC(
     (cmd, args) => {

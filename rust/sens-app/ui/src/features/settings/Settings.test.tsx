@@ -4,6 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type { ClaudeCodeProgress, ProviderState } from "../../ipc/types";
 import { dialog } from "../../app/modal";
 import { models, readAccount, refreshModels } from "../models/store";
+import { project } from "../project/store";
 import { profile } from "../profile/store";
 import { look } from "../../shared/look";
 import { updates } from "../updates/store";
@@ -27,6 +28,7 @@ const ipc = vi.hoisted(() => ({
     claudeCodeNewer: vi.fn(),
     claudeCodeUpdate: vi.fn(),
     setLook: vi.fn(),
+    news: vi.fn(),
   },
   heard: { claudeCode: (_: ClaudeCodeProgress) => {} },
 }));
@@ -98,7 +100,7 @@ afterEach(cleanup);
 
 describe("general settings", () => {
   it("saves the name and reloads the profile the rail footer paints from", async () => {
-    profile.setState({ person: { name: "Demo", checkUpdates: true, welcomed: true } });
+    profile.setState({ person: { name: "Demo", checkUpdates: true, welcomed: true, seen: "" } });
     ipc.commands.profile.mockResolvedValue({ name: "Nuevo", checkUpdates: true });
     await open("general");
 
@@ -134,6 +136,19 @@ describe("general settings", () => {
     await open("general");
     fireEvent.click(screen.getByText("Ver Sens 9.9.9"));
     expect(dialog.getState()).toMatchObject({ open: true, title: "Sens 9.9.9" });
+  });
+
+  it("shows the news of this version over the chat, and gets out of the way", async () => {
+    ipc.commands.news.mockResolvedValue([]);
+    project.setState({ view: "" });
+    await act(async () => openSettings("general"));
+    render(<SettingsDialog />);
+
+    await act(async () => fireEvent.click(screen.getByText("Ver novedades")));
+    expect(project.getState().view).toBe("news");
+    expect(settingsSheet.getState().open).toBe(false);
+    expect(ipc.commands.news).toHaveBeenCalledTimes(1);
+    project.setState({ view: "" });
   });
 });
 

@@ -5,7 +5,7 @@ import { focused } from "../features/panes/store";
 import { project } from "../features/project/store";
 import { App } from "./App";
 import { dialog } from "./modal";
-import { draft, resume, showView } from "./session";
+import { boot, draft, resume, showView } from "./session";
 import { shell, showTool } from "./shell";
 
 const ipc = vi.hoisted(() => ({
@@ -92,6 +92,17 @@ describe("the shell", () => {
     expect(project.getState()).toMatchObject({ root: "C:/demo", session: "", view: "" });
     expect(ipc.commands.remember).toHaveBeenCalledWith("C:/demo");
     expect(document.querySelector<HTMLElement>("section.chat")?.hidden).toBe(false);
+  });
+
+  it("opens the last project at start under a view already on screen", async () => {
+    ipc.commands.lastProject.mockResolvedValue("C:/demo");
+    ipc.commands.news.mockResolvedValue([]);
+    project.setState({ view: "news" });
+    render(<App />);
+    await act(async () => boot());
+    expect(project.getState()).toMatchObject({ root: "C:/demo", session: "", view: "news" });
+    expect(document.querySelector<HTMLElement>("section.chat")?.hidden).toBe(true);
+    expect(document.getElementById("news-view")?.hidden).toBe(false);
   });
 
   it("opens a saved session of the project", async () => {

@@ -18,7 +18,7 @@ const SIGNATURE_CAP: u64 = web::MEGABYTE;
 const MISMATCH: &str = "la firma no coincide; no se instala";
 pub const INSTALLABLE: bool = !cfg!(debug_assertions);
 
-type Number = (u64, u64, u64);
+pub type Number = (u64, u64, u64);
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -48,7 +48,7 @@ pub enum Stage {
     Installing,
 }
 
-fn current() -> &'static str {
+pub fn current() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
@@ -79,7 +79,11 @@ pub fn sweep(base: &Path) {
 }
 
 fn latest(current: &str) -> Result<Option<Release>, String> {
-    Ok(newest(&web::json(RELEASES, &[("per_page", "20")])?, current))
+    Ok(newest(&listed()?, current))
+}
+
+pub fn listed() -> Result<Value, String> {
+    web::json(RELEASES, &[("per_page", "20")])
 }
 
 fn newest(listed: &Value, current: &str) -> Option<Release> {
@@ -99,12 +103,17 @@ fn download(release: &Release) -> Result<(Vec<u8>, String), String> {
     Ok((installer, signature))
 }
 
-fn offered(entry: &Value) -> Option<(Number, Release)> {
+pub fn published(entry: &Value) -> Option<(Number, &str)> {
     if entry["draft"].as_bool() != Some(false) || entry["prerelease"].as_bool() != Some(false) {
         return None;
     }
     let tag = entry["tag_name"].as_str()?;
     let version = tag.strip_prefix('v').unwrap_or(tag);
+    Some((number(version)?, version))
+}
+
+fn offered(entry: &Value) -> Option<(Number, Release)> {
+    let (found, version) = published(entry)?;
     let name = installer_name(version);
     let assets = entry["assets"].as_array()?;
     let installer = asset(assets, &name)?;
@@ -117,7 +126,7 @@ fn offered(entry: &Value) -> Option<(Number, Release)> {
         installer: installer["browser_download_url"].as_str()?.to_string(),
         signature: signature["browser_download_url"].as_str()?.to_string(),
     };
-    Some((number(version)?, release))
+    Some((found, release))
 }
 
 fn asset<'a>(assets: &'a [Value], name: &str) -> Option<&'a Value> {

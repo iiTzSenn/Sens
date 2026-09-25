@@ -119,6 +119,14 @@ gh release create v0.12.0 --title "..." --notes "..." Sens_0.12.0_x64-setup.exe 
 The notes are what the update panel shows. Copies older than 0.12.0 have no
 updater and need one manual install.
 
+They are also what Sens shows the first time it opens on the new version:
+*Novedades*, over the chat, with the release's name minus its tag as the title
+and its body up to the first GitHub alert (`> [!WARNING]`) or `### Install`
+heading. Keep the download instructions below one of those two and they stay on
+GitHub. Someone who skipped versions sees every one since the last they saw.
+Once read or closed it stays closed until the next version; *Ajustes › General ›
+Ver novedades* opens it again.
+
 ## What a certificate buys, and what it does not
 
 You need an **OV code-signing certificate** (an SSL certificate will not work).

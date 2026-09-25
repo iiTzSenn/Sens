@@ -9,6 +9,7 @@ import { loadChanges } from "./features/changes/store";
 import { hearChat } from "./features/chat/store";
 import { hearDrops } from "./features/composer/store";
 import { loadCatalog } from "./features/models/store";
+import { newsAtStart } from "./features/news/store";
 import { loadProfile } from "./features/profile/store";
 import { tickTasks } from "./features/tasks/store";
 import { startUpdates } from "./features/updates/store";
@@ -19,6 +20,7 @@ import { followLook, lookOf, showLook } from "./shared/look";
 showLook(lookOf(window.__SENS_LOOK__));
 followLook();
 greetAtStart();
+newsAtStart();
 
 // Once: what Rust tells (the chat, the browser, dropped files), what each tool
 // reads as it comes on screen, the window, and then the last project.
