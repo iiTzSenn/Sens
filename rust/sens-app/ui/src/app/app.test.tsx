@@ -21,7 +21,6 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ipc.window })
 beforeAll(() => {
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
-  HTMLCanvasElement.prototype.getContext = () => null;
   HTMLDialogElement.prototype.showModal = function () {
     this.open = true;
   };

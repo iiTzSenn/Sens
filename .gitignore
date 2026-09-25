@@ -9,6 +9,7 @@ dist-setup/
 *.tgz
 
 .claude/settings.local.json
+.claude/worktrees/
 CLAUDE.md
 
 .DS_Store

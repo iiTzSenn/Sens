@@ -61,7 +61,6 @@ function later<T>() {
 beforeAll(() => {
   hearChat();
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
-  HTMLCanvasElement.prototype.getContext = () => null;
 });
 
 beforeEach(() => {
