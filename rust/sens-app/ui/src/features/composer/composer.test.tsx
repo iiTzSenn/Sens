@@ -105,6 +105,21 @@ describe("the composer", () => {
     act(() => focused().chat.setState({ busy: false, stopping: false }));
   });
 
+  it("keeps what is written when Enter comes while Claude works, and sends it once the turn ends", async () => {
+    act(() => focused().chat.setState({ busy: true }));
+    render(<Composer />);
+    fireEvent.change(field(), { target: { value: "Y luego esto" } });
+    await act(async () => fireEvent.keyDown(field(), { key: "Enter" }));
+    expect(ipc.commands.chatSend).not.toHaveBeenCalled();
+    expect((field() as HTMLTextAreaElement).value).toBe("Y luego esto");
+
+    act(() => focused().chat.setState({ busy: false }));
+    await act(async () => fireEvent.keyDown(field(), { key: "Enter" }));
+    expect(ipc.commands.chatSend).toHaveBeenCalledWith("C:/demo", "s1", { text: "Y luego esto", files: [], images: [] }, currentSettings());
+    expect((field() as HTMLTextAreaElement).value).toBe("");
+    act(() => focused().chat.setState({ busy: false, stopping: false }));
+  });
+
   it("drops an attached file, and asks for a folder from its chip", () => {
     act(() => focused().desk.setState({ attached: [{ path: "C:/fuera/plan.pdf", name: "plan.pdf", bytes: 10, outside: true }] }));
     render(<Composer />);

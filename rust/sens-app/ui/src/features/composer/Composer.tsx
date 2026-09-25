@@ -178,7 +178,7 @@ function Box() {
   const label = busy ? (stopping ? "Parando…" : "Parar") : "Enviar";
 
   async function go() {
-    if (!canSend(text, pane)) return;
+    if (busy || !canSend(text, pane)) return;
     const said = text;
     setText("");
     await send(said, pane);
