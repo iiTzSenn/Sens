@@ -1,5 +1,5 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
-import type { Repo } from "../../ipc/types";
+import type { ChatEvent, Repo } from "../../ipc/types";
 import { store, stored } from "../../shared/storage.js";
 import type { Turn } from "../chat/turns";
 import type { File, Picture } from "../composer/store";
@@ -54,6 +54,7 @@ export interface Pane {
   // A new session's id, asked for before its first message so it can warm up.
   pendingId: Promise<string> | null;
   warmed: string;
+  reading: ChatEvent[] | null;
 }
 
 export type Side = "left" | "right";
@@ -88,6 +89,7 @@ export function newPane(root = ""): Pane {
     named: "",
     pendingId: null,
     warmed: "",
+    reading: null,
   };
 }
 

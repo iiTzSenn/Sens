@@ -39,6 +39,12 @@ const SETTINGS = { provider: "claude", model: "claude-demo", effort: "", thinkin
 const tell = (event: ChatEvent) => act(() => ipc.heard!("s1", event));
 const settle = () => act(async () => new Promise((done) => setTimeout(done, 50)));
 
+function later<T>() {
+  let done!: (value: T) => void;
+  const promise = new Promise<T>((settle) => (done = settle));
+  return { promise, done };
+}
+
 beforeAll(() => {
   hearChat();
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
@@ -236,6 +242,84 @@ describe("the chat", () => {
     expect((document.querySelector(".ask") as HTMLElement).dataset.state).toBe("waiting");
     expect(document.querySelector(".live-said")?.textContent).toBe("Trabajando…");
     expect(focused().chat.getState().busy).toBe(true);
+  });
+
+  it("draws a running session's history first, then what it said while being read, each thing once", async () => {
+    const read = later<SessionEntry[]>();
+    ipc.commands.replay.mockReturnValue(read.promise);
+    ipc.commands.chatBusy.mockResolvedValue(true);
+    ipc.commands.chatTasks.mockResolvedValue([]);
+    render(<Thread />);
+    let loading!: Promise<void>;
+    act(() => void (loading = load("s1")));
+    tell({ kind: "said", text: "Hecho." });
+    tell({ kind: "tool", id: "t1", name: "Bash", input: { command: "npm test" } });
+    tell({ kind: "delta", thinking: false, text: "Sigo" });
+    read.done([
+      { kind: "task", at: 1, text: "Revisa esto", files: [], images: [] },
+      { kind: "agent", at: 2, event: { kind: "started", model: "claude-demo" } },
+      { kind: "agent", at: 3, event: { kind: "said", text: "Hecho." } },
+    ]);
+    await act(async () => loading);
+
+    const replies = focused().chat.getState().turns.filter((turn): turn is Reply => turn.kind === "reply");
+    expect(replies).toHaveLength(1);
+    expect(replies[0].parts.map((part) => (part.kind === "step" ? part.id : part.kind === "said" ? part.text : part.kind))).toEqual(["Hecho.", "t1", "Sigo"]);
+    expect(document.querySelector(".live-said")?.textContent).toBe("Escribiendo…");
+    expect(focused().chat.getState().busy).toBe(true);
+  });
+
+  it("closes the turn a running session ended while it was being read", async () => {
+    const read = later<SessionEntry[]>();
+    ipc.commands.replay.mockReturnValue(read.promise);
+    ipc.commands.chatBusy.mockResolvedValue(false);
+    ipc.commands.chatTasks.mockResolvedValue([]);
+    render(<Thread />);
+    let loading!: Promise<void>;
+    act(() => void (loading = load("s1")));
+    tell({ kind: "finished", ok: true, stopped: false, millis: 1000, turns: 1, tokensIn: 1, tokensOut: 20, error: "" });
+    read.done([
+      { kind: "task", at: 1, text: "Revisa esto", files: [], images: [] },
+      { kind: "agent", at: 2, event: { kind: "said", text: "Hecho." } },
+    ]);
+    await act(async () => loading);
+
+    expect(focused().chat.getState().turns.filter((turn) => turn.kind === "reply")).toHaveLength(1);
+    expect(document.querySelector(".reply-foot")?.textContent).toBe("1 s · 20 tokens");
+    expect(document.querySelector(".live")).toBeNull();
+    expect(focused().chat.getState().busy).toBe(false);
+  });
+
+  it("does not leave working a turn the saved session already closed", async () => {
+    ipc.commands.replay.mockResolvedValue([
+      { kind: "task", at: 1, text: "Revisa esto", files: [], images: [] },
+      { kind: "agent", at: 2, event: { kind: "said", text: "Hecho." } },
+      { kind: "agent", at: 3, event: { kind: "finished", ok: true, stopped: false, millis: 1, turns: 1, tokensIn: 1, tokensOut: 1, error: "" } },
+    ]);
+    ipc.commands.chatBusy.mockResolvedValue(true);
+    ipc.commands.chatTasks.mockResolvedValue([]);
+    render(<Thread />);
+    await act(async () => load("s1"));
+
+    expect(focused().chat.getState().turns.filter((turn) => turn.kind === "reply")).toHaveLength(1);
+    expect(document.querySelector(".live")).toBeNull();
+    expect(focused().chat.getState().busy).toBe(false);
+  });
+
+  it("shows only the session opened last when two are opened quickly", async () => {
+    const first = later<SessionEntry[]>();
+    ipc.commands.replay.mockReturnValueOnce(first.promise).mockResolvedValueOnce([{ kind: "task", at: 1, text: "Soy la segunda", files: [], images: [] }]);
+    ipc.commands.chatBusy.mockResolvedValue(false);
+    ipc.commands.chatTasks.mockResolvedValue([]);
+    render(<Thread />);
+    let loading!: Promise<void>;
+    act(() => void (loading = load("s7")));
+    await act(async () => load("s8"));
+    first.done([{ kind: "task", at: 1, text: "Soy la primera", files: [], images: [] }]);
+    await act(async () => loading);
+
+    expect(project.getState().session).toBe("s8");
+    expect(focused().chat.getState().turns.map((turn) => (turn.kind === "you" ? turn.text : turn.kind))).toEqual(["Soy la segunda"]);
   });
 
   it("tells the rail which sessions work, wait, or finished out of sight", () => {

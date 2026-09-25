@@ -79,6 +79,7 @@ export function blank(id: string, pane: Pane = focused()) {
   pane.replying = null;
   pane.pendingId = null;
   pane.warmed = "";
+  pane.reading = null;
   pane.chat.setState({ turns: [] });
   forgetTasks(id);
 }
@@ -135,14 +136,18 @@ const inRoot = (pane: Pane, path: string) => `${rootOf(pane).replace(/[\\/]+$/, 
 // session is still running can be answered.
 export async function load(id: string, pane: Pane = focused()) {
   blank(id, pane);
+  const meanwhile: ChatEvent[] = [];
+  pane.reading = meanwhile;
   const root = rootOf(pane);
   const [entries, running, alive] = await Promise.all([commands.replay(root, id), commands.chatBusy(id), commands.chatTasks(id)]);
+  if (pane.reading !== meanwhile) return;
   const answeredOnes = new Set(entries.flatMap((entry) => (entry.kind === "agent" && entry.event.kind === "answered" ? [entry.event.request] : [])));
 
   pane.chat.setState({ replaying: true });
   requestAnimationFrame(() => requestAnimationFrame(() => pane.chat.setState({ replaying: false })));
 
   let reply: number | null = null;
+  let midTurn = false;
   let asking = false;
   for (const entry of entries as SessionEntry[]) {
     if (entry.kind === "task") {
@@ -153,6 +158,7 @@ export async function load(id: string, pane: Pane = focused()) {
         (entry.images || []).map((path) => commands.artifactData(inRoot(pane, path))),
       );
       reply = null;
+      midTurn = true;
       continue;
     }
     if (entry.kind !== "agent") continue;
@@ -163,18 +169,30 @@ export async function load(id: string, pane: Pane = focused()) {
     const waiting = running && event.kind === "asking" && !answeredOnes.has(event.request);
     asking ||= waiting;
     route(pane, reply, event, waiting);
-    if (CLOSING.has(event.kind)) reply = null;
+    midTurn = !CLOSING.has(event.kind);
+    if (!midTurn) reply = null;
   }
 
-  if (running) {
-    pane.replying = reply ?? open(pane, "");
-    onReply(pane, pane.replying, (open) => ({ ...open, working: "Trabajando…" }));
-  }
+  const busy = running && midTurn;
+  pane.replying = reply ?? (busy ? open(pane, "") : null);
+  if (busy) onReply(pane, pane.replying, (open) => ({ ...open, working: "Trabajando…" }));
   settleTasks(alive, id);
-  noteActivity(id, running ? (asking ? "waiting" : "working") : null);
-  idle(!running, pane);
+  noteActivity(id, busy ? (asking ? "waiting" : "working") : null);
+  idle(!busy, pane);
+  pane.reading = null;
+  for (const event of unlogged(entries, meanwhile)) hear(pane, event);
   if (!pane.chat.getState().turns.length) hello(pane);
   await loadRail();
+}
+
+function unlogged(entries: SessionEntry[], caught: ChatEvent[]) {
+  const logged = entries.flatMap((entry) => (entry.kind === "agent" && !TASK_EVENTS.has(entry.event.kind) ? [JSON.stringify(entry.event)] : []));
+  const lasting = caught.flatMap((event, at) => (event.kind === "delta" ? [] : [at]));
+  for (let known = Math.min(lasting.length, logged.length); known > 0; known--) {
+    const tail = logged.slice(-known);
+    if (lasting.slice(0, known).every((at, nth) => JSON.stringify(caught[at]) === tail[nth])) return caught.slice(lasting[known - 1] + 1);
+  }
+  return caught;
 }
 
 function asked(pane: Pane, text: string, files: string[], pictures: Picture[]) {
@@ -282,5 +300,6 @@ export const hearChat = () =>
     }
     noteTask(event as AgentEvent, Date.now(), from);
     if (TASK_EVENTS.has(event.kind)) return;
-    hear(pane, event);
+    if (pane.reading) pane.reading.push(event);
+    else hear(pane, event);
   });

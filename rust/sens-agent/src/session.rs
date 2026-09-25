@@ -364,6 +364,34 @@ mod tests {
     }
 
     #[test]
+    fn an_agent_event_reads_back_spelled_exactly_as_it_was_told() {
+        let root = temp_root("spelled");
+        let id = open(&root).unwrap();
+        let told = [
+            Event::Tool {
+                id: "t1".into(),
+                name: "Bash".into(),
+                input: serde_json::json!({ "zeta": 1, "alfa": [0.1, 1.0, 2e-7, -3], "medio": { "b": null, "a": "ñ" } }),
+            },
+            Event::ToolDone { id: "t1".into(), output: "✓".into(), error: false, detail: serde_json::json!({ "stdout": "1.50", "ratio": 0.30000000000000004 }) },
+            Event::Said { text: "Hecho.".into() },
+        ];
+        for (at, event) in told.iter().enumerate() {
+            append(&root, &id, &Entry::Agent { at: at as u64, event: event.clone() }).unwrap();
+        }
+
+        let heard: Vec<String> = read(&root, &id)
+            .into_iter()
+            .filter_map(|entry| match entry {
+                Entry::Agent { event, .. } => Some(serde_json::to_string(&event).unwrap()),
+                _ => None,
+            })
+            .collect();
+        let spelled: Vec<String> = told.iter().map(|event| serde_json::to_string(event).unwrap()).collect();
+        assert_eq!(heard, spelled);
+    }
+
+    #[test]
     fn a_session_keeps_every_entry_in_the_order_they_happened() {
         let root = temp_root("order");
         let id = open(&root).unwrap();
