@@ -33,27 +33,22 @@ pub fn load(base: &Path) -> Profile {
 }
 
 pub fn rename(base: &Path, name: &str) -> Result<(), String> {
-    let profile = Profile {
-        name: name.trim().to_string(),
-        ..load(base)
-    };
-    crate::store::store(base, FILE, &profile)
+    change(base, |profile| profile.name = name.trim().to_string())
 }
 
 pub fn set_update_check(base: &Path, on: bool) -> Result<(), String> {
-    let profile = Profile {
-        check_updates: on,
-        ..load(base)
-    };
-    crate::store::store(base, FILE, &profile)
+    change(base, |profile| profile.check_updates = on)
 }
 
 pub fn set_welcomed(base: &Path, on: bool) -> Result<(), String> {
-    let profile = Profile {
-        welcomed: on,
-        ..load(base)
-    };
-    crate::store::store(base, FILE, &profile)
+    change(base, |profile| profile.welcomed = on)
+}
+
+fn change(base: &Path, apply: impl FnOnce(&mut Profile)) -> Result<(), String> {
+    crate::store::update(base, FILE, |profile: &mut Profile| {
+        apply(profile);
+        Ok(())
+    })
 }
 
 #[cfg(test)]

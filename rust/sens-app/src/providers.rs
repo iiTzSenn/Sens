@@ -57,9 +57,7 @@ fn known(id: &str) -> Result<(), String> {
 
 fn change(base: &Path, id: &str, apply: impl FnOnce(&mut Stored) -> Result<(), String>) -> Result<(), String> {
     known(id)?;
-    let mut kept: BTreeMap<String, Stored> = store::editable(&base.join(FILE))?;
-    apply(kept.entry(id.to_string()).or_default())?;
-    store::store(base, FILE, &kept)
+    store::update(base, FILE, |kept: &mut BTreeMap<String, Stored>| apply(kept.entry(id.to_string()).or_default()))
 }
 
 fn hint(key: &str) -> String {

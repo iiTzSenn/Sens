@@ -60,25 +60,28 @@ pub fn load(base: &Path) -> Registry {
 }
 
 pub fn remember(base: &Path, root: &str) -> Result<(), String> {
-    let mut registry = load(base);
-    registry.note(root, session::now());
-    crate::store::store(base, FILE, &registry)
+    crate::store::update(base, FILE, |registry: &mut Registry| {
+        registry.note(root, session::now());
+        Ok(())
+    })
 }
 
 pub fn register(base: &Path, root: &str) -> Result<(), String> {
-    let mut registry = load(base);
-    registry.known(root);
-    crate::store::store(base, FILE, &registry)
+    crate::store::update(base, FILE, |registry: &mut Registry| {
+        registry.known(root);
+        Ok(())
+    })
 }
 
 pub fn trust(base: &Path, root: &str, trusted: bool) -> Result<(), String> {
-    let mut registry = load(base);
-    match registry.projects.iter().position(|known| known.root == root) {
-        Some(at) => registry.projects[at].trusted = trusted,
-        None if trusted => registry.known(root).trusted = true,
-        None => return Ok(()),
-    }
-    crate::store::store(base, FILE, &registry)
+    crate::store::update(base, FILE, |registry: &mut Registry| {
+        match registry.projects.iter().position(|known| known.root == root) {
+            Some(at) => registry.projects[at].trusted = trusted,
+            None if trusted => registry.known(root).trusted = true,
+            None => {}
+        }
+        Ok(())
+    })
 }
 
 pub fn trusted(registry: &Registry, root: &str) -> bool {

@@ -350,10 +350,11 @@ fn active(base: &Path, root: &str) -> Project {
 }
 
 fn update(base: &Path, change: impl FnOnce(&mut State)) -> Result<(), String> {
-    let mut kept = editable_state(base)?;
-    change(&mut kept);
-    kept.projects.retain(|_, project| !project.is_empty());
-    store::store(base, STATE_FILE, &kept)
+    store::update(base, STATE_FILE, |kept: &mut State| {
+        change(kept);
+        kept.projects.retain(|_, project| !project.is_empty());
+        Ok(())
+    })
 }
 
 fn switch(base: &Path, root: &str, kind: Kind, name: &str, enabled: bool) -> Result<(), String> {
@@ -391,11 +392,10 @@ fn forget(base: &Path, kind: Kind, name: &str) -> Result<(), String> {
             project.names(kind).remove(name);
         }
     })?;
-    let mut kept = origins(base);
-    if kept.remove(&kind.key(name)).is_some() {
-        store::store(base, ORIGINS_FILE, &kept)?;
-    }
-    Ok(())
+    store::update(base, ORIGINS_FILE, |kept: &mut BTreeMap<String, Provenance>| {
+        kept.remove(&kind.key(name));
+        Ok(())
+    })
 }
 
 fn origins(base: &Path) -> BTreeMap<String, Provenance> {
@@ -403,9 +403,10 @@ fn origins(base: &Path) -> BTreeMap<String, Provenance> {
 }
 
 fn record(base: &Path, kind: Kind, name: &str, provenance: Provenance) -> Result<(), String> {
-    let mut kept = origins(base);
-    kept.insert(kind.key(name), provenance);
-    store::store(base, ORIGINS_FILE, &kept)
+    store::update(base, ORIGINS_FILE, |kept: &mut BTreeMap<String, Provenance>| {
+        kept.insert(kind.key(name), provenance);
+        Ok(())
+    })
 }
 
 pub fn record_skill(base: &Path, name: &str, provenance: Provenance) -> Result<(), String> {
@@ -700,21 +701,20 @@ pub fn add_remote(base: &Path, root: &str, name: &str, remote: Remote) -> Result
 }
 
 fn insert_server(base: &Path, root: &str, name: &str, entry: Entry) -> Result<(), String> {
-    let mut known = editable_servers(base)?;
     activatable(base, root)?;
-    if known.servers.contains_key(name) {
-        return Err(format!("ya existe un servidor llamado {name}"));
-    }
-    known.servers.insert(name.to_string(), entry);
-    store::store(base, SERVERS_FILE, &known)?;
+    store::update(base, SERVERS_FILE, |known: &mut Servers| {
+        if known.servers.contains_key(name) {
+            return Err(format!("ya existe un servidor llamado {name}"));
+        }
+        known.servers.insert(name.to_string(), entry);
+        Ok(())
+    })?;
     adopt(base, root, Kind::Server, name)
 }
 
 pub fn remove_server(base: &Path, name: &str) -> Result<(), String> {
-    let mut known = editable_servers(base)?;
     editable_state(base)?;
-    known.servers.remove(name).ok_or_else(|| missing_server(name))?;
-    store::store(base, SERVERS_FILE, &known)?;
+    store::update(base, SERVERS_FILE, |known: &mut Servers| known.servers.remove(name).map(drop).ok_or_else(|| missing_server(name)))?;
     forget(base, Kind::Server, name)
 }
 
@@ -781,14 +781,13 @@ fn plugin_env(base: &Path) -> BTreeMap<String, BTreeMap<String, String>> {
 }
 
 fn keep_plugin_env(base: &Path, name: &str, values: BTreeMap<String, String>) -> Result<(), String> {
-    let mut kept: BTreeMap<String, BTreeMap<String, String>> = store::editable(&base.join(PLUGIN_ENV_FILE))?;
-    if values.is_empty() && kept.remove(name).is_none() {
-        return Ok(());
-    }
-    if !values.is_empty() {
-        kept.insert(name.to_string(), values);
-    }
-    store::store(base, PLUGIN_ENV_FILE, &kept)
+    store::update(base, PLUGIN_ENV_FILE, |kept: &mut BTreeMap<String, BTreeMap<String, String>>| {
+        match values.is_empty() {
+            true => kept.remove(name),
+            false => kept.insert(name.to_string(), values),
+        };
+        Ok(())
+    })
 }
 
 fn staged_plugin(base: &Path, name: &str, source: &Path, definition: Option<&Value>) -> Result<PathBuf, String> {
