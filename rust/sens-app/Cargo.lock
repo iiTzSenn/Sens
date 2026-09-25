@@ -3188,7 +3188,7 @@ dependencies = [
 
 [[package]]
 name = "sens-app"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "base64 0.22.1",
  "flate2",
