@@ -20,7 +20,7 @@ const Frozen = memo(function Frozen({ text }: { text: string }) {
 // What the model wrote. Blocks already whole are drawn once; the one being
 // written is drawn again each frame, mended, with its newest text fading in.
 // Once all of it shows and no more comes, it is drawn as one page.
-export function Said({ part }: { part: SaidPart }) {
+export const Said = memo(function Said({ part }: { part: SaidPart }) {
   const { text, streamed, settled, done } = part;
   const [shown, setShown] = useState(streamed ? 0 : text.length);
   const seen = useRef(text);
@@ -72,9 +72,9 @@ export function Said({ part }: { part: SaidPart }) {
       <Markdown text={writing} fade={{ stamps: at.stamps, now }} />
     </div>
   );
-}
+});
 
-export function Thought({ part }: { part: ThoughtPart }) {
+export const Thought = memo(function Thought({ part }: { part: ThoughtPart }) {
   return (
     <details className="thought" data-live={String(!part.done)}>
       <summary>
@@ -84,4 +84,4 @@ export function Thought({ part }: { part: ThoughtPart }) {
       <div className="thought-text">{part.text}</div>
     </details>
   );
-}
+});

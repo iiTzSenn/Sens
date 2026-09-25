@@ -30,6 +30,19 @@ const ipc = vi.hoisted(() => ({
   heard: null as ((session: string, event: ChatEvent) => void) | null,
 }));
 
+const painting = vi.hoisted(() => ({ calls: 0 }));
+
+vi.mock("../../shared/syntax/paint", async (actual) => {
+  const real = await actual<typeof import("../../shared/syntax/paint")>();
+  return {
+    ...real,
+    paintRows: (...args: Parameters<typeof real.paintRows>) => {
+      painting.calls += 1;
+      return real.paintRows(...args);
+    },
+  };
+});
+
 vi.mock("../../ipc/commands", () => ({
   commands: ipc.commands,
   events: { chat: (heard: (session: string, event: ChatEvent) => void) => ((ipc.heard = heard), Promise.resolve(() => {})) },
@@ -187,6 +200,27 @@ describe("the chat", () => {
     expect(grep.querySelector(".step-meta")?.textContent).toBe("1 resultado");
     fireEvent.click(within(grep).getByRole("button", { name: /src\/app.ts/ }));
     expect(shell.getState()).toMatchObject({ toolsOpen: true, tool: "files" });
+  });
+
+  it("leaves what was already drawn alone while a reply streams", async () => {
+    focused().desk.setState({ session: "s1" });
+    render(<Thread />);
+    const edited = (id: string) => {
+      tell({ kind: "tool", id, name: "Edit", input: { file_path: "C:/demo/src/app.ts" } });
+      tell({ kind: "toolDone", id, output: "", error: false, detail: { structuredPatch: [{ oldStart: 3, newStart: 3, lines: [" a", "-b", "+c"] }] } });
+    };
+    edited("t1");
+    tell({ kind: "finished", ok: true, stopped: false, millis: 1, turns: 1, tokensIn: 1, tokensOut: 1, error: "" });
+    edited("t2");
+    await settle();
+    const painted = painting.calls;
+
+    for (const text of ["Un", "a ", "res", "puesta"]) tell({ kind: "delta", thinking: false, text });
+    fireEvent.scroll(document.querySelector(".thread")!);
+    await settle();
+
+    expect(document.querySelectorAll(".diff")).toHaveLength(2);
+    expect(painting.calls).toBe(painted);
   });
 
   it("asks for permission, and answers with what you chose", async () => {

@@ -26,8 +26,9 @@ export const activityOf = (ids: string[], activity: Map<string, Activity>) =>
   URGENCY.find((one) => ids.some((id) => activity.get(id) === one));
 
 export function noteActivity(id: string, now: Activity | null) {
-  set(({ activity }) => {
-    if ((activity.get(id) ?? null) === now) return {};
+  set((state) => {
+    const { activity } = state;
+    if ((activity.get(id) ?? null) === now) return state;
     const next = new Map(activity);
     if (now) next.set(id, now);
     else next.delete(id);

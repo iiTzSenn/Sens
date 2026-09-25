@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { memo, useState, type ReactNode } from "react";
 import type { Answers, Decision, Question as QuestionShape } from "../../ipc/types";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
@@ -17,11 +17,11 @@ import type { Ask as AskPart } from "./turns";
 // or how to make it (a message instead when it cannot be made yet).
 type Choice = [string, boolean, Decision | (() => Decision | string)];
 
-export function Ask({ part, reply }: { part: AskPart; reply: number }) {
+export const Ask = memo(function Ask({ part, reply }: { part: AskPart; reply: number }) {
   if (part.event.tool === "AskUserQuestion") return <Questions part={part} reply={reply} />;
   if (part.event.tool === "ExitPlanMode") return <Plan part={part} reply={reply} />;
   return <Permission part={part} reply={reply} />;
-}
+});
 
 const answersText = (answers: Answers | null) =>
   answers ? Object.values(answers).map((value) => [].concat(value as never).join(", ")).join(" · ") : "";

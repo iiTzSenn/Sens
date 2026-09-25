@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Link, Todo } from "../../ipc/types";
 import { FoldedText } from "../../shared/Folded";
 import { Icon } from "../../shared/Icon";
@@ -22,7 +22,7 @@ const FAVICONS = "https://icons.duckduckgo.com/ip3/";
 
 // A tool call: a line saying what it does, opening to what it did. A step with
 // nothing to show does not open; a failed one opens by itself.
-export function Step({ part }: { part: StepPart }) {
+export const Step = memo(function Step({ part }: { part: StepPart }) {
   const { name, input, state, links } = part;
   const look = describe(name, input);
   const box = useRef<HTMLDetailsElement>(null);
@@ -65,7 +65,7 @@ export function Step({ part }: { part: StepPart }) {
       <div className="step-body">{body}</div>
     </details>
   );
-}
+});
 
 // What a finished call shows, by tool: a terminal, a diff, results, a page.
 function outcome({ name, input, state, output, detail }: StepPart): { nodes?: ReactNode[]; meta?: string } {

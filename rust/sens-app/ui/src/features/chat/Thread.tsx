@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { openPicture } from "../../app/Dialog";
 import { seconds, whole } from "../../shared/format.js";
@@ -31,7 +31,9 @@ export function Thread() {
     const box = thread.current;
     if (!box) return;
     const room = box.scrollHeight - box.clientHeight;
-    setEdges({ over: box.scrollTop > 8, under: room - box.scrollTop > 8 });
+    const over = box.scrollTop > 8;
+    const under = room - box.scrollTop > 8;
+    setEdges((was) => (was.over === over && was.under === under ? was : { over, under }));
   };
 
   useEffect(() => {
@@ -79,7 +81,7 @@ export function Thread() {
   );
 }
 
-function You({ turn }: { turn: YouTurn }) {
+const You = memo(function You({ turn }: { turn: YouTurn }) {
   return (
     <div className="turn you">
       <div className="body-text">{turn.text}</div>
@@ -99,7 +101,7 @@ function You({ turn }: { turn: YouTurn }) {
       )}
     </div>
   );
-}
+});
 
 // A picture sent with a message, larger on click; gone if it cannot be read.
 function Sent({ picture }: { picture: Picture }) {
@@ -131,16 +133,16 @@ function Sent({ picture }: { picture: Picture }) {
   );
 }
 
-function Notice({ turn }: { turn: NoticeTurn }) {
+const Notice = memo(function Notice({ turn }: { turn: NoticeTurn }) {
   return (
     <div className={turn.tone ? `tick ${turn.tone}` : "tick"}>
       <span className="dot" />
       <span>{turn.parts.map((part, at) => (typeof part === "string" ? part : <b key={at}>{part.bold}</b>))}</span>
     </div>
   );
-}
+});
 
-function Reply({ turn }: { turn: ReplyTurn }) {
+const Reply = memo(function Reply({ turn }: { turn: ReplyTurn }) {
   return (
     <div className="turn reply">
       {turn.who && <div className="who">{turn.who}</div>}
@@ -169,7 +171,7 @@ function Reply({ turn }: { turn: ReplyTurn }) {
       {turn.working && <Live said={turn.working} began={turn.began} />}
     </div>
   );
-}
+});
 
 function Foot({ text }: { text: string }) {
   return (
