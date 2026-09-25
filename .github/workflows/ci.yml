@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  interface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build -w sens-app-ui
+      - run: npm run build:setup -w sens-app-ui
+
+  rust:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w sens-app-ui
+      - run: npm run build:setup -w sens-app-ui
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            rust/sens-agent
+            rust/sens-app
+            rust/sens-setup
+      - run: cargo clippy --manifest-path rust/sens-agent/Cargo.toml --all-targets -- -D warnings
+      - run: cargo clippy --manifest-path rust/sens-app/Cargo.toml --all-targets -- -D warnings
+      - run: cargo clippy --manifest-path rust/sens-setup/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path rust/sens-agent/Cargo.toml
+      - run: cargo test --manifest-path rust/sens-app/Cargo.toml
+      - run: cargo test --manifest-path rust/sens-setup/Cargo.toml
