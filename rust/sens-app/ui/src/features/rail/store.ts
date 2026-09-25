@@ -39,13 +39,18 @@ export function noteActivity(id: string, now: Activity | null) {
 let owed = "";
 const naming = new Set<string>();
 
+let lap = 0;
+
 export async function loadRail() {
+  const mine = ++lap;
+  let read;
   try {
-    const spaces = await commands.workspaces();
-    set({ spaces, fault: owed });
+    read = { spaces: await commands.workspaces(), fault: owed };
   } catch (reason) {
-    set({ fault: owed || String(reason) });
+    read = { fault: owed || String(reason) };
   }
+  if (mine !== lap) return;
+  set(read);
   owed = "";
 }
 

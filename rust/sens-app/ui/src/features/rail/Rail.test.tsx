@@ -199,6 +199,19 @@ describe("the rail", () => {
     expect(screen.getByRole("alert").textContent).toBe("no pude recordar la carpeta");
   });
 
+  it("shows the latest read of the list even when an older one answers last", async () => {
+    let older!: (spaces: Workspace[]) => void;
+    ipc.commands.workspaces.mockReturnValueOnce(new Promise<Workspace[]>((settle) => (older = settle))).mockResolvedValueOnce([SPACES[1]]);
+    render(<Rail />);
+    let first!: Promise<void>;
+    act(() => void (first = loadRail()));
+    await act(async () => loadRail());
+    older(structuredClone(SPACES));
+    await act(async () => first);
+
+    expect(rail.getState().spaces?.map((space) => space.root)).toEqual(["C:/web"]);
+  });
+
   it("offers to open a project when there is none", async () => {
     ipc.commands.workspaces.mockResolvedValue([]);
     render(<Rail />);

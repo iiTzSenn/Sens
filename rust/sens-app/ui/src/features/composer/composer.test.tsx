@@ -11,7 +11,7 @@ import { project } from "../project/store";
 import { settingsSheet } from "../settings/sheet";
 import { settings } from "../settings/store";
 import { Composer } from "./Composer";
-import { BYPASS, composer, currentSettings, readRepo, readTrust } from "./store";
+import { BYPASS, composer, currentSettings, readRepo, readTrust, switchTo } from "./store";
 
 const ipc = vi.hoisted(() => ({
   commands: {
@@ -246,5 +246,18 @@ describe("the composer", () => {
     expect(ipc.commands.checkout).toHaveBeenCalledWith("C:/demo", "feat/ui");
     expect(document.getElementById("branch-name")?.textContent).toBe("feat/ui");
     expect(focused().chat.getState().turns.at(-1)).toMatchObject({ kind: "notice", parts: ["rama · ", { bold: "feat/ui" }] });
+  });
+
+  it("keeps the branch switched to when a read from before the switch answers after it", async () => {
+    let before!: (repo: unknown) => void;
+    ipc.commands.repo.mockReturnValueOnce(new Promise((settle) => (before = settle)));
+    ipc.commands.checkout.mockResolvedValue({ branch: "feat/ui", detached: false, dirty: 0, branches: ["main", "feat/ui"] });
+    let reading!: Promise<void>;
+    act(() => void (reading = readRepo()));
+    await act(async () => switchTo("feat/ui"));
+    before({ branch: "main", detached: false, dirty: 0, branches: ["main", "feat/ui"] });
+    await act(async () => reading);
+
+    expect(focused().desk.getState().repo?.branch).toBe("feat/ui");
   });
 });

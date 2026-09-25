@@ -34,12 +34,12 @@ use serde::Serialize;
 use tauri::{App, AppHandle, Emitter, Manager, RunEvent, State, Theme, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
 
-#[tauri::command]
+#[tauri::command(async)]
 fn repo(root: String) -> Option<git::Repo> {
     git::read(&PathBuf::from(root))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn checkout(root: String, branch: String) -> Result<git::Repo, String> {
     git::checkout(&PathBuf::from(root), &branch)
 }
@@ -164,7 +164,7 @@ fn relay(app: AppHandle) -> Sink {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn chat_send(
     app: AppHandle,
     engine: State<Arc<Engine>>,
@@ -218,17 +218,17 @@ fn chat_answer(engine: State<Arc<Engine>>, session_id: String, request: String, 
     engine.answer(&session_id, &request, &decision)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn chat_busy(engine: State<Arc<Engine>>, session_id: String) -> bool {
     engine.busy(&session_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn chat_tasks(engine: State<Arc<Engine>>, session_id: String) -> Vec<String> {
     engine.tasks(&session_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn chat_working(engine: State<Arc<Engine>>) -> usize {
     engine.working()
 }
@@ -313,7 +313,7 @@ fn rename_session(root: String, id: String, title: String) -> Result<String, Str
     session::entitle(&PathBuf::from(root), &id, &title, session::Namer::User)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn replay(root: String, id: String) -> Vec<session::Entry> {
     session::read(&PathBuf::from(root), &id)
 }
@@ -328,7 +328,7 @@ fn registry(app: &AppHandle) -> Result<projects::Registry, String> {
     Ok(projects::load(&data_dir(app)?))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn workspaces(app: AppHandle) -> Result<Vec<projects::Workspace>, String> {
     Ok(projects::workspaces(&registry(&app)?))
 }
@@ -456,7 +456,7 @@ fn welcome_adopt(app: AppHandle, roots: Vec<String>) -> Result<welcome::Adopted,
     }))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn welcome_servers(app: AppHandle, ids: Vec<String>, roots: Vec<String>) -> Result<welcome::Imported, String> {
     Ok(welcome::import_servers(&data_dir(&app)?, &welcome::Places::current()?, &ids, &roots))
 }

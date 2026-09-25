@@ -185,10 +185,19 @@ export const dropFile = (path: string, pane: Pane = focused()) => pane.desk.setS
 export const dropPicture = (picture: Picture, pane: Pane = focused()) => pane.desk.setState(({ pasted }) => ({ pasted: pasted.filter((one) => one !== picture) }));
 export const forgetClips = (pane: Pane = focused()) => pane.desk.setState({ attached: [], pasted: [] });
 
+const repoLaps = new WeakMap<Pane, number>();
+
+function nextRepoLap(pane: Pane) {
+  const mine = (repoLaps.get(pane) ?? 0) + 1;
+  repoLaps.set(pane, mine);
+  return mine;
+}
+
 export async function readRepo(pane: Pane = focused()) {
   const root = rootOf(pane);
+  const mine = nextRepoLap(pane);
   const repo = root ? await commands.repo(root) : null;
-  if (rootOf(pane) === root) pane.desk.setState({ repo });
+  if (rootOf(pane) === root && repoLaps.get(pane) === mine) pane.desk.setState({ repo });
 }
 
 // A branch switched: the agent's marks go, and what shows files reads them again.
@@ -200,7 +209,10 @@ export async function switchTo(name: string, pane: Pane = focused()) {
   } catch (reason) {
     return warn(String(reason), pane);
   }
-  for (const one of sharing(root)) one.desk.setState({ repo });
+  for (const one of sharing(root)) {
+    nextRepoLap(one);
+    one.desk.setState({ repo });
+  }
   notice(["rama · ", { bold: repo.branch }], "", pane);
   if (root !== project.getState().root) return;
   forgetEdits();
