@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::catalog::{self, Thinking};
-use crate::process::{self, hidden, unlaunched};
+use crate::process::{self, Family, hidden, unlaunched};
 use crate::session::{self, Entry};
 
 pub const BYPASS: &str = "bypassPermissions";
@@ -239,6 +239,7 @@ struct Live {
     session: String,
     input: Mutex<ChildStdin>,
     child: Mutex<Child>,
+    family: Family,
     settings: Mutex<Settings>,
     busy: AtomicBool,
     stopping: AtomicBool,
@@ -297,6 +298,7 @@ impl Live {
     }
 
     fn kill(&self) {
+        self.family.end();
         if let Ok(mut child) = self.child.lock() {
             let _ = child.kill();
         }
@@ -578,6 +580,7 @@ impl Engine {
             root: root.to_path_buf(),
             session: session.to_string(),
             input: Mutex::new(input),
+            family: Family::around(&child),
             child: Mutex::new(child),
             settings: Mutex::new(settings),
             busy: AtomicBool::new(false),

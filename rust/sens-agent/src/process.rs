@@ -24,6 +24,71 @@ pub fn hidden(command: &mut Command) -> &mut Command {
     command
 }
 
+#[cfg(windows)]
+pub struct Family {
+    job: Option<isize>,
+}
+
+#[cfg(windows)]
+impl Family {
+    pub fn around(child: &std::process::Child) -> Family {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::Foundation::{CloseHandle, HANDLE};
+        use windows::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JobObjectExtendedLimitInformation, SetInformationJobObject,
+        };
+        use windows::core::PCWSTR;
+
+        let Ok(job) = (unsafe { CreateJobObjectW(None, PCWSTR::null()) }) else {
+            return Family { job: None };
+        };
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let joined = unsafe {
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                std::ptr::from_ref(&limits).cast(),
+                size_of_val(&limits) as u32,
+            )
+            .and_then(|()| AssignProcessToJobObject(job, HANDLE(child.as_raw_handle())))
+        };
+        if joined.is_err() {
+            let _ = unsafe { CloseHandle(job) };
+            return Family { job: None };
+        }
+        Family { job: Some(job.0 as isize) }
+    }
+
+    pub fn end(&self) {
+        if let Some(job) = self.job {
+            let _ = unsafe { windows::Win32::System::JobObjects::TerminateJobObject(windows::Win32::Foundation::HANDLE(job as *mut _), 1) };
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for Family {
+    fn drop(&mut self) {
+        if let Some(job) = self.job {
+            let _ = unsafe { windows::Win32::Foundation::CloseHandle(windows::Win32::Foundation::HANDLE(job as *mut _)) };
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub struct Family;
+
+#[cfg(not(windows))]
+impl Family {
+    pub fn around(_child: &std::process::Child) -> Family {
+        Family
+    }
+
+    pub fn end(&self) {}
+}
+
 pub fn set_environment(values: BTreeMap<String, String>) {
     if let Ok(mut kept) = ENVIRONMENT.write() {
         *kept = values;
@@ -128,6 +193,56 @@ pub fn run(mut command: Command, input: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    fn outlived(name: &str, finish: impl FnOnce(Family)) -> bool {
+        use std::os::windows::process::CommandExt;
+        let here = std::env::temp_dir().join(format!("sens-process-{name}"));
+        let _ = std::fs::remove_dir_all(&here);
+        std::fs::create_dir_all(&here).unwrap();
+        let said = here.join("nieto.txt");
+        let mut child = hidden(&mut Command::new("cmd"))
+            .raw_arg(format!("/c powershell -NoProfile -Command \"Set-Content -LiteralPath '{}' $PID; Start-Sleep 30\"", said.display()))
+            .spawn()
+            .unwrap();
+        let family = Family::around(&child);
+        let grandchild = (0..400)
+            .find_map(|_| {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                std::fs::read_to_string(&said).ok()?.trim().parse::<u32>().ok()
+            })
+            .expect("el nieto no dijo su número");
+        let alive = || {
+            let listed = Command::new("tasklist").args(["/FI", &format!("PID eq {grandchild}"), "/NH"]).output().unwrap();
+            String::from_utf8_lossy(&listed.stdout).contains(&grandchild.to_string())
+        };
+        assert!(alive());
+
+        finish(family);
+        let _ = child.kill();
+        let _ = child.wait();
+
+        let gone = (0..40).any(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            !alive()
+        });
+        if !gone {
+            let _ = Command::new("taskkill").args(["/F", "/PID", &grandchild.to_string()]).output();
+        }
+        !gone
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ending_a_family_ends_what_its_process_started_too() {
+        assert!(!outlived("family-end", |family| family.end()), "el nieto que lanzó cmd sigue vivo");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn letting_a_family_go_ends_it_as_when_sens_closes() {
+        assert!(!outlived("family-drop", drop), "el nieto que lanzó cmd sigue vivo");
+    }
 
     #[test]
     fn a_program_that_does_not_exist_says_so_instead_of_panicking() {
