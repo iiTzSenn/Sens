@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useStore } from "zustand";
 import type { Card, Provider } from "../../ipc/types";
+import { compact } from "../../shared/format.js";
 import { Icon } from "../../shared/Icon";
 import { ICONS } from "../../shared/icons.js";
 import { look } from "../../shared/look";
@@ -10,7 +11,7 @@ import { accountLine, chosenCard, chosenLabel, choose, models, modelsOf, offered
 import { useIds, usePane } from "../panes/context";
 import type { Pane } from "../panes/store";
 import { openSettings, settings } from "../settings/store";
-import { BYPASS, EFFORT_NAMES, MODES, chooseMode, composer, effortLevels, effortNow, modeNow, pickEffort, toggleThinking, trustProject, trustedHere } from "./store";
+import { BYPASS, EFFORT_NAMES, MODES, chooseMode, compactNow, composer, effortLevels, effortNow, modeNow, pickEffort, toggleThinking, trustProject, trustedHere } from "./store";
 
 // A choice in a knob's menu: its name, what it means, and a tick when chosen.
 function KnobRow({ label, sub, checked, risky, onPick }: { label: string; sub?: string; checked: boolean; risky?: boolean; onPick: () => void }) {
@@ -234,6 +235,57 @@ export function Think() {
         <span className="toggle-knob" />
       </span>
     </button>
+  );
+}
+
+const FULLISH = 0.7;
+const FULL = 0.9;
+
+export function ContextMeter() {
+  const pane = usePane();
+  const id = useIds();
+  const context = useStore(pane.chat, (s) => s.context);
+  const busy = useStore(pane.chat, (s) => s.busy);
+  const sheet = useSheet();
+  if (!context?.used) return null;
+  const share = Math.min(1, context.used / context.window);
+  const percent = Math.round(share * 100);
+  const said = `${compact(context.used)} de ${compact(context.window)} tokens`;
+  return (
+    <div className="pick-anchor meter" id={id("context")} data-level={share >= FULL ? "full" : share >= FULLISH ? "high" : undefined}>
+      <button
+        className="meter-btn"
+        id={id("context-pick")}
+        ref={sheet.anchor}
+        aria-haspopup="true"
+        aria-expanded={sheet.open}
+        aria-label={`Contexto usado: ${percent} %`}
+        title={`Contexto: ${said}`}
+        onClick={sheet.toggle}
+      >
+        <svg className="meter-ring" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <circle className="meter-track" cx="8" cy="8" r="6" />
+          <circle className="meter-fill" cx="8" cy="8" r="6" pathLength="100" strokeDasharray={`${percent} 100`} transform="rotate(-90 8 8)" />
+        </svg>
+        <span>{percent} %</span>
+      </button>
+      <div className="sheet meter-sheet" id={id("context-sheet")} aria-label="Contexto" {...sheet.sheet}>
+        <p className="meter-said">
+          Contexto <b>{said}</b>
+        </p>
+        <p className="mode-sub">Compactar resume lo hablado para liberar espacio. La sesión sigue siendo la misma.</p>
+        <button
+          className="quiet"
+          disabled={busy}
+          onClick={() => {
+            sheet.shut();
+            compactNow(pane);
+          }}
+        >
+          Compactar ahora
+        </button>
+      </div>
+    </div>
   );
 }
 

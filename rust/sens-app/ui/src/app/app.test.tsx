@@ -34,7 +34,7 @@ beforeEach(() => {
   localStorage.clear();
   shell.setState(shell.getInitialState(), true);
   dialog.setState(dialog.getInitialState(), true);
-  project.setState({ root: "", session: "", view: "", touched: new Map() });
+  project.setState({ root: "", work: "", session: "", view: "", touched: new Map() });
   focused().desk.setState({ root: "", session: "" });
   ipc.commands.workspaces.mockResolvedValue([]);
   ipc.commands.replay.mockResolvedValue([{ kind: "task", at: 1, text: "Hola", files: [], images: [] }]);

@@ -5,6 +5,7 @@ import { loadChanges } from "../features/changes/store";
 import { Tree } from "../features/files/Tree";
 import { Viewer, ViewerHead, ViewerModes } from "../features/files/Viewer";
 import { TaskTally, TasksPanel } from "../features/tasks/TasksPanel";
+import { ConsolePanel, ConsoleTabs, ConsoleTools } from "../features/terminal/Consoles";
 import { Address, Outside, Web } from "../features/web/Web";
 import { Icon } from "../shared/Icon";
 import { ICONS } from "../shared/icons.js";
@@ -44,6 +45,9 @@ export function ToolsPanel({ pane }: { pane?: RefObject<HTMLElement | null> }) {
         <div className="site" id="site">
           <Web />
         </div>
+      </Section>
+      <Section tool="terminal" label="Terminal" head={<ConsoleTabs />} tools={<ConsoleTools />}>
+        <ConsolePanel />
       </Section>
       <Section
         tool="tasks"

@@ -7,6 +7,7 @@ export interface Profile {
   checkUpdates: boolean;
   welcomed: boolean;
   seen: string;
+  notify: boolean;
 }
 
 /** update::Release, rust/sens-app/src/update.rs */
@@ -276,6 +277,20 @@ export type Heard =
   | { kind: "titled"; title: string }
   | { kind: "said"; level: string; text: string };
 
+export interface TerminalOpened {
+  id: number;
+  shell: string;
+}
+
+export interface TerminalReading {
+  ask: number;
+  terminal: number | null;
+  lines: number;
+  within: string[];
+}
+
+export type TerminalHeard = { kind: "out"; id: number; data: string } | { kind: "ended"; id: number; code: number | null };
+
 export interface Todo {
   content: string;
   status: "pending" | "in_progress" | "completed";
@@ -353,7 +368,15 @@ export interface Finished {
   turns: number;
   tokensIn: number;
   tokensOut: number;
+  context?: number;
+  window?: number;
   error: string;
+}
+
+export interface Slash {
+  name: string;
+  description: string;
+  hint: string;
 }
 
 /** chat::Event, rust/sens-agent/src/chat.rs; task events go to the tasks panel as AgentEvent */
@@ -369,12 +392,20 @@ export type ChatEvent =
   | { kind: "limits"; windows: Record<string, { utilization?: number }> }
   | { kind: "consulted"; tool: string; links: Link[] }
   | { kind: "taskStarted" | "taskProgress" | "taskEnded" }
+  | { kind: "compacted"; before: number; auto: boolean }
   | Finished
   | { kind: "failed"; reason: string };
+
+export interface Isolation {
+  path: string;
+  branch: string;
+  base: string;
+}
 
 /** session::Entry, rust/sens-agent/src/session.rs: a session as it was saved */
 export type SessionEntry =
   | { kind: "opened"; at: number; root: string }
+  | ({ kind: "isolated"; at: number } & Isolation)
   | { kind: "task"; at: number; text: string; files: string[]; images: string[] }
   | { kind: "agent"; at: number; event: ChatEvent }
   | { kind: "titled"; at: number; title: string };

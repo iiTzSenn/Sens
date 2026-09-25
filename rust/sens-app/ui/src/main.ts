@@ -10,8 +10,10 @@ import { hearChat } from "./features/chat/store";
 import { hearDrops } from "./features/composer/store";
 import { loadCatalog } from "./features/models/store";
 import { newsAtStart } from "./features/news/store";
+import { watchPresence } from "./features/notify/store";
 import { loadProfile } from "./features/profile/store";
 import { tickTasks } from "./features/tasks/store";
+import { enterConsole, hearTerminal } from "./features/terminal/store";
 import { startUpdates } from "./features/updates/store";
 import { greetAtStart, greetIfNew } from "./features/welcome/store";
 import { enterSite, hearBrowser } from "./features/web/store";
@@ -26,10 +28,13 @@ newsAtStart();
 // reads as it comes on screen, the window, and then the last project.
 hearChat();
 hearBrowser();
+hearTerminal();
 hearDrops();
+watchPresence();
 watchWidth();
 whenShown("changes", loadChanges);
 whenShown("web", enterSite);
+whenShown("terminal", enterConsole);
 whenShown("tasks", tickTasks);
 
 createRoot(document.getElementById("app")!).render(createElement(StrictMode, null, createElement(App)));

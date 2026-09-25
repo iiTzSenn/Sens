@@ -80,13 +80,13 @@ export function aim(typed: string) {
   if (SCHEMED.test(text)) return warn("El navegador solo abre direcciones http y https.");
   const first = text.split(/[/\\?#]/)[0];
   if (HOST.test(first) && !PAGE.test(first)) return aimSite(`https://${text}`);
-  const { root } = project.getState();
+  const { work: root } = project.getState();
   if (root && (PAGE.test(text) || PATHED.test(text))) return showSite(text.replace(/^\.?[/\\]/, ""), root);
   aimSite(`${SEARCH}${encodeURIComponent(text)}`);
 }
 
 // A page of a project (by default the open one), through its preview server.
-export async function showSite(path: string, home = project.getState().root) {
+export async function showSite(path: string, home = project.getState().work) {
   let url: string;
   try {
     url = await commands.previewUrl(home, path);

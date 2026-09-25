@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type { Card } from "../../ipc/types";
 import { dialog } from "../../app/modal";
 import { chooseFolder } from "../../app/session";
-import { blank } from "../chat/store";
+import { blank, warm as warmChat } from "../chat/store";
 import { focused } from "../panes/store";
 import { accountLine, choose, loadCatalog, models, noteLimits } from "../models/store";
 import { project } from "../project/store";
@@ -30,6 +30,7 @@ const ipc = vi.hoisted(() => ({
     folder: vi.fn(),
     trustProject: vi.fn(),
     projectTrusted: vi.fn(),
+    findFiles: vi.fn(),
   },
 }));
 
@@ -259,5 +260,136 @@ describe("the composer", () => {
     await act(async () => reading);
 
     expect(focused().desk.getState().repo?.branch).toBe("feat/ui");
+  });
+});
+
+describe("suggestions while writing", () => {
+  const offered = [
+    { name: "compact", description: "Resume la conversación", hint: "<instrucciones>" },
+    { name: "context", description: "Enseña el contexto", hint: "" },
+    { name: "frontend-design", description: "Interfaces con carácter", hint: "" },
+  ];
+  const write = (value: string) => {
+    fireEvent.focus(field());
+    fireEvent.change(field(), { target: { value } });
+  };
+  const options = () => screen.queryAllByRole("option").map((option) => option.querySelector(".suggest-name")?.textContent);
+
+  beforeEach(() => focused().desk.setState({ slashes: offered }));
+
+  it("offers the commands of Claude Code for a message that starts with a slash, and writes the one picked", () => {
+    render(<Composer />);
+    write("/co");
+    expect(options()).toEqual(["/compact", "/context"]);
+    expect(field().getAttribute("aria-activedescendant")).toBe(screen.getAllByRole("option")[0].id);
+
+    fireEvent.keyDown(field(), { key: "ArrowDown" });
+    fireEvent.keyDown(field(), { key: "Enter" });
+    expect(focused().desk.getState().text).toBe("/context ");
+    expect(ipc.commands.chatSend).not.toHaveBeenCalled();
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("offers the files of the project after an @, and a click writes the mention", async () => {
+    ipc.commands.findFiles.mockResolvedValue([
+      { name: "App.tsx", path: "src/App.tsx", dir: false, ignored: false },
+      { name: "app-notes.md", path: "docs/app-notes.md", dir: false, ignored: false },
+    ]);
+    render(<Composer />);
+    write("mira @app");
+    await act(async () => new Promise((settle) => setTimeout(settle, 200)));
+
+    expect(ipc.commands.findFiles).toHaveBeenLastCalledWith("C:/demo", "app");
+    expect(options()).toEqual(["src/App.tsx", "docs/app-notes.md"]);
+    fireEvent.click(screen.getAllByRole("option")[1]);
+    expect(focused().desk.getState().text).toBe("mira @docs/app-notes.md ");
+  });
+
+  it("closes with Escape until what is written changes", () => {
+    render(<Composer />);
+    write("/co");
+    fireEvent.keyDown(field(), { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    write("/com");
+    expect(options()).toEqual(["/compact"]);
+  });
+
+  it("mentions the file in the project folder while the session's worktree is still to be made", async () => {
+    focused().desk.setState({ isolate: true, repo: { branch: "main", detached: false, dirty: 0, branches: ["main"] } });
+    ipc.commands.findFiles.mockResolvedValue([{ name: "spec.md", path: "docs/spec.md", dir: false, ignored: false }]);
+    render(<Composer />);
+    write("lee @spec");
+    await act(async () => new Promise((settle) => setTimeout(settle, 200)));
+    fireEvent.click(screen.getAllByRole("option")[0]);
+    expect(focused().desk.getState().text).toBe("lee @C:/demo/docs/spec.md ");
+  });
+
+  it("asks Claude Code for its commands again when a start brought none", async () => {
+    const settings = { provider: "claude", model: "claude-sonnet", effort: "", thinking: true, mode: "default" };
+    ipc.commands.newSessionId.mockResolvedValue("s-new");
+    ipc.commands.chatWarm.mockResolvedValueOnce([]).mockResolvedValue(offered);
+    focused().desk.setState({ slashes: [] });
+    await warmChat(settings);
+    expect(focused().desk.getState().slashes).toEqual([]);
+    await warmChat(settings);
+    await warmChat(settings);
+    expect(ipc.commands.chatWarm).toHaveBeenCalledTimes(2);
+    expect(focused().desk.getState().slashes).toEqual(offered);
+  });
+
+  it("stays shut while the message is not being written", () => {
+    render(<Composer />);
+    write("/co");
+    fireEvent.blur(field());
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+});
+
+describe("the context meter", () => {
+  it("stays away until a turn says how full the context is", () => {
+    render(<Composer />);
+    expect(screen.queryByRole("button", { name: /Contexto usado/ })).toBeNull();
+  });
+
+  it("shows how full it is, warns near the end, and compacts without taking what is attached", async () => {
+    focused().desk.setState({ session: "s1", attached: [{ path: "a.ts", name: "a.ts", bytes: 1, outside: false }] });
+    focused().chat.setState({ context: { used: 185_000, window: 200_000 } });
+    render(<Composer />);
+    const meter = button("Contexto usado: 93 %");
+    expect(meter.closest(".meter")?.getAttribute("data-level")).toBe("full");
+    expect(meter.title).toBe("Contexto: 185k de 200k tokens");
+
+    fireEvent.click(meter);
+    await act(async () => fireEvent.click(button("Compactar ahora")));
+    expect(ipc.commands.chatSend).toHaveBeenCalledWith("C:/demo", "s1", { text: "/compact", files: [], images: [] }, expect.anything());
+    expect(focused().desk.getState().attached).toHaveLength(1);
+  });
+});
+
+describe("a worktree for a new session", () => {
+  const repo = { branch: "main", detached: false, dirty: 0, branches: ["main"] };
+
+  it("is offered only to a new session of a repository, and the choice is kept", () => {
+    render(<Composer />);
+    expect(screen.queryByRole("button", { name: "Worktree" })).toBeNull();
+
+    act(() => focused().desk.setState({ repo }));
+    const toggle = button("Worktree");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(focused().desk.getState().isolate).toBe(true);
+    expect(localStorage.getItem("sens.isolate")).toBe("true");
+
+    act(() => focused().desk.setState({ session: "s1" }));
+    expect(screen.queryByRole("button", { name: "Worktree" })).toBeNull();
+  });
+
+  it("names the branch and where it came from once the session works in one", () => {
+    focused().desk.setState({ repo, session: "s1", worktree: { path: "C:/demo/.sens/worktrees/ab12cd34", branch: "sens/ab12cd34", base: "main" } });
+    render(<Composer />);
+    const label = document.getElementById("worktree")!;
+    expect(label.textContent).toBe("worktree");
+    expect(label.title).toBe("Trabaja en un worktree aparte, en la rama sens/ab12cd34 (creada desde main): C:/demo/.sens/worktrees/ab12cd34");
   });
 });

@@ -9,6 +9,7 @@ import { Rail } from "../features/rail/Rail";
 import { SettingsDialog } from "../features/settings/Settings";
 import { settingsSheet } from "../features/settings/sheet";
 import { openSettings } from "../features/settings/store";
+import { toggleConsole } from "../features/terminal/store";
 import { Welcome } from "../features/welcome/Welcome";
 import { sheets } from "../shared/sheets.js";
 import { Dialog } from "./Dialog";
@@ -20,7 +21,7 @@ import { ToolsPanel } from "./ToolsPanel";
 import { Topbar } from "./Topbar";
 
 // Ctrl and a letter, unless a dialog is open.
-const HOTKEYS: Record<string, () => unknown> = { n: fresh, o: chooseFolder, b: toggleRail, ",": () => openSettings() };
+const HOTKEYS: Record<string, () => unknown> = { n: fresh, o: chooseFolder, b: toggleRail, ",": () => openSettings(), "`": toggleConsole, "ñ": toggleConsole };
 
 // The whole window: the title bar; the rail, the chat or a view over it, and
 // the tool panel, with the splitters between them; and the dialog.

@@ -26,7 +26,7 @@ export const SHELLS = new Set(["Bash", "PowerShell"]);
 // A path inside the open project, relative to it; any other as it came.
 export function relative(path: string) {
   if (!path) return "";
-  const { root } = project.getState();
+  const { work: root } = project.getState();
   const clean = String(path).replace(/\\/g, "/");
   const base = root.replace(/\\/g, "/").replace(/\/$/, "");
   const inside = base && clean.toLowerCase().startsWith(`${base.toLowerCase()}/`);
@@ -63,6 +63,7 @@ const LOOKS: Record<string, (input: ToolInput) => Look> = {
   Task: (input) => ({ icon: ICONS.split, verb: "Delegar", target: input.description || input.subagent_type || "" }),
   Agent: (input) => ({ icon: ICONS.split, verb: "Delegar", target: input.description || input.subagent_type || "" }),
   Skill: (input) => ({ icon: ICONS.book, verb: "Usar skill", target: String(input.skill || input.command || "") }),
+  mcp__sens__read_terminal: () => ({ icon: ICONS.terminal, verb: "Leer la terminal", target: "" }),
 };
 
 export function describe(name: string, input: ToolInput = {}): Look {
@@ -124,6 +125,9 @@ export const searchSummary = (output: string) =>
 // How long a turn took and what it wrote, under the reply.
 export const FOOT_JOIN = " · ";
 export const TOKENS = " tokens";
+
+export const compactedLine = (before: number, auto: boolean) =>
+  [auto ? "Claude Code compactó la conversación" : "Conversación compactada", before ? `tenía ${compact(before)}${TOKENS}` : ""].filter(Boolean).join(FOOT_JOIN);
 
 export const footOf = (event: Finished) =>
   [event.millis ? seconds(event.millis) : "", event.tokensOut ? `${compact(event.tokensOut)}${TOKENS}` : "", event.stopped ? "detenido" : ""]

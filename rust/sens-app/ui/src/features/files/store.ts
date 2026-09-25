@@ -13,7 +13,7 @@ export const files = createStore(() => ({
 }));
 
 const set = files.setState;
-const home = () => project.getState().root;
+const home = () => project.getState().work;
 
 // A reload or a new project makes every read in flight stale.
 let generation = 0;

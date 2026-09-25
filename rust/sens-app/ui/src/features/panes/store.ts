@@ -1,5 +1,5 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
-import type { ChatEvent, Repo } from "../../ipc/types";
+import type { ChatEvent, Isolation, Repo, Slash } from "../../ipc/types";
 import { store, stored } from "../../shared/storage.js";
 import type { Turn } from "../chat/turns";
 import type { File, Picture } from "../composer/store";
@@ -7,6 +7,8 @@ import { project } from "../project/store";
 import { showTasksOf } from "../tasks/store";
 
 export const CHOICE = "sens.choice";
+export const ISOLATE = "sens.isolate";
+export const isolating = () => stored(ISOLATE, false) === true;
 export const EFFORT = "sens.effort";
 export const THINKING = "sens.thinking";
 const LAYOUT = "sens.panes";
@@ -26,6 +28,7 @@ export interface Chat {
   hint: string;
   replaying: boolean;
   ended: number;
+  context: { used: number; window: number } | null;
 }
 
 // What goes with the next message: effort, thinking and the permission mode
@@ -34,10 +37,14 @@ export interface Chat {
 export interface Desk {
   root: string;
   session: string;
+  worktree: Isolation | null;
+  isolate: boolean;
+  text: string;
   attached: File[];
   pasted: Picture[];
   repo: Repo | null;
   trusted: string;
+  slashes: Slash[];
   choice: { provider: string; model: string };
   effort: string;
   thinking: boolean;
@@ -73,14 +80,18 @@ export function newPane(root = ""): Pane {
   made += 1;
   return {
     id: `pane-${made}`,
-    chat: createStore<Chat>(() => ({ turns: [], busy: false, stopping: false, hint: "", replaying: false, ended: 0 })),
+    chat: createStore<Chat>(() => ({ turns: [], busy: false, stopping: false, hint: "", replaying: false, ended: 0, context: null })),
     desk: createStore<Desk>(() => ({
       root,
       session: "",
+      worktree: null,
+      isolate: isolating(),
+      text: "",
       attached: [],
       pasted: [],
       repo: null,
       trusted: "",
+      slashes: [],
       choice: { provider: "", model: "", ...stored(CHOICE, {}) },
       effort: stored(EFFORT, "") as string,
       thinking: stored(THINKING, true) !== false,
@@ -118,10 +129,23 @@ export const sideOf = (pane: Pane): Side => (panes.getState().open[0] === pane ?
 
 export const other = (pane: Pane) => panes.getState().open.find((one) => one !== pane);
 
+export const workOf = (pane: Pane) => pane.desk.getState().worktree?.path || pane.desk.getState().root;
+
+export function worktreePending(pane: Pane) {
+  const { isolate, worktree, repo } = pane.desk.getState();
+  return isolate && !worktree && Boolean(repo);
+}
+
+let workMoved = () => {};
+export const whenWorkMoves = (then: () => unknown) => void (workMoved = () => void then());
+
 function mirror() {
-  const { root, session } = focused().desk.getState();
+  const pane = focused();
+  const { root, session } = pane.desk.getState();
+  const work = workOf(pane);
   const shown = project.getState();
-  if (shown.root !== root || shown.session !== session) project.setState({ root, session });
+  if (shown.root !== root || shown.session !== session || shown.work !== work) project.setState({ root, session, work });
+  if (shown.root === root && shown.work !== work) workMoved();
   showTasksOf(session);
 }
 
@@ -130,7 +154,7 @@ const watched = new Map<Pane, () => void>();
 function watch(pane: Pane) {
   if (watched.has(pane)) return;
   const off = pane.desk.subscribe((now, before) => {
-    if (now.root !== before.root || now.session !== before.session) {
+    if (now.root !== before.root || now.session !== before.session || now.worktree !== before.worktree) {
       if (pane === focused()) mirror();
       return keep();
     }

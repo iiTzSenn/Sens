@@ -20,8 +20,21 @@ const finish = (subtype = "success", result = "") =>
     duration_ms: 12,
     num_turns: 1,
     result,
-    usage: { input_tokens: 3, cache_creation_input_tokens: 0, cache_read_input_tokens: 5, output_tokens: 2 },
+    usage: {
+      input_tokens: 3,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 5,
+      output_tokens: 2,
+      iterations: [{ input_tokens: 3, cache_creation_input_tokens: 0, cache_read_input_tokens: 5, output_tokens: 2 }],
+    },
+    modelUsage: { "claude-sonnet-5": { contextWindow: 200000 } },
   });
+
+const OFFERED = [
+  { name: "compact", description: "Clear conversation history but keep a summary in context", argumentHint: "<optional custom summarization instructions>" },
+  { name: "__remote-workflow", description: "", argumentHint: "" },
+  { name: "frontend-design", description: "Create distinctive interfaces (user)", argumentHint: "" },
+];
 
 const speak = (text) => {
   for (const piece of [text.slice(0, 2), text.slice(2)]) {
@@ -31,12 +44,16 @@ const speak = (text) => {
 };
 
 async function turn(content) {
-  say({ type: "system", subtype: "init", model: argv.join(" ") });
+  say({ type: "system", subtype: "init", model: `${argv.join(" ")} @ ${process.cwd()}` });
   const blocks = typeof content === "string" ? [{ type: "text", text: content }] : content;
   const text = blocks.filter((block) => block.type === "text").map((block) => block.text).join("\n");
   const pictures = blocks.filter((block) => block.type === "image" && block.source?.type === "base64");
   if (pictures.length) {
     speak(`vi ${pictures.length} imagen ${pictures[0].source.media_type} antes de "${text}"`);
+    return finish();
+  }
+  if (text.startsWith("/compact")) {
+    say({ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "manual", pre_tokens: 9000 } });
     return finish();
   }
   if (text.includes("muere")) {
@@ -71,7 +88,7 @@ async function turn(content) {
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line);
   if (message.type === "control_request" && message.request.subtype === "initialize") {
-    say({ type: "control_response", response: { subtype: "success", request_id: message.request_id, response: {} } });
+    say({ type: "control_response", response: { subtype: "success", request_id: message.request_id, response: { commands: OFFERED } } });
   } else if (message.type === "control_request" && message.request.subtype === "interrupt") {
     interrupted = true;
     say({ type: "control_response", response: { subtype: "success", request_id: message.request_id, response: {} } });

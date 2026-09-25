@@ -1,5 +1,5 @@
 import type { Answers, Asking, ChatEvent, Finished, Link, ToolDetail, ToolInput } from "../../ipc/types";
-import { SILENT, footOf } from "./looks";
+import { SILENT, compactedLine, footOf } from "./looks";
 
 // The chat as data: what you asked, what Claude replied, and notices the app
 // adds (a branch switched, something refused). Each piece has a key that stays
@@ -49,7 +49,7 @@ export interface Ask {
 }
 
 export interface Line {
-  kind: "fault" | "foot";
+  kind: "fault" | "foot" | "note";
   key: number;
   text: string;
 }
@@ -199,6 +199,8 @@ export function heard(reply: Reply, event: ChatEvent, live: boolean): Reply {
       if (!ask) return reply;
       return swap<Ask>(reply, ask.key, (part) => ({ ...part, active: false, state: event.allowed ? "allowed" : "refused", answers: event.answers }));
     }
+    case "compacted":
+      return { ...reply, parts: [...reply.parts, line("note", compactedLine(event.before, event.auto))] };
     case "finished": {
       const ended = close(reply);
       const foot = footOf(event as Finished);

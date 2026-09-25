@@ -8,7 +8,7 @@ import { notice, send as sendChat, warm as warmChat, warn, whenTurnEnds } from "
 import { loadFiles } from "../files/store";
 import { openFile, viewer } from "../files/view";
 import { chosenCard } from "../models/store";
-import { EFFORT, THINKING, focused, panes, type Pane } from "../panes/store";
+import { EFFORT, ISOLATE, THINKING, focused, panes, workOf, type Pane } from "../panes/store";
 import { forgetEdits, project } from "../project/store";
 import { failRail, loadRail } from "../rail/store";
 
@@ -30,6 +30,8 @@ export const MODES = [
     risky: true,
   },
 ];
+
+const COMPACT = "/compact";
 
 const PASTEABLE = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const PICTURE_CAP = 5 * 1024 * 1024;
@@ -61,6 +63,7 @@ export const composer = createStore(() => ({
 const set = composer.setState;
 const rootOf = (pane: Pane) => pane.desk.getState().root;
 const sharing = (root: string) => panes.getState().open.filter((one) => rootOf(one) === root);
+const workingIn = (work: string) => panes.getState().open.filter((one) => workOf(one) === work);
 
 export const effortLevels = (card = chosenCard()) => card?.efforts || [];
 
@@ -134,8 +137,28 @@ export async function distrust(root: string) {
 
 export const fileLabel = (file: File) => (file.outside ? file.name : file.path);
 
+export const writeMessage = (text: string, pane: Pane = focused()) => pane.desk.setState({ text });
+
+export function toggleIsolate(pane: Pane = focused()) {
+  const isolate = !pane.desk.getState().isolate;
+  store(ISOLATE, isolate);
+  pane.desk.setState({ isolate });
+}
+
+export function addToMessage(addition: string, pane: Pane = focused()) {
+  const kept = pane.desk.getState().text.trimEnd();
+  writeMessage(kept ? `${kept}\n\n${addition}` : addition, pane);
+  warm(pane);
+  requestAnimationFrame(() => {
+    const field = document.getElementById("task");
+    if (!(field instanceof HTMLTextAreaElement)) return;
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+  });
+}
+
 export async function attachPaths(paths: string[], pane: Pane = focused()) {
-  const root = rootOf(pane);
+  const root = workOf(pane);
   if (!root || !paths.length) return;
   let found;
   try {
@@ -194,27 +217,27 @@ function nextRepoLap(pane: Pane) {
 }
 
 export async function readRepo(pane: Pane = focused()) {
-  const root = rootOf(pane);
+  const work = workOf(pane);
   const mine = nextRepoLap(pane);
-  const repo = root ? await commands.repo(root) : null;
-  if (rootOf(pane) === root && repoLaps.get(pane) === mine) pane.desk.setState({ repo });
+  const repo = work ? await commands.repo(work) : null;
+  if (workOf(pane) === work && repoLaps.get(pane) === mine) pane.desk.setState({ repo });
 }
 
 // A branch switched: the agent's marks go, and what shows files reads them again.
 export async function switchTo(name: string, pane: Pane = focused()) {
-  const root = rootOf(pane);
+  const root = workOf(pane);
   let repo;
   try {
     repo = await commands.checkout(root, name);
   } catch (reason) {
     return warn(String(reason), pane);
   }
-  for (const one of sharing(root)) {
+  for (const one of workingIn(root)) {
     nextRepoLap(one);
     one.desk.setState({ repo });
   }
   notice(["rama · ", { bold: repo.branch }], "", pane);
-  if (root !== project.getState().root) return;
+  if (root !== project.getState().work) return;
   forgetEdits();
   forgetChanges();
   await loadFiles();
@@ -238,6 +261,11 @@ export async function send(text: string, pane: Pane = focused()) {
   };
   forgetClips(pane);
   await sendChat({ message, shownFiles: attached.map(fileLabel), pictures: pasted.map((picture) => picture.url) }, currentSettings(pane), pane);
+}
+
+export async function compactNow(pane: Pane = focused()) {
+  if (pane.chat.getState().busy || !pane.desk.getState().session) return;
+  await sendChat({ message: { text: COMPACT, files: [], images: [] }, shownFiles: [], pictures: [] }, currentSettings(pane), pane);
 }
 
 // Files dropped on the window attach to the message, while the chat of a

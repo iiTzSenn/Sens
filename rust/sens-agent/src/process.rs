@@ -33,6 +33,10 @@ pub struct Family {
 impl Family {
     pub fn around(child: &std::process::Child) -> Family {
         use std::os::windows::io::AsRawHandle;
+        Family::of(child.as_raw_handle())
+    }
+
+    pub fn of(process: std::os::windows::io::RawHandle) -> Family {
         use windows::Win32::Foundation::{CloseHandle, HANDLE};
         use windows::Win32::System::JobObjects::{
             AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
@@ -52,7 +56,7 @@ impl Family {
                 std::ptr::from_ref(&limits).cast(),
                 size_of_val(&limits) as u32,
             )
-            .and_then(|()| AssignProcessToJobObject(job, HANDLE(child.as_raw_handle())))
+            .and_then(|()| AssignProcessToJobObject(job, HANDLE(process)))
         };
         if joined.is_err() {
             let _ = unsafe { CloseHandle(job) };

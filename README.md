@@ -32,9 +32,11 @@ A window around the unmodified `claude` CLI. Sens never touches your Claude cred
 
 1. **You open a folder.** Sessions live next to it, in `.sens/sessions`, and the sidebar groups them by project.
 2. **You pick the model, effort, thinking and permissions.** The model list is the one Claude Code itself offers, read from it for free every day.
-3. **You ask.** Text, pasted images and attached files. The reply streams in, and every tool call gets its own card: terminal output, search results, diffs, checklists, web sources, background tasks you can stop.
+3. **You ask.** Text, pasted images and attached files; `@` mentions a file and `/` offers Claude Code's commands and your skills. The reply streams in, and every tool call gets its own card: terminal output, search results, diffs, checklists, web sources, background tasks you can stop.
 4. **You answer when it asks.** Permission requests, questions and plans arrive as prompts in the thread.
 5. **The session names itself** after the first reply. Rename it from its `⋯` menu whenever you like.
+
+Beside the chat, the tool panel shows the project's files, what changed since the last commit, a browser for its pages, a terminal in its folder (`Ctrl+Ñ`, which Claude can read when you ask about it) and the work running in the background. A ring under the message says how full the context is and compacts it on request, and Sens tells you when a session ends or needs you while you are elsewhere. A new session can also work in a git worktree of its own, on a new branch, so your folder stays as it is until you merge.
 
 ## Capabilities
 

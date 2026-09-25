@@ -17,6 +17,7 @@ export type View = "" | "capabilities" | "artifacts" | "news";
 // other zones read them.
 export const project = createStore(() => ({
   root: "",
+  work: "",
   session: "",
   view: "" as View,
   touched: new Map<string, Edits>(),

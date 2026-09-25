@@ -43,7 +43,7 @@ export function Tree() {
 }
 
 function Folders() {
-  const root = useStore(project, (s) => s.root);
+  const root = useStore(project, (s) => s.work);
   const folders = useStore(files, (s) => s.folders);
   const unfolded = useStore(files, (s) => s.unfolded);
   const fault = useStore(files, (s) => s.fault);
@@ -74,7 +74,7 @@ function Folders() {
 // The last results stay until the next ones arrive, and a reload of the tree
 // searches again.
 function Found({ query }: { query: string }) {
-  const root = useStore(project, (s) => s.root);
+  const root = useStore(project, (s) => s.work);
   const loads = useStore(files, (s) => s.loads);
   const [found, setFound] = useState<Entry[] | null>(null);
   const [fault, setFault] = useState("");

@@ -21,7 +21,7 @@ export function ChangesPanel() {
   const changed = useStore(changes, (s) => s.changed);
   const versioned = useStore(changes, (s) => s.versioned);
   const fault = useStore(changes, (s) => s.fault);
-  const root = useStore(project, (s) => s.root);
+  const root = useStore(project, (s) => s.work);
   const files = changed || [];
   const quiet = !root
     ? "Sin carpeta."
@@ -138,7 +138,7 @@ function ChangeBody({ file, counted }: { file: DiffFile; counted: (lines: number
   useEffect(() => {
     if (!file.fresh || file.binary || PICTURE.test(file.path)) return;
     let live = true;
-    commands.openFile(project.getState().root, file.path).then(
+    commands.openFile(project.getState().work, file.path).then(
       (opened) => live && setFresh(opened),
       (reason) => live && setFresh({ kind: "fault", fault: String(reason) }),
     );

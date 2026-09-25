@@ -88,7 +88,7 @@ async function press(name: string | RegExp) {
 beforeEach(() => {
   welcome.setState(welcome.getInitialState(), true);
   settings.setState(settings.getInitialState(), true);
-  profile.setState({ person: { name: "", checkUpdates: true, welcomed: false, seen: "" }, fault: "" });
+  profile.setState({ person: { name: "", checkUpdates: true, welcomed: false, seen: "", notify: true }, fault: "" });
   rail.setState({ spaces: [] });
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.draft.mockClear();
@@ -104,11 +104,11 @@ afterEach(cleanup);
 
 describe("the welcome", () => {
   it("opens only for someone the profile says has not seen it", () => {
-    profile.setState({ person: { name: "", checkUpdates: true, welcomed: true, seen: "" } });
+    profile.setState({ person: { name: "", checkUpdates: true, welcomed: true, seen: "", notify: true } });
     greetIfNew();
     expect(welcome.getState().open).toBe(false);
 
-    profile.setState({ person: { name: "", checkUpdates: true, welcomed: false, seen: "" } });
+    profile.setState({ person: { name: "", checkUpdates: true, welcomed: false, seen: "", notify: true } });
     greetIfNew();
     expect(welcome.getState().open).toBe(true);
   });
@@ -125,7 +125,7 @@ describe("the welcome", () => {
     expect(screen.getByRole("dialog", { name: "Bienvenida a Sens" }).dataset.still).toBe("true");
 
     await press(/Empezar/);
-    profile.setState({ person: { name: "Ada", checkUpdates: true, welcomed: false, seen: "" } });
+    profile.setState({ person: { name: "Ada", checkUpdates: true, welcomed: false, seen: "", notify: true } });
     greetIfNew();
     expect(welcome.getState()).toMatchObject({ open: true, step: "name", name: "Ada" });
     delete window.__SENS_WELCOMED__;

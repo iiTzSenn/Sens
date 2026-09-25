@@ -4,7 +4,8 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -36,6 +37,9 @@ const ITEM_CAP: usize = 200;
 const HEARD_CAP: usize = 4_000;
 const BULKY: &[&str] = &["originalFile"];
 const SOURCES_CAP: usize = 20;
+const DESCRIPTION_CAP: usize = 160;
+const OFFER_PATIENCE: Duration = Duration::from_secs(10);
+const GREETING: &str = "sens-initialize";
 const SEARCHED: &str = "Web search results for query:";
 const DENIED: &str = "El usuario lo rechazó.";
 const HALTED: &str = "El usuario paró la tarea.";
@@ -115,6 +119,10 @@ pub enum Event {
         tokens: u64,
         millis: u64,
     },
+    Compacted {
+        before: u64,
+        auto: bool,
+    },
     Finished {
         ok: bool,
         stopped: bool,
@@ -122,11 +130,22 @@ pub enum Event {
         turns: u64,
         tokens_in: u64,
         tokens_out: u64,
+        #[serde(default)]
+        context: u64,
+        #[serde(default)]
+        window: u64,
         error: String,
     },
     Failed {
         reason: String,
     },
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct Slash {
+    pub name: String,
+    pub description: String,
+    pub hint: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -169,6 +188,8 @@ pub struct Settings {
     pub extra: Vec<String>,
     #[serde(skip)]
     pub env: BTreeMap<String, String>,
+    #[serde(skip)]
+    pub cwd: Option<PathBuf>,
 }
 
 impl Default for Settings {
@@ -181,6 +202,7 @@ impl Default for Settings {
             mode: "default".into(),
             extra: Vec::new(),
             env: BTreeMap::new(),
+            cwd: None,
         }
     }
 }
@@ -248,10 +270,35 @@ struct Live {
     tasks: Mutex<HashSet<String>>,
     log: Mutex<()>,
     sink: Mutex<Sink>,
+    offered: Mutex<Option<Vec<Slash>>>,
+    told: Condvar,
+    compacted: AtomicBool,
+    forgotten: AtomicBool,
 }
 
 impl Live {
+    fn offer(&self, slashes: Vec<Slash>) {
+        if let Ok(mut offered) = self.offered.lock() {
+            offered.get_or_insert(slashes);
+            self.told.notify_all();
+        }
+    }
+
+    fn slashes(&self, patience: Duration) -> Vec<Slash> {
+        let Ok(offered) = self.offered.lock() else {
+            return Vec::new();
+        };
+        self.told
+            .wait_timeout_while(offered, patience, |offered| offered.is_none())
+            .ok()
+            .and_then(|(offered, _)| offered.clone())
+            .unwrap_or_default()
+    }
+
     fn tell(&self, event: &Event) {
+        if self.forgotten.load(Ordering::SeqCst) {
+            return;
+        }
         let sink = self.sink.lock().map(|sink| sink.clone());
         if let Ok(sink) = sink {
             sink(&self.session, event);
@@ -278,6 +325,9 @@ impl Live {
     }
 
     fn keep(&self, event: Event) {
+        if self.forgotten.load(Ordering::SeqCst) {
+            return;
+        }
         let _order = self.log.lock();
         let _ = session::append(
             &self.root,
@@ -359,11 +409,17 @@ impl Live {
                     suggestions,
                 }
             }
+            Event::Compacted { .. } => {
+                self.compacted.store(true, Ordering::SeqCst);
+                event
+            }
             Event::Finished {
                 millis,
                 turns,
                 tokens_in,
                 tokens_out,
+                context,
+                window,
                 ok,
                 error,
                 ..
@@ -373,6 +429,7 @@ impl Live {
                     pending.clear();
                 }
                 let stopped = self.stopping.swap(false, Ordering::SeqCst);
+                let compacted = self.compacted.swap(false, Ordering::SeqCst);
                 Event::Finished {
                     ok: ok && !stopped,
                     stopped,
@@ -380,6 +437,8 @@ impl Live {
                     turns,
                     tokens_in,
                     tokens_out,
+                    context: if compacted { 0 } else { context },
+                    window,
                     error: if stopped { String::new() } else { error },
                 }
             }
@@ -434,9 +493,9 @@ impl Engine {
             .inspect_err(|_| live.busy.store(false, Ordering::SeqCst))
     }
 
-    pub fn warm(&self, root: &Path, session: &str, settings: Settings, sink: Sink) -> Result<(), String> {
+    pub fn warm(&self, root: &Path, session: &str, settings: Settings, sink: Sink) -> Result<Vec<Slash>, String> {
         settings.vet()?;
-        self.ready(root, session, settings, sink).map(drop)
+        Ok(self.ready(root, session, settings, sink)?.slashes(OFFER_PATIENCE))
     }
 
     pub fn stop(&self, session: &str) -> Result<(), String> {
@@ -507,6 +566,17 @@ impl Engine {
         live.control(json!({ "subtype": "stop_task", "task_id": task }))
     }
 
+    pub fn forget(&self, session: &str) {
+        let Some(live) = self.lives.lock().ok().and_then(|mut lives| lives.remove(session)) else {
+            return;
+        };
+        live.forgotten.store(true, Ordering::SeqCst);
+        live.kill();
+        if let Ok(mut child) = live.child.lock() {
+            let _ = child.wait();
+        }
+    }
+
     pub fn shutdown(&self) {
         if let Ok(mut lives) = self.lives.lock() {
             for (_, live) in lives.drain() {
@@ -561,11 +631,12 @@ impl Engine {
 
     fn spawn(&self, root: &Path, session: &str, settings: Settings, sink: Sink) -> Result<Arc<Live>, String> {
         let args = arguments(&settings, &claude_id(session), session::has_begun(root, session));
+        let cwd = settings.cwd.clone().unwrap_or_else(|| root.to_path_buf());
 
         let mut child = hidden(&mut self.command())
             .args(&args)
             .envs(&settings.env)
-            .current_dir(root)
+            .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -590,8 +661,12 @@ impl Engine {
             tasks: Mutex::default(),
             log: Mutex::default(),
             sink: Mutex::new(sink),
+            offered: Mutex::default(),
+            told: Condvar::new(),
+            compacted: AtomicBool::new(false),
+            forgotten: AtomicBool::new(false),
         });
-        live.control(json!({ "subtype": "initialize", "hooks": null }))?;
+        live.write(&json!({ "type": "control_request", "request_id": GREETING, "request": { "subtype": "initialize", "hooks": null } }))?;
 
         let heard = Arc::new(Mutex::new(String::new()));
         let collected = heard.clone();
@@ -623,7 +698,14 @@ fn collect(mut complaints: ChildStderr, heard: Arc<Mutex<String>>) {
 
 fn listen(live: Arc<Live>, output: ChildStdout, heard: Arc<Mutex<String>>, lives: Lives) {
     for line in BufReader::new(output).lines().map_while(Result::ok) {
-        for event in translate(&line) {
+        let Ok(message) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if let Some(slashes) = offered(&message) {
+            live.offer(slashes);
+            continue;
+        }
+        for event in interpret(&message) {
             let event = live.settle(event);
             if event.lasting() {
                 live.keep(event.clone());
@@ -631,6 +713,7 @@ fn listen(live: Arc<Live>, output: ChildStdout, heard: Arc<Mutex<String>>, lives
             live.tell(&event);
         }
     }
+    live.offer(Vec::new());
 
     if live.busy.swap(false, Ordering::SeqCst) {
         let said = heard.lock().map(|text| text.trim().to_string()).unwrap_or_default();
@@ -813,6 +896,24 @@ pub fn interpret(message: &Value) -> Vec<Event> {
     }
 }
 
+fn offered(message: &Value) -> Option<Vec<Slash>> {
+    if message["type"] != "control_response" || message["response"]["request_id"] != GREETING {
+        return None;
+    }
+    Some(
+        blocks(&message["response"]["response"]["commands"])
+            .filter_map(|command| {
+                let name = text_of(&command["name"]);
+                (!name.is_empty() && !name.starts_with('_')).then(|| Slash {
+                    name,
+                    description: capped(text_of(&command["description"]).trim(), DESCRIPTION_CAP),
+                    hint: text_of(&command["argumentHint"]),
+                })
+            })
+            .collect(),
+    )
+}
+
 fn blocks(content: &Value) -> impl Iterator<Item = &Value> {
     content.as_array().into_iter().flatten()
 }
@@ -981,6 +1082,10 @@ fn system(message: &Value) -> Option<Event> {
             tokens: spent(message, "total_tokens"),
             millis: spent(message, "duration_ms"),
         }),
+        "compact_boundary" => Some(Event::Compacted {
+            before: message["compact_metadata"]["pre_tokens"].as_u64().unwrap_or_default(),
+            auto: message["compact_metadata"]["trigger"] == "auto",
+        }),
         _ => None,
     }
 }
@@ -1004,19 +1109,32 @@ fn limits(message: &Value) -> Option<Event> {
     })
 }
 
+fn read_in(usage: &Value) -> u64 {
+    ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"]
+        .iter()
+        .map(|key| usage[key].as_u64().unwrap_or_default())
+        .sum()
+}
+
 fn finished(message: &Value) -> Event {
     let usage = &message["usage"];
-    let count = |key: &str| usage[key].as_u64().unwrap_or_default();
     let failed = message["is_error"].as_bool().unwrap_or(false);
+    let last_call = usage["iterations"].as_array().and_then(|calls| calls.last());
     Event::Finished {
         ok: !failed,
         stopped: false,
         millis: message["duration_ms"].as_u64().unwrap_or_default(),
         turns: message["num_turns"].as_u64().unwrap_or_default(),
-        tokens_in: count("input_tokens")
-            + count("cache_creation_input_tokens")
-            + count("cache_read_input_tokens"),
-        tokens_out: count("output_tokens"),
+        tokens_in: read_in(usage),
+        tokens_out: usage["output_tokens"].as_u64().unwrap_or_default(),
+        context: last_call.map_or(0, |call| read_in(call) + call["output_tokens"].as_u64().unwrap_or_default()),
+        window: message["modelUsage"]
+            .as_object()
+            .into_iter()
+            .flat_map(|models| models.values())
+            .filter_map(|model| model["contextWindow"].as_u64())
+            .max()
+            .unwrap_or_default(),
         error: if failed { complaint(message) } else { String::new() },
     }
 }
@@ -1238,8 +1356,53 @@ mod tests {
     fn a_result_closes_the_turn_with_its_numbers() {
         assert_eq!(
             one(r#"{"type":"result","subtype":"success","is_error":false,"duration_ms":8698,"num_turns":2,"result":"La clave es 4217.","usage":{"input_tokens":2,"cache_creation_input_tokens":100,"cache_read_input_tokens":900,"output_tokens":17}}"#),
-            Event::Finished { ok: true, stopped: false, millis: 8698, turns: 2, tokens_in: 1002, tokens_out: 17, error: String::new() }
+            Event::Finished { ok: true, stopped: false, millis: 8698, turns: 2, tokens_in: 1002, tokens_out: 17, context: 0, window: 0, error: String::new() }
         );
+    }
+
+    #[test]
+    fn a_result_says_how_full_the_context_is_after_the_last_call() {
+        let Event::Finished { tokens_in, context, window, .. } = one(
+            r#"{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":20,"cache_creation_input_tokens":0,"cache_read_input_tokens":40000,"output_tokens":300,"iterations":[{"input_tokens":10,"cache_read_input_tokens":18000,"cache_creation_input_tokens":0,"output_tokens":100},{"input_tokens":10,"cache_read_input_tokens":22000,"cache_creation_input_tokens":500,"output_tokens":200}]},"modelUsage":{"claude-haiku-4-5":{"contextWindow":200000},"claude-opus-5-5":{"contextWindow":1000000}}}"#
+        ) else {
+            panic!()
+        };
+        assert_eq!((tokens_in, context, window), (40020, 22710, 1_000_000));
+    }
+
+    #[test]
+    fn a_result_without_calls_leaves_the_context_unknown() {
+        let Event::Finished { context, window, .. } = one(r#"{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":2}}"#) else { panic!() };
+        assert_eq!((context, window), (0, 0));
+    }
+
+    #[test]
+    fn a_compaction_is_told_with_its_size_and_whether_it_was_asked() {
+        assert_eq!(
+            one(r#"{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"manual","pre_tokens":154000}}"#),
+            Event::Compacted { before: 154_000, auto: false }
+        );
+        let Event::Compacted { auto, .. } = one(r#"{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":1}}"#) else { panic!() };
+        assert!(auto);
+    }
+
+    #[test]
+    fn the_commands_claude_code_offers_come_with_the_answer_to_initialize() {
+        let answer = json!({
+            "type": "control_response",
+            "response": { "subtype": "success", "request_id": GREETING, "response": { "commands": [
+                { "name": "compact", "description": "Resume la conversación (bundled)", "argumentHint": "<instrucciones>" },
+                { "name": "__remote-workflow", "description": "interno", "argumentHint": "" },
+                { "name": "frontend-design", "description": "x".repeat(400), "argumentHint": "" }
+            ] } }
+        });
+        let slashes = offered(&answer).unwrap();
+        assert_eq!(slashes.iter().map(|one| one.name.as_str()).collect::<Vec<_>>(), ["compact", "frontend-design"]);
+        assert_eq!(slashes[0].hint, "<instrucciones>");
+        assert!(slashes[1].description.chars().count() <= DESCRIPTION_CAP + 1);
+        assert_eq!(offered(&json!({ "type": "control_response", "response": { "subtype": "success", "request_id": "sens-2", "response": { "commands": [] } } })), None);
+        assert_eq!(offered(&json!({ "type": "control_response", "response": { "subtype": "error", "request_id": GREETING, "error": "no" } })), Some(Vec::new()));
+        assert_eq!(offered(&json!({ "type": "assistant" })), None);
     }
 
     #[test]
@@ -1487,14 +1650,17 @@ mod tests {
         assert!(!Event::Delta { thinking: false, text: "a".into() }.lasting());
         assert!(!Event::Limits { windows: Value::Null }.lasting());
         assert!(Event::Said { text: "a".into() }.lasting());
-        assert!(Event::Finished { ok: true, stopped: false, millis: 0, turns: 0, tokens_in: 0, tokens_out: 0, error: String::new() }.lasting());
+        assert!(Event::Finished { ok: true, stopped: false, millis: 0, turns: 0, tokens_in: 0, tokens_out: 0, context: 0, window: 0, error: String::new() }.lasting());
+        assert!(Event::Compacted { before: 1, auto: true }.lasting());
     }
 
     #[test]
     fn events_travel_to_the_app_in_camel_case() {
         let done = serde_json::to_value(Event::ToolDone { id: "t".into(), output: "o".into(), error: false, detail: Value::Null }).unwrap();
         assert_eq!(done["kind"], "toolDone");
-        let finished = serde_json::to_value(Event::Finished { ok: true, stopped: false, millis: 1, turns: 1, tokens_in: 2, tokens_out: 3, error: String::new() }).unwrap();
-        assert_eq!(finished["tokensOut"], 3);
+        let finished = serde_json::to_value(Event::Finished { ok: true, stopped: false, millis: 1, turns: 1, tokens_in: 2, tokens_out: 3, context: 4, window: 5, error: String::new() }).unwrap();
+        assert_eq!((finished["tokensOut"].as_u64(), finished["context"].as_u64(), finished["window"].as_u64()), (Some(3), Some(4), Some(5)));
+        let old: Event = serde_json::from_str(r#"{"kind":"finished","ok":true,"stopped":false,"millis":1,"turns":1,"tokensIn":2,"tokensOut":3,"error":""}"#).unwrap();
+        assert!(matches!(old, Event::Finished { context: 0, window: 0, .. }));
     }
 }

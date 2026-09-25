@@ -15,12 +15,14 @@ ignore = "0.4.33"
 tauri = { version = "2", features = ["unstable"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-notification = "2"
 ureq = { version = "3", default-features = false, features = ["native-tls", "gzip"] }
 tar = "0.4"
 flate2 = "1"
 minisign-verify = "0.2.5"
 sha2 = "0.10"
 toml = "1"
+portable-pty = "0.9"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"

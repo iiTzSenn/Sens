@@ -5,6 +5,7 @@ import { useStore } from "zustand";
 import { focused, panes } from "../features/panes/store";
 import { project } from "../features/project/store";
 import { runningTasks, tasks } from "../features/tasks/store";
+import { consoles, runningConsoles } from "../features/terminal/store";
 import { openUpdate } from "../features/updates/UpdatePanel";
 import { updates } from "../features/updates/store";
 import { anchorMenu } from "../shared/anchorMenu";
@@ -114,6 +115,7 @@ const TOOLS: { tool: Tool; label: string; said: string; icon: string }[] = [
   { tool: "files", label: "Ficheros", said: "El árbol y el código del proyecto", icon: ICONS.files },
   { tool: "changes", label: "Cambios", said: "Lo que difiere del último commit", icon: ICONS.compare },
   { tool: "web", label: "Web", said: "Páginas y servidores locales", icon: ICONS.globe },
+  { tool: "terminal", label: "Terminal", said: "Una consola en la carpeta del proyecto", icon: ICONS.terminal },
   { tool: "tasks", label: "Segundo plano", said: "Subagentes y comandos del modelo", icon: ICONS.activity },
 ];
 
@@ -145,13 +147,15 @@ function ToolsMenu({ sheet }: { sheet: Sheet }) {
   const pane = useStore(panes, () => focused());
   const dirty = useStore(pane.desk, (s) => s.repo?.dirty ?? 0);
   const running = useStore(tasks, () => runningTasks());
+  const shells = useStore(consoles, () => runningConsoles());
   useStore(shell, (s) => `${s.toolsOpen}/${s.tool}`);
 
   useLayoutEffect(() => {
     if (sheet.open && sheet.sheet.ref.current && sheet.anchor.current) anchorMenu(sheet.sheet.ref.current, sheet.anchor.current);
   }, [sheet.open]);
 
-  const count = (tool: Tool) => (tool === "changes" && dirty ? String(dirty) : tool === "tasks" && running ? String(running) : "");
+  const counts: Partial<Record<Tool, number>> = { changes: dirty, tasks: running, terminal: shells };
+  const count = (tool: Tool) => (counts[tool] ? String(counts[tool]) : "");
   return (
     <div className="sheet menu float-menu tool-menu" id="tool-menu" role="menu" aria-label="Herramientas" {...sheet.sheet}>
       {TOOLS.map((one) => (

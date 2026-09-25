@@ -26,6 +26,8 @@ const ipc = vi.hoisted(() => ({
     repo: vi.fn(),
     folder: vi.fn(),
     openFile: vi.fn(),
+    notify: vi.fn(),
+    isolateSession: vi.fn(),
   },
   heard: null as ((session: string, event: ChatEvent) => void) | null,
 }));
@@ -119,6 +121,124 @@ describe("the thread as data", () => {
     ]);
     const step = reply.parts[0];
     expect(step.kind === "step" && step.links.map((link) => link.url)).toEqual(["https://vite.dev", "https://rolldown.rs"]);
+  });
+});
+
+describe("a session in a worktree of its own", () => {
+  const worktree = { path: "C:/demo/.sens/worktrees/ab12cd34", branch: "sens/ab12cd34", base: "main" };
+  const repo = { branch: "main", detached: false, dirty: 0, branches: ["main"] };
+  const hola = () => send({ message: { text: "Hola", files: [], images: [] }, shownFiles: [], pictures: [] }, SETTINGS);
+
+  it("gets its worktree before its first message goes, and then works there", async () => {
+    focused().desk.setState({ isolate: true, repo });
+    ipc.commands.isolateSession.mockResolvedValue(worktree);
+    render(<Thread />);
+    await act(hola);
+
+    expect(ipc.commands.isolateSession).toHaveBeenCalledWith("C:/demo", "s1");
+    expect(ipc.commands.isolateSession.mock.invocationCallOrder[0]).toBeLessThan(ipc.commands.chatSend.mock.invocationCallOrder[0]);
+    expect(focused().desk.getState().worktree).toEqual(worktree);
+    expect(project.getState()).toMatchObject({ root: "C:/demo", work: worktree.path });
+  });
+
+  it("sends nothing when the worktree cannot be made, says why, and the next try works in the project folder", async () => {
+    focused().desk.setState({ isolate: true, repo });
+    ipc.commands.isolateSession.mockRejectedValue("el proyecto no tiene ningún commit del que partir");
+    render(<Thread />);
+    await act(hola);
+
+    expect(ipc.commands.chatSend).not.toHaveBeenCalled();
+    expect(document.querySelector(".reply-fault")?.textContent).toBe(
+      "No pude crear el worktree: el proyecto no tiene ningún commit del que partir. Si vuelves a enviar, Claude trabajará en la carpeta del proyecto.",
+    );
+    expect(project.getState().work).toBe("C:/demo");
+
+    await act(hola);
+    expect(ipc.commands.isolateSession).toHaveBeenCalledTimes(1);
+    expect(ipc.commands.chatSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands over what was attached before the worktree existed from the project folder", async () => {
+    focused().desk.setState({ isolate: true, repo });
+    ipc.commands.isolateSession.mockResolvedValue(worktree);
+    await act(() => send({ message: { text: "Hola", files: ["spec.md", "C:/fuera/notas.md"], images: [] }, shownFiles: [], pictures: [] }, SETTINGS));
+
+    expect(ipc.commands.chatSend).toHaveBeenCalledWith("C:/demo", "s1", { text: "Hola", files: ["C:/demo/spec.md", "C:/fuera/notas.md"], images: [] }, SETTINGS);
+  });
+
+  it("sends to the session it began with, even if another is opened while the worktree is made", async () => {
+    focused().desk.setState({ isolate: true, repo });
+    let made!: (isolation: typeof worktree) => void;
+    ipc.commands.isolateSession.mockReturnValue(new Promise((done) => (made = done)));
+    const sending = send({ message: { text: "Hola", files: [], images: [] }, shownFiles: [], pictures: [] }, SETTINGS);
+    await act(() => new Promise((done) => setTimeout(done, 0)));
+    act(() => blank("s2"));
+    made(worktree);
+    await act(() => sending);
+
+    expect(ipc.commands.chatSend).toHaveBeenCalledWith("C:/demo", "s1", expect.anything(), SETTINGS);
+    expect(focused().desk.getState()).toMatchObject({ session: "s2", worktree: null });
+  });
+
+  it("stays in the project folder when not asked, or outside a repository", async () => {
+    focused().desk.setState({ isolate: false, repo });
+    await act(hola);
+    blank("");
+    focused().desk.setState({ isolate: true, repo: null });
+    await act(hola);
+    expect(ipc.commands.isolateSession).not.toHaveBeenCalled();
+  });
+
+  it("comes back with a saved session, which never asks for another", async () => {
+    focused().desk.setState({ isolate: true, repo });
+    ipc.commands.replay.mockResolvedValue([]);
+    ipc.commands.replay.mockResolvedValueOnce([
+      { kind: "opened", at: 0, root: "C:/demo" },
+      { kind: "isolated", at: 1, ...worktree },
+      { kind: "task", at: 2, text: "a", files: [], images: [] },
+    ] satisfies SessionEntry[]);
+    ipc.commands.chatBusy.mockResolvedValue(false);
+    ipc.commands.chatTasks.mockResolvedValue([]);
+    await act(async () => load("s7"));
+
+    expect(focused().desk.getState()).toMatchObject({ worktree, isolate: false });
+    expect(project.getState().work).toBe(worktree.path);
+    await act(async () => load("s8"));
+    expect(focused().desk.getState().worktree).toBeNull();
+  });
+});
+
+describe("how full the context is", () => {
+  const finished = (context: number | undefined, window: number | undefined): ChatEvent => ({ kind: "finished", ok: true, stopped: false, millis: 1, turns: 1, tokensIn: 1, tokensOut: 1, context, window, error: "" });
+
+  it("follows each turn that says it, and forgets it with a new session", async () => {
+    render(<Thread />);
+    await act(async () => send({ message: { text: "Hola", files: [], images: [] }, shownFiles: [], pictures: [] }, SETTINGS));
+    tell(finished(52_000, 200_000));
+    expect(focused().chat.getState().context).toEqual({ used: 52_000, window: 200_000 });
+    tell(finished(undefined, undefined));
+    expect(focused().chat.getState().context).toEqual({ used: 52_000, window: 200_000 });
+    blank("");
+    expect(focused().chat.getState().context).toBeNull();
+  });
+
+  it("comes back with a saved session, from its last turn", async () => {
+    ipc.commands.replay.mockResolvedValue([
+      { kind: "task", at: 1, text: "a", files: [], images: [] },
+      { kind: "agent", at: 2, event: finished(10_000, 200_000) },
+      { kind: "task", at: 3, text: "b", files: [], images: [] },
+      { kind: "agent", at: 4, event: finished(90_000, 1_000_000) },
+    ] satisfies SessionEntry[]);
+    ipc.commands.chatBusy.mockResolvedValue(false);
+    ipc.commands.chatTasks.mockResolvedValue([]);
+    await act(async () => load("s7"));
+    expect(focused().chat.getState().context).toEqual({ used: 90_000, window: 1_000_000 });
+  });
+
+  it("marks a compaction in the reply, saying whether Claude Code chose it", () => {
+    const reply = heard(opening(), { kind: "compacted", before: 154_000, auto: true }, true);
+    expect(reply.parts).toMatchObject([{ kind: "note", text: "Claude Code compactó la conversación · tenía 154k tokens" }]);
+    expect(heard(opening(), { kind: "compacted", before: 0, auto: false }, true).parts).toMatchObject([{ kind: "note", text: "Conversación compactada" }]);
   });
 });
 

@@ -41,7 +41,7 @@ beforeEach(() => {
   document.body.append(header);
   changes.setState(changes.getInitialState(), true);
   forgetTasks();
-  project.setState({ root: "C:/demo", session: "s1" });
+  project.setState({ root: "C:/demo", work: "C:/demo", session: "s1" });
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.changes.mockResolvedValue({ diff: DIFF, fresh: ["notes.md"] });
   ipc.commands.openFile.mockResolvedValue({ kind: "text", text: "a\nb\nc" });

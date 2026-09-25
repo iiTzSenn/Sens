@@ -36,6 +36,19 @@ pub enum Entry {
         title: String,
         by: Namer,
     },
+    Isolated {
+        at: u64,
+        path: String,
+        branch: String,
+        base: String,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct Isolation {
+    pub path: String,
+    pub branch: String,
+    pub base: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
@@ -245,6 +258,39 @@ pub fn read(root: &Path, id: &str) -> Vec<Entry> {
         .collect()
 }
 
+pub fn isolation(root: &Path, id: &str) -> Option<Isolation> {
+    let file = std::fs::File::open(located(root, id)?).ok()?;
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        match serde_json::from_str::<Entry>(&line) {
+            Ok(Entry::Isolated { path, branch, base, .. }) => return Some(Isolation { path, branch, base }),
+            Ok(Entry::Task { .. }) => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+pub fn has_tasks(root: &Path, id: &str) -> bool {
+    read(root, id).iter().any(|entry| matches!(entry, Entry::Task { .. }))
+}
+
+pub fn isolate(root: &Path, id: &str, isolation: &Isolation) -> Result<(), String> {
+    named(id)?;
+    if has_tasks(root, id) {
+        return Err("esta sesión ya empezó: su carpeta de trabajo no puede cambiar".into());
+    }
+    append(
+        root,
+        id,
+        &Entry::Isolated {
+            at: now(),
+            path: isolation.path.clone(),
+            branch: isolation.branch.clone(),
+            base: isolation.base.clone(),
+        },
+    )
+}
+
 pub fn has_begun(root: &Path, id: &str) -> bool {
     read(root, id).iter().any(|entry| {
         matches!(
@@ -335,7 +381,7 @@ pub fn summarize(id: &str, entries: &[Entry]) -> Summary {
                 summary.tasks += 1;
             }
             Entry::Titled { title, .. } => named = Some(title.clone()),
-            Entry::Agent { .. } => {}
+            Entry::Agent { .. } | Entry::Isolated { .. } => {}
         }
     }
 
@@ -371,6 +417,44 @@ mod tests {
 
     fn said(at: u64, text: &str) -> Entry {
         Entry::Agent { at, event: Event::Said { text: text.into() } }
+    }
+
+    fn isolated() -> Isolation {
+        Isolation { path: "C:/p/.sens/worktrees/ab12cd34".into(), branch: "sens/ab12cd34".into(), base: "main".into() }
+    }
+
+    #[test]
+    fn a_session_is_isolated_before_its_first_message_and_remembers_where() {
+        let root = temp_root("isolate");
+        let id = open(&root).unwrap();
+        assert_eq!(isolation(&root, &id), None);
+
+        isolate(&root, &id, &isolated()).unwrap();
+        append(&root, &id, &task(5, "hola")).unwrap();
+
+        assert_eq!(isolation(&root, &id), Some(isolated()));
+        assert_eq!(summarize(&id, &read(&root, &id)).title, "hola");
+    }
+
+    #[test]
+    fn a_session_that_began_keeps_its_folder() {
+        let root = temp_root("isolate-late");
+        let id = open(&root).unwrap();
+        append(&root, &id, &task(5, "hola")).unwrap();
+
+        assert!(isolate(&root, &id, &isolated()).is_err());
+        assert_eq!(isolation(&root, &id), None);
+        assert!(isolate(&root, "../fuera", &isolated()).is_err());
+    }
+
+    #[test]
+    fn an_archived_session_still_knows_its_folder() {
+        let root = temp_root("isolate-archived");
+        let id = open(&root).unwrap();
+        isolate(&root, &id, &isolated()).unwrap();
+        archive(&root, &id, true).unwrap();
+
+        assert_eq!(isolation(&root, &id), Some(isolated()));
     }
 
     #[test]

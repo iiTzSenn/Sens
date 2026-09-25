@@ -9,8 +9,9 @@ import { useSheet, type Sheet } from "../../shared/useSheet";
 import { halt } from "../chat/store";
 import { useIds, usePane } from "../panes/context";
 import { panes } from "../panes/store";
-import { Effort, ModelPicker, ModePicker, Think } from "./Knobs";
-import { attachPaths, canSend, composer, dropFile, dropPicture, fileLabel, send, switchTo, takePictures, warm } from "./store";
+import { ContextMeter, Effort, ModelPicker, ModePicker, Think } from "./Knobs";
+import { Suggestions, useSuggestions } from "./Suggestions";
+import { attachPaths, canSend, composer, dropFile, dropPicture, fileLabel, send, switchTo, takePictures, toggleIsolate, warm, writeMessage } from "./store";
 
 // Where you write to Claude: the folder and branch, what goes attached, the
 // message, and the knobs of the next turn under it.
@@ -27,6 +28,7 @@ export function Composer() {
             <ModePicker />
           </div>
           <div className="knobs-right">
+            <ContextMeter />
             <Think />
             <Effort />
           </div>
@@ -68,7 +70,34 @@ function Workspace() {
         </button>
       )}
       {repo && <Branches sheet={sheet} />}
+      <WorktreeChip />
     </div>
+  );
+}
+
+const ISOLATE_HELP = "Trabaja en una copia aparte del repositorio, en una rama nueva: lo que haga Claude no toca tu carpeta hasta que lo fusiones.";
+
+function WorktreeChip() {
+  const pane = usePane();
+  const id = useIds();
+  const repo = useStore(pane.desk, (s) => Boolean(s.repo));
+  const session = useStore(pane.desk, (s) => s.session);
+  const worktree = useStore(pane.desk, (s) => s.worktree);
+  const isolate = useStore(pane.desk, (s) => s.isolate);
+  const busy = useStore(pane.chat, (s) => s.busy);
+  if (worktree)
+    return (
+      <span className="chipbtn worktree-chip" id={id("worktree")} title={`Trabaja en un worktree aparte, en la rama ${worktree.branch} (creada desde ${worktree.base}): ${worktree.path}`}>
+        <Icon svg={ICONS.fork} />
+        <span>worktree</span>
+      </span>
+    );
+  if (!repo || session) return null;
+  return (
+    <button className="chipbtn" id={id("isolate")} aria-pressed={isolate} disabled={busy} title={ISOLATE_HELP} onClick={() => toggleIsolate(pane)}>
+      <Icon svg={ICONS.fork} />
+      <span>Worktree</span>
+    </button>
   );
 }
 
@@ -153,11 +182,13 @@ function Box() {
   const provider = useStore(pane.desk, (s) => s.choice.provider);
   const here = useStore(panes, (s) => s.focus === pane.id);
   const dropping = useStore(composer, (s) => s.dropping) && here;
-  const [text, setText] = useState("");
+  const text = useStore(pane.desk, (s) => s.text);
+  const setText = (next: string) => writeMessage(next, pane);
   const field = useRef<HTMLTextAreaElement>(null);
   const grown = useRef(0);
   const lap = useLap(busy);
   const dictation = useDictation(text, setText, field);
+  const suggest = useSuggestions(pane, text, field, id("suggest"));
 
   useLayoutEffect(() => {
     const box = field.current;
@@ -186,6 +217,7 @@ function Box() {
 
   return (
     <div className="box" data-busy={String(busy)} data-stopping={String(stopping)} data-drop={dropping ? "true" : undefined} style={lap.style} onAnimationIteration={lap.next}>
+      <Suggestions suggest={suggest} />
       <button
         className="round"
         id={id("attach")}
@@ -214,16 +246,25 @@ function Box() {
         ref={field}
         id={id("task")}
         rows={1}
-        placeholder="Pide lo que necesites…"
+        placeholder="Pide lo que necesites · @ para un fichero, / para un comando"
         aria-label="Mensaje para Claude"
+        aria-autocomplete="list"
+        aria-expanded={suggest.open}
+        aria-controls={suggest.open ? suggest.listId : undefined}
+        aria-activedescendant={suggest.open ? suggest.optionId(suggest.active) : undefined}
         autoComplete="off"
         disabled={!root}
         value={text}
         onChange={(event) => {
           setText(event.target.value);
+          suggest.follow(event);
           warm(pane);
         }}
+        onSelect={suggest.follow}
+        onFocus={suggest.focus}
+        onBlur={suggest.blur}
         onKeyDown={(event) => {
+          if (suggest.keyDown(event)) return;
           if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
           event.preventDefault();
           go();

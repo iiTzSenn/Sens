@@ -145,7 +145,7 @@ function TodoList({ todos = [] }: { todos?: Todo[] }) {
 // `path:line:text` lines open the file; anything that looks like a path does too.
 function Results({ lines }: { lines: string[] }) {
   const [all, setAll] = useState(false);
-  const root = project.getState().root;
+  const root = project.getState().work;
   return (
     <div className="results">
       {(all ? lines : lines.slice(0, RESULT_CAP)).map((line, at) => {

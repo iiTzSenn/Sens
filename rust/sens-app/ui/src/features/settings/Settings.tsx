@@ -7,6 +7,7 @@ import { ACCENTS, MODES, look, type Look } from "../../shared/look";
 import { AccentPicker, ModePicker } from "../../shared/LookPicker";
 import { Mark } from "../../shared/Mark";
 import { chooseLook } from "../look/store";
+import { setNotices } from "../notify/store";
 import { profile, saveProfileName } from "../profile/store";
 import { checkUpdates, setAutomatic, updateState, updates } from "../updates/store";
 import { openUpdate } from "../updates/UpdatePanel";
@@ -200,6 +201,7 @@ function GeneralSection() {
         </p>
       </div>
       <UpdatesBlock />
+      <NoticesBlock />
       <WelcomeBlock />
     </>
   );
@@ -259,6 +261,33 @@ function UpdatesBlock() {
         </button>
       </div>
       <UpdateSwitch />
+    </div>
+  );
+}
+
+function NoticesBlock() {
+  const on = useStore(profile, (s) => s.person.notify !== false);
+  const [fault, setFault] = useState("");
+
+  async function flip() {
+    setFault("");
+    try {
+      await setNotices(!on);
+    } catch (reason) {
+      setFault(String(reason));
+    }
+  }
+
+  return (
+    <div className="pair">
+      <span className="label">Avisos</span>
+      <div className="settings-switch">
+        <button className="switch" id="settings-notify" role="switch" aria-checked={on} onClick={flip} />
+        <label htmlFor="settings-notify">Avisar cuando Claude termina o te necesita y Sens no está delante</label>
+      </div>
+      <p className="note fault" role="alert" hidden={!fault}>
+        {fault}
+      </p>
     </div>
   );
 }

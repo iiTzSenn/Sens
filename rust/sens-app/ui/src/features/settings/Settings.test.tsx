@@ -17,6 +17,7 @@ const ipc = vi.hoisted(() => ({
     profile: vi.fn(),
     saveProfile: vi.fn(),
     setUpdateCheck: vi.fn(),
+    setNotify: vi.fn(),
     updateCheck: vi.fn(),
     providersState: vi.fn(),
     setProviderMethod: vi.fn(),
@@ -100,7 +101,7 @@ afterEach(cleanup);
 
 describe("general settings", () => {
   it("saves the name and reloads the profile the rail footer paints from", async () => {
-    profile.setState({ person: { name: "Demo", checkUpdates: true, welcomed: true, seen: "" } });
+    profile.setState({ person: { name: "Demo", checkUpdates: true, welcomed: true, seen: "", notify: true } });
     ipc.commands.profile.mockResolvedValue({ name: "Nuevo", checkUpdates: true });
     await open("general");
 
@@ -124,10 +125,25 @@ describe("general settings", () => {
   it("puts the switch back when the preference cannot be saved", async () => {
     ipc.commands.setUpdateCheck.mockRejectedValue("sin permiso");
     await open("general");
-    const toggle = screen.getByRole("switch");
+    const toggle = screen.getByRole("switch", { name: "Buscar al abrir Sens" });
     expect(toggle.getAttribute("aria-checked")).toBe("true");
     await act(async () => fireEvent.click(toggle));
     expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("alert").textContent).toBe("sin permiso");
+  });
+
+  it("switches the notices off, and keeps them on when that cannot be saved", async () => {
+    profile.setState({ person: { name: "Demo", checkUpdates: true, welcomed: true, seen: "", notify: true } });
+    await open("general");
+    const toggle = screen.getByRole("switch", { name: /Avisar cuando Claude termina/ });
+    await act(async () => fireEvent.click(toggle));
+    expect(ipc.commands.setNotify).toHaveBeenCalledWith(false);
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(profile.getState().person.notify).toBe(false);
+
+    ipc.commands.setNotify.mockRejectedValue("sin permiso");
+    await act(async () => fireEvent.click(toggle));
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
     expect(screen.getByRole("alert").textContent).toBe("sin permiso");
   });
 

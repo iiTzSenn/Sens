@@ -63,20 +63,36 @@ pub fn changes(root: &Path) -> Option<Changes> {
 }
 
 pub fn checkout(root: &Path, branch: &str) -> Result<Repo, String> {
-    let done = git(root, &["checkout", branch])
-        .output()
-        .map_err(|error| format!("no pude lanzar git: {error}"))?;
-
-    if !done.status.success() {
-        let said = String::from_utf8_lossy(&done.stderr).trim().to_string();
-        return Err(if said.is_empty() {
-            format!("git no pudo cambiar a {branch}")
-        } else {
-            said
-        });
-    }
-
+    ran(git(root, &["checkout", branch]), &format!("git no pudo cambiar a {branch}"))?;
     read(root).ok_or_else(|| format!("{branch} dejó de leerse como repositorio"))
+}
+
+pub fn add_worktree(root: &Path, path: &Path, branch: &str) -> Result<String, String> {
+    let head = say(root, &["rev-parse", "--short", "--verify", "--quiet", "HEAD"]).ok_or("el proyecto no tiene ningún commit del que partir")?;
+    let base = say(root, &["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or(head);
+    ran(git(root, &["worktree", "add", "-b", branch, &path.to_string_lossy(), "HEAD"]), "git no pudo crear el worktree")?;
+    Ok(base)
+}
+
+pub fn remove_worktree(root: &Path, path: &Path) -> Result<(), String> {
+    ran(git(root, &["worktree", "remove", &path.to_string_lossy()]), "git no pudo quitar el worktree")
+}
+
+pub fn delete_branch(root: &Path, branch: &str) -> Result<(), String> {
+    ran(git(root, &["branch", "-D", branch]), &format!("git no pudo borrar la rama {branch}"))
+}
+
+pub fn dirty(root: &Path) -> bool {
+    say(root, &["status", "--porcelain"]).is_some_and(|listed| !listed.is_empty())
+}
+
+fn ran(mut command: Command, failed: &str) -> Result<(), String> {
+    let done = command.output().map_err(|error| format!("no pude lanzar git: {error}"))?;
+    if done.status.success() {
+        return Ok(());
+    }
+    let said = String::from_utf8_lossy(&done.stderr).trim().to_string();
+    Err(if said.is_empty() { failed.to_string() } else { said })
 }
 
 fn git(root: &Path, args: &[&str]) -> Command {

@@ -5,7 +5,7 @@ import type { Profile } from "../../ipc/types";
 // Who uses Sens: the rail footer paints it, settings edits it, and updates
 // read whether to check on their own.
 export const profile = createStore<{ person: Profile; fault: string }>(() => ({
-  person: { name: "", checkUpdates: true, welcomed: true, seen: "" },
+  person: { name: "", checkUpdates: true, welcomed: true, seen: "", notify: true },
   fault: "",
 }));
 

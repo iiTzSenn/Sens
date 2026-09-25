@@ -13,7 +13,7 @@ export const changes = createStore(() => ({
 }));
 
 const set = changes.setState;
-const home = () => project.getState().root;
+const home = () => project.getState().work;
 
 // Each read supersedes the ones before it.
 let lap = 0;

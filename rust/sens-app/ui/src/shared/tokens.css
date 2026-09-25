@@ -145,6 +145,9 @@
     --green: var(--sens-success);
     --amber: var(--sens-warning);
     --blue: var(--sens-info);
+    --ansi-black: var(--sens-carbon-600);
+    --ansi-magenta: var(--sens-lang-iris);
+    --ansi-cyan: var(--sens-ice-600);
     --scrim: color-mix(in srgb, var(--sens-carbon-950) 72%, transparent);
 
     --primary: var(--sens-bone-50);
@@ -189,6 +192,9 @@
     --green: var(--sens-success-700);
     --amber: var(--sens-warning-700);
     --blue: var(--sens-info-700);
+    --ansi-black: var(--sens-carbon-950);
+    --ansi-magenta: var(--sens-iris-800);
+    --ansi-cyan: var(--sens-ice-800);
     --scrim: color-mix(in srgb, var(--sens-carbon-950) 28%, transparent);
 
     --primary: var(--sens-carbon-900);

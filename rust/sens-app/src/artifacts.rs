@@ -311,12 +311,12 @@ fn attached(root: &Path, given: &str) -> Result<Attached, String> {
     })
 }
 
-pub fn keep_file(root: &Path, session: &str, given: &str) -> Result<String, String> {
+pub fn keep_file(root: &Path, work: &Path, session: &str, given: &str) -> Result<String, String> {
     if !Path::new(given).is_absolute() {
         return Ok(given.to_string());
     }
     let full = Path::new(given).canonicalize().map_err(|_| format!("{given} ya no existe"))?;
-    if let Some(inside) = within(root, &full) {
+    if let Some(inside) = within(work, &full) {
         return Ok(inside);
     }
     let size = full.metadata().map_err(|error| format!("no pude leer {given}: {error}"))?.len();
@@ -330,7 +330,11 @@ pub fn keep_file(root: &Path, session: &str, given: &str) -> Result<String, Stri
     let target = unused(&folder, &original);
     std::fs::copy(&full, &target).map_err(|error| format!("no pude copiar {given}: {error}"))?;
     let name = target.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-    Ok(format!(".sens/artifacts/{session}/{name}"))
+    let kept = format!(".sens/artifacts/{session}/{name}");
+    Ok(match work == root {
+        true => kept,
+        false => slashed(&root.join(kept)),
+    })
 }
 
 fn unused(folder: &Path, original: &str) -> PathBuf {
@@ -792,15 +796,32 @@ mod tests {
         put(&elsewhere.join("notas.md"), b"hola");
         put(&root.join("src").join("a.rs"), b"x");
 
-        let first = keep_file(&root, "s1", &full(&elsewhere.join("notas.md"))).unwrap();
-        let second = keep_file(&root, "s1", &full(&elsewhere.join("notas.md"))).unwrap();
+        let first = keep_file(&root, &root, "s1", &full(&elsewhere.join("notas.md"))).unwrap();
+        let second = keep_file(&root, &root, "s1", &full(&elsewhere.join("notas.md"))).unwrap();
 
         assert_eq!(first, ".sens/artifacts/s1/notas.md");
         assert_eq!(second, ".sens/artifacts/s1/notas-1.md");
         assert_eq!(std::fs::read(root.join(&second)).unwrap(), b"hola");
-        assert_eq!(keep_file(&root, "s1", "src/a.rs").unwrap(), "src/a.rs");
-        assert_eq!(keep_file(&root, "s1", &full(&root.join("src").join("a.rs"))).unwrap(), "src/a.rs");
-        assert!(keep_file(&root, "../fuera", &full(&elsewhere.join("notas.md"))).is_err());
+        assert_eq!(keep_file(&root, &root, "s1", "src/a.rs").unwrap(), "src/a.rs");
+        assert_eq!(keep_file(&root, &root, "s1", &full(&root.join("src").join("a.rs"))).unwrap(), "src/a.rs");
+        assert!(keep_file(&root, &root, "../fuera", &full(&elsewhere.join("notas.md"))).is_err());
+    }
+
+    #[test]
+    fn a_session_working_in_a_worktree_is_handed_paths_it_can_reach_from_there() {
+        let root = temp_root("keep-isolated");
+        let work = root.join(".sens").join("worktrees").join("ab12cd34");
+        let elsewhere = temp_root("keep-isolated-elsewhere");
+        put(&elsewhere.join("notas.md"), b"hola");
+        put(&work.join("src").join("a.rs"), b"x");
+        put(&root.join("src").join("b.rs"), b"y");
+
+        let copied = keep_file(&root, &work, "s1", &full(&elsewhere.join("notas.md"))).unwrap();
+
+        assert!(Path::new(&copied).is_absolute(), "{copied}");
+        assert_eq!(std::fs::read(&copied).unwrap(), b"hola");
+        assert_eq!(keep_file(&root, &work, "s1", &full(&work.join("src").join("a.rs"))).unwrap(), "src/a.rs");
+        assert!(Path::new(&keep_file(&root, &work, "s1", &full(&root.join("src").join("b.rs"))).unwrap()).is_absolute());
     }
 
     #[test]

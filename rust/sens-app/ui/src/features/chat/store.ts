@@ -3,10 +3,12 @@ import type { AgentEvent, ChatEvent, Decision, Message, SessionEntry, Settings }
 import { panelShows } from "../../app/shell";
 import { loadShelf } from "../artifacts/store";
 import { loadChanges, soonChanges } from "../changes/store";
+import { inFolder } from "../composer/suggest";
 import { loadFiles } from "../files/store";
 import { openFile, viewer } from "../files/view";
 import { modelName, noteLimits } from "../models/store";
-import { focused, paneOf, type Pane } from "../panes/store";
+import { tellAway } from "../notify/store";
+import { focused, isolating, paneOf, workOf, worktreePending, type Pane } from "../panes/store";
 import { noteEdit, project } from "../project/store";
 import { loadRail, nameSession, noteActivity, type Activity } from "../rail/store";
 import { forgetTasks, noteTask, settleTasks } from "../tasks/store";
@@ -42,7 +44,7 @@ function nextHint() {
 const session = (pane: Pane) => pane.desk.getState().session;
 const setSession = (pane: Pane, id: string) => pane.desk.setState({ session: id });
 const rootOf = (pane: Pane) => pane.desk.getState().root;
-const onScreen = (pane: Pane) => rootOf(pane) === project.getState().root;
+const onScreen = (pane: Pane) => workOf(pane) === project.getState().work;
 
 // The empty chat invites to start, or to pick a folder first.
 export const hello = (pane: Pane = focused()) => pane.chat.setState({ hint: rootOf(pane) ? nextHint() : NO_ROOT });
@@ -74,13 +76,13 @@ export function idle(on: boolean, pane: Pane = focused()) {
 
 // A new session, empty: it gets its id once the first message goes.
 export function blank(id: string, pane: Pane = focused()) {
-  setSession(pane, id);
+  pane.desk.setState({ session: id, worktree: null, isolate: !id && isolating() });
   pane.named = "";
   pane.replying = null;
   pane.pendingId = null;
   pane.warmed = "";
   pane.reading = null;
-  pane.chat.setState({ turns: [] });
+  pane.chat.setState({ turns: [], context: null });
   forgetTasks(id);
 }
 
@@ -96,6 +98,7 @@ function touched(edit: { path: string; lines: number[]; plus: number; minus: num
 // One event on the reply it goes to, and what the live line says of it.
 function route(pane: Pane, key: number, event: ChatEvent, live: boolean) {
   onReply(pane, key, (reply) => heard(reply, event, live));
+  if (event.kind === "finished" && event.window) pane.chat.setState({ context: { used: event.context ?? 0, window: event.window } });
   if (event.kind === "started") {
     const who = nameOf(pane, event.model);
     if (who) onReply(pane, key, (reply) => ({ ...reply, who }));
@@ -130,7 +133,7 @@ function working(event: ChatEvent) {
   }
 }
 
-const inRoot = (pane: Pane, path: string) => `${rootOf(pane).replace(/[\\/]+$/, "")}/${path}`;
+const inRoot = (pane: Pane, path: string) => inFolder(rootOf(pane), path);
 
 // A saved session drawn back as it went. A question still waiting when the
 // session is still running can be answered.
@@ -141,6 +144,8 @@ export async function load(id: string, pane: Pane = focused()) {
   const root = rootOf(pane);
   const [entries, running, alive] = await Promise.all([commands.replay(root, id), commands.chatBusy(id), commands.chatTasks(id)]);
   if (pane.reading !== meanwhile) return;
+  const isolated = entries.find((entry) => entry.kind === "isolated");
+  if (isolated) pane.desk.setState({ worktree: { path: isolated.path, branch: isolated.branch, base: isolated.base } });
   const answeredOnes = new Set(entries.flatMap((entry) => (entry.kind === "agent" && entry.event.kind === "answered" ? [entry.event.request] : [])));
 
   pane.chat.setState({ replaying: true });
@@ -213,15 +218,32 @@ export async function send({ message, shownFiles, pictures }: Outgoing, settings
   onReply(pane, pane.replying, (reply) => ({ ...reply, working: "Enviando…" }));
   idle(false, pane);
   try {
-    if (!session(pane)) setSession(pane, await commands.openSession(root, pane.pendingId ? await pane.pendingId : null));
+    const id = session(pane) || (await commands.openSession(root, pane.pendingId ? await pane.pendingId : null));
+    if (!session(pane)) setSession(pane, id);
     pane.pendingId = null;
-    await commands.chatSend(root, session(pane), message, settings);
+    const outgoing = await isolateIfAsked(pane, id, message);
+    await commands.chatSend(root, id, outgoing, settings);
     loadRail();
   } catch (reason) {
-    onReply(pane, pane.replying, (reply) => heard(reply, { kind: "failed", reason: String(reason) }, false));
+    onReply(pane, pane.replying, (reply) => heard(reply, { kind: "failed", reason: reason instanceof Error ? reason.message : String(reason) }, false));
     pane.replying = null;
     idle(true, pane);
   }
+}
+
+const ABSOLUTE = /^([a-z]:)?[\\/]/i;
+
+async function isolateIfAsked(pane: Pane, id: string, message: Message): Promise<Message> {
+  if (!worktreePending(pane)) return message;
+  const still = () => session(pane) === id;
+  try {
+    const worktree = await commands.isolateSession(rootOf(pane), id);
+    if (still()) pane.desk.setState({ worktree });
+  } catch (reason) {
+    if (still()) pane.desk.setState({ isolate: false });
+    throw new Error(`No pude crear el worktree: ${reason}. Si vuelves a enviar, Claude trabajará en la carpeta del proyecto.`);
+  }
+  return { ...message, files: message.files.map((file) => (ABSOLUTE.test(file) ? file : inRoot(pane, file))) };
 }
 
 export async function halt(pane: Pane = focused()) {
@@ -247,7 +269,10 @@ export async function warm(settings: Settings, pane: Pane = focused()) {
     const key = JSON.stringify([root, id, settings]);
     if (key === pane.warmed) return;
     pane.warmed = key;
-    await commands.chatWarm(root, id, settings);
+    const slashes = await commands.chatWarm(root, id, settings);
+    if (pane.warmed !== key) return;
+    if (slashes.length) pane.desk.setState({ slashes });
+    else pane.warmed = "";
   } catch {
     pane.warmed = "";
   }
@@ -291,6 +316,7 @@ const activityAfter = (kind: string, seen: boolean): Activity | null =>
 export const hearChat = () =>
   events.chat((from, event) => {
     if (event.kind === "limits") return noteLimits(event.windows);
+    tellAway(from, event);
     const pane = paneOf(from);
     if (!TASK_EVENTS.has(event.kind)) noteActivity(from, activityAfter(event.kind, Boolean(pane)));
     if (CLOSING.has(event.kind)) nameSession(from);

@@ -21,7 +21,7 @@ const TREE: Record<string, Entry[]> = {
 
 beforeEach(() => {
   files.setState(files.getInitialState(), true);
-  project.setState({ root: "C:/demo", touched: new Map() });
+  project.setState({ root: "C:/demo", work: "C:/demo", touched: new Map() });
   viewer.setState(viewer.getInitialState(), true);
   forgetTree();
   ipc.commands.folder.mockReset().mockImplementation(async (_root: string, path: string) => TREE[path] ?? []);
@@ -114,7 +114,7 @@ describe("file tree", () => {
     await open();
     expect(screen.getByRole("alert").textContent).toBe("sin permiso");
     cleanup();
-    act(() => project.setState({ root: "" }));
+    act(() => project.setState({ root: "", work: "" }));
     render(<Tree />);
     expect(screen.getByText("Sin carpeta.")).toBeTruthy();
   });

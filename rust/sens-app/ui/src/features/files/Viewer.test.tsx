@@ -26,7 +26,7 @@ let modes: HTMLElement;
 beforeEach(() => {
   head = document.body.appendChild(document.createElement("div"));
   modes = document.body.appendChild(document.createElement("div"));
-  project.setState({ root: "C:/demo", touched: new Map() });
+  project.setState({ root: "C:/demo", work: "C:/demo", touched: new Map() });
   viewer.setState(viewer.getInitialState(), true);
   ipc.commands.openFile.mockReset().mockImplementation(async (_root: string, path: string) => text(FILES[path]));
   Element.prototype.scrollIntoView = vi.fn();

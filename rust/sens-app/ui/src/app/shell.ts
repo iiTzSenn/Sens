@@ -4,7 +4,7 @@ import { store, stored } from "../shared/storage.js";
 const RAIL_CLOSED = "sens.rail.closed";
 const SIZES = "sens.sizes";
 
-export type Tool = "files" | "changes" | "web" | "tasks";
+export type Tool = "files" | "changes" | "web" | "terminal" | "tasks";
 
 // Narrower than this, the rail, the chat and the tool panel do not fit side by
 // side at their least (180 + 360 + 320 px, as styles.css clamps them).

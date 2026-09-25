@@ -50,7 +50,7 @@ export function present(title: string, text: string, home: string, opened = "") 
 // Reads a project file into the panel. Opening again the file on screen keeps
 // it as code if it was read as code.
 export async function openFile(path: string) {
-  const { root } = project.getState();
+  const { work: root } = project.getState();
   const { opened, mode, body: before } = viewer.getState();
   const mine = ++reads;
   revealFile(path);

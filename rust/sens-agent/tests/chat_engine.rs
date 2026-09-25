@@ -60,6 +60,7 @@ fn kinds(root: &Path, id: &str) -> Vec<String> {
             Entry::Opened { .. } => "opened".to_string(),
             Entry::Task { .. } => "task".to_string(),
             Entry::Titled { .. } => "titled".to_string(),
+            Entry::Isolated { .. } => "isolated".to_string(),
             Entry::Agent { event, .. } => serde_json::to_value(event).unwrap()["kind"].as_str().unwrap().to_string(),
         })
         .collect()
@@ -251,6 +252,79 @@ fn warming_a_session_first_changes_nothing_about_how_it_starts() {
     assert!(launched.contains(&format!("--session-id {id}")), "{launched}");
     assert_eq!(heard.lock().unwrap().iter().filter(|event| matches!(event, Event::Started { .. })).count(), 1);
     engine.shutdown();
+}
+
+#[test]
+fn warming_hands_back_the_commands_claude_code_offers() {
+    let root = project("offered");
+    let id = session::fresh_id();
+    let engine = engine();
+    let (_, sink) = ear();
+
+    let first = engine.warm(&root, &id, settings(), sink.clone()).unwrap();
+    let again = engine.warm(&root, &id, settings(), sink).unwrap();
+
+    assert_eq!(first.iter().map(|one| one.name.as_str()).collect::<Vec<_>>(), ["compact", "frontend-design"]);
+    assert_eq!(first, again);
+    engine.shutdown();
+}
+
+#[test]
+fn a_turn_ends_saying_how_full_the_context_is_and_a_compaction_leaves_it_unknown() {
+    let root = project("context");
+    let id = session::open(&root).unwrap();
+    let engine = engine();
+    let (heard, sink) = ear();
+
+    engine.send(&root, &id, &text("hola"), settings(), sink.clone()).unwrap();
+    let done = wait_for(&heard, finished);
+    assert!(matches!(done, Event::Finished { context: 10, window: 200_000, .. }), "{done:?}");
+
+    heard.lock().unwrap().clear();
+    engine.send(&root, &id, &text("/compact"), settings(), sink).unwrap();
+    let done = wait_for(&heard, finished);
+    assert!(matches!(done, Event::Finished { context: 0, window: 200_000, .. }), "{done:?}");
+    assert!(heard.lock().unwrap().contains(&Event::Compacted { before: 9000, auto: false }));
+    assert!(kinds(&root, &id).contains(&"compacted".to_string()));
+    engine.shutdown();
+}
+
+#[test]
+fn a_session_with_a_folder_of_its_own_runs_claude_code_there() {
+    let root = project("isolated");
+    let work = root.join("otra-carpeta");
+    std::fs::create_dir_all(&work).unwrap();
+    let id = session::open(&root).unwrap();
+    let engine = engine();
+    let (heard, sink) = ear();
+
+    let away = Settings { cwd: Some(work.clone()), ..settings() };
+    engine.send(&root, &id, &text("hola"), away, sink).unwrap();
+    let Event::Started { model: launched } = wait_for(&heard, |event| matches!(event, Event::Started { .. })) else { unreachable!() };
+    wait_for(&heard, finished);
+
+    assert!(launched.ends_with(&format!("@ {}", work.display())), "{launched}");
+    assert!(kinds(&root, &id).contains(&"finished".to_string()));
+    engine.shutdown();
+}
+
+#[test]
+fn a_forgotten_session_stops_at_once_and_writes_nothing_more() {
+    let root = project("forget");
+    let id = session::open(&root).unwrap();
+    let engine = engine();
+    let (heard, sink) = ear();
+
+    engine.send(&root, &id, &text("lento"), settings(), sink).unwrap();
+    wait_for(&heard, |event| matches!(event, Event::Delta { .. }));
+    let written = kinds(&root, &id);
+    engine.forget(&id);
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    assert!(!engine.busy(&id));
+    assert_eq!(kinds(&root, &id), written);
+    assert!(!heard.lock().unwrap().iter().any(|event| matches!(event, Event::Failed { .. } | Event::Finished { .. })));
+    engine.forget(&id);
 }
 
 #[test]

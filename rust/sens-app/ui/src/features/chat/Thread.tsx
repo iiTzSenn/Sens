@@ -165,6 +165,12 @@ const Reply = memo(function Reply({ turn }: { turn: ReplyTurn }) {
               );
             case "foot":
               return <Foot key={part.key} text={part.text} />;
+            case "note":
+              return (
+                <p key={part.key} className="reply-note">
+                  {part.text}
+                </p>
+              );
           }
         })}
       </div>

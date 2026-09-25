@@ -11,7 +11,7 @@ const now = Date.now();
 const HOUR = 3_600_000;
 const ROOT = "C:/Proyectos/demo";
 const asking = new URLSearchParams(location.search);
-const person = { name: "Demo", checkUpdates: false, welcomed: !asking.has("welcome"), seen: "" };
+const person = { name: "Demo", checkUpdates: false, welcomed: !asking.has("welcome"), seen: "", notify: true };
 const LOOK = "sens.dev.look";
 const asked = new URLSearchParams(location.search).get("look")?.split(".");
 const kept = asked ? { mode: asked[0], accent: asked[1] } : stored(LOOK, null);
@@ -72,6 +72,43 @@ const found: Found = {
 };
 
 const pause = (millis: number) => new Promise((done) => setTimeout(done, millis));
+
+const shells = new Map<number, { root: string; line: string }>();
+let shellsMade = 0;
+const promptOf = (root: string) => `PS ${(root || "C:/Users/demo").replaceAll("/", "\\")}> `;
+const said = (id: number, data: string) => emit("terminal", { kind: "out", id, data });
+
+function openShell(root: string) {
+  const id = ++shellsMade;
+  shells.set(id, { root, line: "" });
+  setTimeout(() => said(id, `Terminal simulada: la de verdad solo existe dentro de la app.\r\n\r\n${promptOf(root)}`), 60);
+  return { id, shell: "pwsh" };
+}
+
+function endShell(id: number, code: number) {
+  if (!shells.delete(id)) return;
+  setTimeout(() => emit("terminal", { kind: "ended", id, code }), 30);
+}
+
+function typeInShell(id: number, data: string) {
+  const one = shells.get(id);
+  if (!one) throw "esa terminal ya se cerró";
+  for (const key of data) {
+    if (key === "\r") {
+      const line = one.line.trim();
+      one.line = "";
+      if (line === "exit") return endShell(id, 0);
+      said(id, `\r\n${line ? `\x1b[31m${line}: no existe en la terminal simulada.\x1b[0m\r\n` : ""}${promptOf(one.root)}`);
+    } else if (key === "\x7f") {
+      if (!one.line) continue;
+      one.line = one.line.slice(0, -1);
+      said(id, "\b \b");
+    } else if (key >= " ") {
+      one.line += key;
+      said(id, key);
+    }
+  }
+}
 
 async function adopt(roots: string[]) {
   const chosen = found.projects.filter((one) => roots.includes(one.root));
@@ -320,7 +357,7 @@ const REPLAY = [
       FENCE,
     ].join("\n"),
   }),
-  agent({ kind: "finished", millis: 4200, tokensOut: 812 }),
+  agent({ kind: "finished", millis: 4200, tokensOut: 812, context: 148_300, window: 200_000 }),
 ];
 
 // Two projects whose sessions can be renamed, archived and deleted.
@@ -356,6 +393,18 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   last_project: () => ROOT,
   trust_project: ({ root, trusted: sure }) => void (sure ? trusted.add(String(root)) : trusted.delete(String(root))),
   project_trusted: ({ root }) => trusted.has(String(root)),
+  repo: ({ root }) => ({ branch: String(root).includes("/.sens/worktrees/") ? `sens/${String(root).split("/").pop()}` : "main", detached: false, dirty: 0, branches: ["main", "feat/ui"] }),
+  isolate_session: ({ id }) => {
+    const short = String(id).replace(/[^0-9a-f]/gi, "").slice(0, 8) || "demo0001";
+    return { path: `${ROOT}/.sens/worktrees/${short}`, branch: `sens/${short}`, base: "main" };
+  },
+  chat_warm: () => [
+    { name: "compact", description: "Clear conversation history but keep a summary in context", hint: "<optional custom summarization instructions>" },
+    { name: "context", description: "Show current context usage", hint: "" },
+    { name: "init", description: "Initialize a new CLAUDE.md file with codebase documentation", hint: "" },
+    { name: "review", description: "Review a pull request", hint: "[pr]" },
+    { name: "frontend-design", description: "Create distinctive, production-grade frontend interfaces (user)", hint: "" },
+  ],
   folder: ({ path }) => entries(String(path ?? "")),
   find_files: ({ needle }) =>
     Object.keys(FOLDERS)
@@ -388,6 +437,9 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
       emit("browser", { kind: "said", level: "error", text: "Uncaught ReferenceError: demo is not defined" });
     }, 400);
   },
+  terminal_open: ({ root }) => openShell(String(root ?? "")),
+  terminal_write: ({ id, data }) => typeInShell(Number(id), String(data)),
+  terminal_close: ({ id }) => endShell(Number(id), 1),
   preview_url: ({ path }) => `http://127.0.0.1:4321/demo/${String(path).split("/").pop()}`,
   artifact_text: ({ path }) => `# ${String(path).split("/").pop()}\n\nTexto de prueba.`,
   capabilities: () => structuredClone(caps),
@@ -436,6 +488,12 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   // A reply as the real one arrives: text in pieces, a command, the end.
   chat_send: ({ sessionId, message }) => {
     const session = String(sessionId);
+    if ((message as { text: string }).text.startsWith("/compact")) {
+      setTimeout(() => emit("chat", { session, event: { kind: "started", model: "demo-model" } }), 80);
+      setTimeout(() => emit("chat", { session, event: { kind: "compacted", before: 148_300, auto: false } }), 900);
+      setTimeout(() => emit("chat", { session, event: { kind: "finished", ok: true, stopped: false, millis: 900, turns: 1, tokensIn: 0, tokensOut: 0, context: 0, window: 200_000, error: "" } }), 1000);
+      return;
+    }
     const said = `Recibido: «${(message as { text: string }).text}». Te cuento lo que he mirado:\n\n- El **árbol** del proyecto\n- Los ficheros \`src/app.tsx\` y \`main.py\`\n\n${FENCE}ts\nconst listo = true;\n${FENCE}\n\nListo.`;
     const thought = "Miro primero cómo está montado el proyecto y qué ficheros toca la petición.";
     const events: [number, unknown][] = [[80, { kind: "started", model: "demo-model" }]];
@@ -450,7 +508,7 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
       [end + 2500, { kind: "toolDone", id: "run-1", output: "", error: false, detail: { stdout: "✓ 12 tests", stderr: "" } }],
       [end + 2600, { kind: "tool", id: "edit-1", name: "Edit", input: edit }],
       [end + 3000, { kind: "toolDone", id: "edit-1", output: "", error: false, detail: null }],
-      [end + 3100, { kind: "finished", ok: true, stopped: false, millis: 2400, turns: 1, tokensIn: 10, tokensOut: 180, error: "" }],
+      [end + 3100, { kind: "finished", ok: true, stopped: false, millis: 2400, turns: 1, tokensIn: 10, tokensOut: 180, context: 31_400, window: 200_000, error: "" }],
     );
     for (const [after, event] of events) setTimeout(() => emit("chat", { session, event }), after);
   },
@@ -491,6 +549,8 @@ const fixtures: Record<string, (args: Record<string, unknown>) => unknown> = {
   welcome_servers: ({ ids }) => pause(500).then(() => ({ added: (ids as string[]).map((id) => id.split(":")[1]), skipped: [] })),
   save_profile: ({ name }) => void (person.name = String(name).trim()),
   set_update_check: ({ on }) => void (person.checkUpdates = Boolean(on)),
+  set_notify: ({ on }) => void (person.notify = Boolean(on)),
+  notify: ({ title, body }) => console.info(`[aviso] ${title}: ${body}`),
   update_check: () => ({ latest: null, installable: false }),
   news: () => pause(600).then(() => told),
   saw_news: () => void (person.seen = "0.0.0-dev"),

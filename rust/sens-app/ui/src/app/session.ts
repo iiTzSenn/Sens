@@ -10,7 +10,7 @@ import { forgetViewer } from "../features/files/view";
 import { settle } from "../features/models/store";
 import { loadNews } from "../features/news/store";
 import { slideAway } from "../features/panes/motion";
-import { close, focused, keptLayout, newPane, other, paneOf, panes, place, setFocus, sideOf, split, type Kept, type Pane, type Setup, type Side } from "../features/panes/store";
+import { close, focused, keptLayout, newPane, other, paneOf, panes, place, setFocus, sideOf, split, whenWorkMoves, type Kept, type Pane, type Setup, type Side } from "../features/panes/store";
 import { forgetEdits, project, type View } from "../features/project/store";
 import { failRail, fold, loadRail, oweRail, rail } from "../features/rail/store";
 import { forgetSite } from "../features/web/store";
@@ -45,8 +45,13 @@ async function arrive() {
   await loadFiles();
 }
 
+whenWorkMoves(async () => {
+  leave();
+  await Promise.all([arrive(), readRepo(focused())]);
+});
+
 async function enter(root: string, pane: Pane) {
-  pane.desk.setState({ root, session: "" });
+  pane.desk.setState({ root, session: "", worktree: null, slashes: [] });
   forgetClips(pane);
   idle(true, pane);
   const shown = pane === focused();

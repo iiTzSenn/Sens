@@ -13,6 +13,7 @@ pub struct Profile {
     pub check_updates: bool,
     pub welcomed: bool,
     pub seen: String,
+    pub notify: bool,
 }
 
 impl Default for Profile {
@@ -22,6 +23,7 @@ impl Default for Profile {
             check_updates: true,
             welcomed: false,
             seen: String::new(),
+            notify: true,
         }
     }
 }
@@ -46,6 +48,10 @@ pub fn rename(base: &Path, name: &str) -> Result<(), String> {
 
 pub fn set_update_check(base: &Path, on: bool) -> Result<(), String> {
     change(base, |profile| profile.check_updates = on)
+}
+
+pub fn set_notify(base: &Path, on: bool) -> Result<(), String> {
+    change(base, |profile| profile.notify = on)
 }
 
 pub fn set_welcomed(base: &Path, on: bool) -> Result<(), String> {
@@ -108,6 +114,20 @@ mod tests {
         std::fs::write(base.join(FILE), r#"{ "name": "Sofía" }"#).unwrap();
 
         assert!(load(&base).check_updates);
+    }
+
+    #[test]
+    fn notices_are_on_until_switched_off_even_for_a_profile_from_before_them() {
+        let base = temp_root("notify");
+        std::fs::write(base.join(FILE), r#"{ "name": "Sofía", "checkUpdates": false }"#).unwrap();
+        assert!(load(&base).notify);
+
+        set_notify(&base, false).unwrap();
+
+        let saved = load(&base);
+        assert!(!saved.notify);
+        assert!(!saved.check_updates);
+        assert_eq!(saved.name, "Sofía");
     }
 
     #[test]

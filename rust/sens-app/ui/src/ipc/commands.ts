@@ -18,6 +18,7 @@ import type {
   Frame,
   Heard,
   Imported,
+  Isolation,
   Listing,
   Market,
   Message,
@@ -31,6 +32,10 @@ import type {
   Repo,
   SessionEntry,
   Settings,
+  Slash,
+  TerminalHeard,
+  TerminalOpened,
+  TerminalReading,
   UpdateCheck,
   UpdateStage,
   Workspace,
@@ -43,6 +48,8 @@ export const commands = {
   profile: () => invoke<Profile>("profile"),
   saveProfile: (name: string) => invoke<void>("save_profile", { name }),
   setUpdateCheck: (on: boolean) => invoke<void>("set_update_check", { on }),
+  setNotify: (on: boolean) => invoke<void>("set_notify", { on }),
+  notify: (title: string, body: string) => invoke<void>("notify", { title, body }),
   setWelcomed: (on: boolean) => invoke<void>("set_welcomed", { on }),
   news: () => invoke<News[]>("news"),
   sawNews: () => invoke<void>("saw_news"),
@@ -92,7 +99,7 @@ export const commands = {
   replay: (root: string, id: string) => invoke<SessionEntry[]>("replay", { root, id }),
   newSessionId: () => invoke<string>("new_session_id"),
   openSession: (root: string, id: string | null) => invoke<string>("open_session", { root, id }),
-  chatWarm: (root: string, sessionId: string, settings: Settings) => invoke<void>("chat_warm", { root, sessionId, settings }),
+  chatWarm: (root: string, sessionId: string, settings: Settings) => invoke<Slash[]>("chat_warm", { root, sessionId, settings }),
   chatSend: (root: string, sessionId: string, message: Message, settings: Settings) =>
     invoke<void>("chat_send", { root, sessionId, message, settings }),
   chatStop: (sessionId: string) => invoke<void>("chat_stop", { sessionId }),
@@ -107,6 +114,7 @@ export const commands = {
   renameSession: (root: string, id: string, title: string) => invoke<string>("rename_session", { root, id, title }),
   archiveSession: (root: string, id: string, archived: boolean) => invoke<void>("archive_session", { root, id, archived }),
   deleteSession: (root: string, id: string) => invoke<void>("delete_session", { root, id }),
+  isolateSession: (root: string, id: string) => invoke<Isolation>("isolate_session", { root, id }),
 
   artifacts: () => invoke<Artifact[]>("artifacts"),
   // A data: URL, ready for an <img>.
@@ -120,6 +128,12 @@ export const commands = {
   browserPlace: (frame: Frame, zoom: number) => invoke<void>("browser_place", { frame, zoom }),
   browserShow: (shown: boolean) => invoke<void>("browser_show", { shown }),
   browserAct: (act: "back" | "forward" | "reload" | "close") => invoke<void>("browser_act", { act }),
+
+  terminalOpen: (root: string, cols: number, rows: number) => invoke<TerminalOpened>("terminal_open", { root, cols, rows }),
+  terminalWrite: (id: number, data: string) => invoke<void>("terminal_write", { id, data }),
+  terminalResize: (id: number, cols: number, rows: number) => invoke<void>("terminal_resize", { id, cols, rows }),
+  terminalClose: (id: number) => invoke<void>("terminal_close", { id }),
+  terminalScreen: (ask: number, text: string) => invoke<void>("terminal_screen", { ask, text }),
 
   folder: (root: string, path: string) => invoke<Entry[]>("folder", { root, path }),
   findFiles: (root: string, needle: string) => invoke<Entry[]>("find_files", { root, needle }),
@@ -143,6 +157,10 @@ export const events = {
   claudeCode: (heard: (progress: ClaudeCodeProgress) => void): Promise<UnlistenFn> =>
     listen<ClaudeCodeProgress>("claude-code", ({ payload }) => heard(payload)),
   browser: (heard: (what: Heard) => void): Promise<UnlistenFn> => listen<Heard>("browser", ({ payload }) => heard(payload)),
+  terminal: (heard: (what: TerminalHeard) => void): Promise<UnlistenFn> =>
+    listen<TerminalHeard>("terminal", ({ payload }) => heard(payload)),
+  terminalRead: (heard: (reading: TerminalReading) => void): Promise<UnlistenFn> =>
+    listen<TerminalReading>("terminal-read", ({ payload }) => heard(payload)),
   welcome: (heard: (done: number, total: number) => void): Promise<UnlistenFn> =>
     listen<{ done: number; total: number }>("welcome", ({ payload }) => heard(payload.done, payload.total)),
   update: (heard: (stage: UpdateStage) => void): Promise<UnlistenFn> =>

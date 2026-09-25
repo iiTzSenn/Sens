@@ -40,7 +40,7 @@ beforeEach(() => {
   address = document.body.appendChild(document.createElement("div"));
   out = document.body.appendChild(document.createElement("div"));
   web.setState(web.getInitialState(), true);
-  project.setState({ root: "C:/demo" });
+  project.setState({ root: "C:/demo", work: "C:/demo" });
   for (const command of Object.values(ipc.commands)) command.mockReset().mockResolvedValue(undefined);
   ipc.commands.previewUrl.mockResolvedValue("http://127.0.0.1:4321/p7/docs/index.html");
   shell.setState({ ...shell.getInitialState(), toolsOpen: true, tool: "web" }, true);

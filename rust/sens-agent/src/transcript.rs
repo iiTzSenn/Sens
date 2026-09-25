@@ -210,6 +210,8 @@ impl Reading {
                 turns: turn.answers,
                 tokens_in: 0,
                 tokens_out: 0,
+                context: 0,
+                window: 0,
                 error: String::new(),
             },
         });
@@ -431,7 +433,7 @@ mod tests {
         let finishes: Vec<(u64, u64)> = events(&found.entries)
             .into_iter()
             .filter_map(|event| match event {
-                Event::Finished { ok: true, stopped: false, millis, turns, tokens_in: 0, tokens_out: 0, error } if error.is_empty() => Some((*millis, *turns)),
+                Event::Finished { ok: true, stopped: false, millis, turns, tokens_in: 0, tokens_out: 0, context: 0, window: 0, error } if error.is_empty() => Some((*millis, *turns)),
                 _ => None,
             })
             .collect();

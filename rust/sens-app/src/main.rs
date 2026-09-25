@@ -9,6 +9,7 @@ mod icon;
 mod git;
 mod look;
 mod market;
+mod mcp;
 mod news;
 mod preview;
 mod profile;
@@ -17,9 +18,11 @@ mod providers;
 mod served;
 mod snapshot;
 mod store;
+mod terminal;
 mod update;
 mod web;
 mod welcome;
+mod worktree;
 
 use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom};
@@ -28,11 +31,12 @@ use std::sync::Arc;
 
 use sens_agent::account;
 use sens_agent::catalog;
-use sens_agent::chat::{self, Decision, Engine, Event, Message, Settings, Sink};
+use sens_agent::chat::{self, Decision, Engine, Event, Message, Settings, Sink, Slash};
 use sens_agent::session;
 use sens_agent::title;
 use serde::Serialize;
 use tauri::{App, AppHandle, Emitter, Manager, RunEvent, State, Theme, WebviewWindowBuilder};
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command(async)]
@@ -178,30 +182,45 @@ fn chat_send(
         return Err(chat::BUSY.into());
     }
     let here = Path::new(&root);
+    equip(&app, &root, &session_id, &mut settings)?;
+    let work = settings.cwd.clone().unwrap_or_else(|| here.to_path_buf());
     for (at, image) in message.images.iter_mut().enumerate() {
         image.kept = artifacts::keep_picture(here, &session_id, at, &image.media_type, &image.data)?;
     }
     for file in message.files.iter_mut() {
-        *file = artifacts::keep_file(here, &session_id, file)?;
+        *file = artifacts::keep_file(here, &work, &session_id, file)?;
     }
-    equip(&app, &root, &mut settings)?;
     engine.send(here, &session_id, &message, settings, relay(app))
 }
 
 #[tauri::command(async)]
-fn chat_warm(app: AppHandle, engine: State<Arc<Engine>>, root: String, session_id: String, mut settings: Settings) -> Result<(), String> {
-    equip(&app, &root, &mut settings)?;
+fn chat_warm(app: AppHandle, engine: State<Arc<Engine>>, root: String, session_id: String, mut settings: Settings) -> Result<Vec<Slash>, String> {
+    equip(&app, &root, &session_id, &mut settings)?;
     engine.warm(Path::new(&root), &session_id, settings, relay(app))
 }
 
-fn equip(app: &AppHandle, root: &str, settings: &mut Settings) -> Result<(), String> {
+fn equip(app: &AppHandle, root: &str, session_id: &str, settings: &mut Settings) -> Result<(), String> {
     let base = data_dir(app)?;
     projects::allows(&projects::load(&base), root, &settings.mode)?;
+    settings.cwd = worktree::work_dir(Path::new(root), session_id)?;
     let launch = capabilities::launch(&base, root)?;
     settings.extra = launch.args;
+    settings.extra.extend(bridged(app, root, settings.cwd.as_deref()));
     settings.env = launch.env;
     settings.env.extend(providers::environment(&base));
     Ok(())
+}
+
+fn bridged(app: &AppHandle, root: &str, work: Option<&Path>) -> Vec<String> {
+    let within = std::iter::once(root.to_string()).chain(work.map(|work| work.to_string_lossy().into_owned())).collect();
+    let asking = app.clone();
+    let config = app.state::<mcp::Bridge>().config(within, move |reading| {
+        let _ = asking.emit("terminal-read", reading);
+    });
+    match config {
+        Ok(config) => vec!["--mcp-config".into(), config, "--allowedTools".into(), mcp::allowed()],
+        Err(_) => Vec::new(),
+    }
 }
 
 #[tauri::command]
@@ -285,6 +304,33 @@ fn browser_act(app: AppHandle, act: String) -> Result<(), String> {
     browser::act(&app, &act)
 }
 
+#[tauri::command(async)]
+fn terminal_open(app: AppHandle, consoles: State<terminal::Consoles>, root: String, cols: u16, rows: u16) -> Result<terminal::Opened, String> {
+    consoles.open(Path::new(&root), cols, rows, move |heard| {
+        let _ = app.emit("terminal", heard);
+    })
+}
+
+#[tauri::command(async)]
+fn terminal_write(consoles: State<terminal::Consoles>, id: u32, data: String) -> Result<(), String> {
+    consoles.write(id, &data)
+}
+
+#[tauri::command]
+fn terminal_resize(consoles: State<terminal::Consoles>, id: u32, cols: u16, rows: u16) -> Result<(), String> {
+    consoles.resize(id, cols, rows)
+}
+
+#[tauri::command]
+fn terminal_close(consoles: State<terminal::Consoles>, id: u32) -> Result<(), String> {
+    consoles.close(id)
+}
+
+#[tauri::command]
+fn terminal_screen(bridge: State<mcp::Bridge>, ask: u64, text: String) -> Result<(), String> {
+    bridge.answer(ask, text)
+}
+
 #[tauri::command]
 fn open_session(root: String, id: Option<String>) -> Result<String, String> {
     let root = PathBuf::from(root);
@@ -299,9 +345,20 @@ fn archive_session(root: String, id: String, archived: bool) -> Result<(), Strin
     session::archive(&PathBuf::from(root), &id, archived)
 }
 
-#[tauri::command]
-fn delete_session(root: String, id: String) -> Result<(), String> {
-    session::erase(&PathBuf::from(root), &id)
+#[tauri::command(async)]
+fn delete_session(engine: State<Arc<Engine>>, consoles: State<terminal::Consoles>, root: String, id: String) -> Result<(), String> {
+    let root = PathBuf::from(root);
+    worktree::release(&root, &id, |work| {
+        engine.forget(&id);
+        consoles.close_within(work);
+    })?;
+    engine.forget(&id);
+    session::erase(&root, &id)
+}
+
+#[tauri::command(async)]
+fn isolate_session(root: String, id: String) -> Result<session::Isolation, String> {
+    worktree::isolate(Path::new(&root), &id)
 }
 
 #[tauri::command(async)]
@@ -393,6 +450,21 @@ fn save_profile(app: AppHandle, name: String) -> Result<(), String> {
 #[tauri::command]
 fn set_update_check(app: AppHandle, on: bool) -> Result<(), String> {
     profile::set_update_check(&data_dir(&app)?, on)
+}
+
+#[tauri::command]
+fn set_notify(app: AppHandle, on: bool) -> Result<(), String> {
+    profile::set_notify(&data_dir(&app)?, on)
+}
+
+#[tauri::command]
+fn notify(app: AppHandle, title: String, body: String) -> Result<(), String> {
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|error| format!("no pude avisar: {error}"))
 }
 
 #[tauri::command]
@@ -489,6 +561,7 @@ fn update_install(app: AppHandle) -> Result<(), String> {
         let _ = app.emit("update", Updating { version, stage });
     })?;
     app.state::<Arc<Engine>>().shutdown();
+    app.state::<terminal::Consoles>().shutdown();
     app.cleanup_before_exit();
     std::process::exit(0)
 }
@@ -587,8 +660,11 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(preview::Site::default())
+        .manage(terminal::Consoles::default())
+        .manage(mcp::Bridge::default())
         .setup(|app| {
             open_window(app)?;
             icon::sharpen(app);
@@ -626,6 +702,7 @@ fn main() {
             open_session,
             archive_session,
             delete_session,
+            isolate_session,
             title_session,
             rename_session,
             replay,
@@ -643,6 +720,8 @@ fn main() {
             profile,
             save_profile,
             set_update_check,
+            set_notify,
+            notify,
             set_welcomed,
             news,
             saw_news,
@@ -662,6 +741,11 @@ fn main() {
             browser_place,
             browser_show,
             browser_act,
+            terminal_open,
+            terminal_write,
+            terminal_resize,
+            terminal_close,
+            terminal_screen,
             capabilities,
             skill_text,
             create_skill,
@@ -685,6 +769,7 @@ fn main() {
         .run(|app, event| {
             if let RunEvent::Exit = event {
                 app.state::<Arc<Engine>>().shutdown();
+                app.state::<terminal::Consoles>().shutdown();
             }
         });
 }
