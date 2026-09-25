@@ -1,5 +1,5 @@
 use std::collections::hash_map::RandomState;
-use std::hash::{BuildHasher, Hash, Hasher};
+use std::hash::BuildHasher;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -231,9 +231,7 @@ fn escaped(part: &str) -> String {
 }
 
 fn pass() -> String {
-    let mut hasher = RandomState::new().build_hasher();
-    SystemTime::now().hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    format!("{:016x}", RandomState::new().hash_one(SystemTime::now()))
 }
 
 #[cfg(test)]

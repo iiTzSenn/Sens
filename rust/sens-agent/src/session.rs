@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::collections::hash_map::RandomState;
 use std::ffi::OsStr;
 use std::hash::{BuildHasher, Hasher};
@@ -262,7 +263,7 @@ pub fn list(root: &Path) -> Vec<Summary> {
         .flat_map(|archived| listed(root, archived))
         .collect();
 
-    sessions.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    sessions.sort_by_key(|session| Reverse(session.started_at));
     sessions
 }
 

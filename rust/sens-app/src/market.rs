@@ -229,7 +229,7 @@ pub fn market(base: &Path, refresh: bool) -> Market {
     });
 
     let mut listings: Vec<Listing> = gathered.iter().flat_map(|(kept, _)| kept.items.iter().map(|item| item.listing.clone())).collect();
-    listings.sort_by(|a, b| (a.badge, a.title.to_lowercase()).cmp(&(b.badge, b.title.to_lowercase())));
+    listings.sort_by_key(|a| (a.badge, a.title.to_lowercase()));
     let sources = SOURCES
         .iter()
         .zip(gathered)

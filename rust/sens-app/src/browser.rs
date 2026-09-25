@@ -76,10 +76,10 @@ pub fn open(app: &AppHandle, address: &str, frame: Frame, zoom: f64) -> Result<(
         .disable_drag_drop_handler()
         .on_navigation(allowed)
         .on_new_window(move |url, _| {
-            if let Some(view) = view(&popups) {
-                if allowed(&url) {
-                    let _ = view.navigate(url);
-                }
+            if let Some(view) = view(&popups)
+                && allowed(&url)
+            {
+                let _ = view.navigate(url);
             }
             NewWindowResponse::Deny
         })

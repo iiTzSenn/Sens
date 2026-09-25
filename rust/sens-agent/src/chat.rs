@@ -471,10 +471,10 @@ impl Engine {
             .ok_or("esa pregunta ya tiene respuesta")?;
 
         live.reply(request, respond(&pending, decision))?;
-        if let Some(mode) = mode_after(&pending, decision) {
-            if let Ok(mut settings) = live.settings.lock() {
-                settings.mode = mode;
-            }
+        if let Some(mode) = mode_after(&pending, decision)
+            && let Ok(mut settings) = live.settings.lock()
+        {
+            settings.mode = mode;
         }
         live.keep(Event::Answered {
             request: request.to_string(),
@@ -649,10 +649,10 @@ fn listen(live: Arc<Live>, output: ChildStdout, heard: Arc<Mutex<String>>, lives
         live.tell(&event);
     }
 
-    if let Ok(mut lives) = lives.lock() {
-        if lives.get(&live.session).is_some_and(|kept| Arc::ptr_eq(kept, &live)) {
-            lives.remove(&live.session);
-        }
+    if let Ok(mut lives) = lives.lock()
+        && lives.get(&live.session).is_some_and(|kept| Arc::ptr_eq(kept, &live))
+    {
+        lives.remove(&live.session);
     }
 }
 

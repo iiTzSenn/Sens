@@ -1004,8 +1004,10 @@ fn skill_plugin(base: &Path, active: &BTreeSet<String>) -> Result<Option<PathBuf
     Ok(Some(plugin))
 }
 
+type Stamp = (PathBuf, u64, Option<SystemTime>);
+
 fn fingerprint(chosen: &[(String, PathBuf, Survey)]) -> u64 {
-    let listing: Vec<(&str, Vec<(PathBuf, u64, Option<SystemTime>)>)> = chosen
+    let listing: Vec<(&str, Vec<Stamp>)> = chosen
         .iter()
         .map(|(name, folder, found)| {
             let mut files: Vec<_> = found

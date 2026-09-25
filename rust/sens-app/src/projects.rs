@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::path::Path;
 
 use sens_agent::chat::BYPASS;
@@ -106,7 +107,7 @@ pub fn workspaces(registry: &Registry) -> Vec<Workspace> {
         .filter(|known| Path::new(&known.root).is_dir())
         .map(workspace)
         .collect();
-    found.sort_by(|a, b| b.active_at.cmp(&a.active_at));
+    found.sort_by_key(|space| Reverse(space.active_at));
     found
 }
 

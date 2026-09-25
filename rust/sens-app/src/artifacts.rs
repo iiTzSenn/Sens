@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::fs::DirEntry;
 use std::path::{Component, Path, PathBuf};
@@ -98,7 +99,7 @@ pub fn all(registry: &Registry) -> Vec<Artifact> {
         .iter()
         .flat_map(of_workspace)
         .collect();
-    found.sort_by(|a, b| b.at.cmp(&a.at));
+    found.sort_by_key(|artifact| Reverse(artifact.at));
     found
 }
 
