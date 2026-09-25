@@ -189,7 +189,16 @@ pub fn exists(root: &Path, id: &str) -> bool {
 fn prepare(root: &Path) -> Result<(), String> {
     let folder = dir(root);
     std::fs::create_dir_all(&folder)
-        .map_err(|error| format!("no pude crear {}: {error}", folder.display()))
+        .map_err(|error| format!("no pude crear {}: {error}", folder.display()))?;
+    keep_from_git(root);
+    Ok(())
+}
+
+pub fn keep_from_git(root: &Path) {
+    let ignore = root.join(".sens").join(".gitignore");
+    if !ignore.exists() {
+        let _ = std::fs::write(ignore, "*\n");
+    }
 }
 
 fn append_to(path: &Path, id: &str, entry: &Entry) -> Result<(), String> {
@@ -361,6 +370,18 @@ mod tests {
 
     fn said(at: u64, text: &str) -> Entry {
         Entry::Agent { at, event: Event::Said { text: text.into() } }
+    }
+
+    #[test]
+    fn the_sens_folder_keeps_itself_out_of_git_unless_told_otherwise() {
+        let root = temp_root("git");
+        let id = open(&root).unwrap();
+        let ignore = root.join(".sens").join(".gitignore");
+        assert_eq!(std::fs::read_to_string(&ignore).unwrap(), "*\n");
+
+        std::fs::write(&ignore, "!sessions/\n").unwrap();
+        append(&root, &id, &said(2, "hecho")).unwrap();
+        assert_eq!(std::fs::read_to_string(&ignore).unwrap(), "!sessions/\n");
     }
 
     #[test]

@@ -217,8 +217,10 @@ fn session_shelf(root: &Path, session: &str) -> Result<PathBuf, String> {
     Ok(shelf(root).join(session))
 }
 
-fn made(folder: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(folder).map_err(|error| format!("no pude crear {}: {error}", folder.display()))
+fn made(root: &Path, folder: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(folder).map_err(|error| format!("no pude crear {}: {error}", folder.display()))?;
+    session::keep_from_git(root);
+    Ok(())
 }
 
 fn slashed(path: &Path) -> String {
@@ -239,7 +241,7 @@ pub fn keep_picture(root: &Path, session: &str, at: usize, media_type: &str, dat
         return Err(format!("la imagen pasa de {} MB", PICTURE_CAP / 1024 / 1024));
     }
 
-    made(&folder)?;
+    made(root, &folder)?;
     let name = format!("imagen-{}-{at}.{extension}", session::now());
     std::fs::write(folder.join(&name), bytes).map_err(|error| format!("no pude guardar la imagen: {error}"))?;
     Ok(format!(".sens/artifacts/{session}/{name}"))
@@ -322,7 +324,7 @@ pub fn keep_file(root: &Path, session: &str, given: &str) -> Result<String, Stri
     }
 
     let folder = session_shelf(root, session)?;
-    made(&folder)?;
+    made(root, &folder)?;
     let original = full.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
     let target = unused(&folder, &original);
     std::fs::copy(&full, &target).map_err(|error| format!("no pude copiar {given}: {error}"))?;
@@ -695,6 +697,7 @@ mod tests {
         assert!(kept.starts_with(".sens/artifacts/s1/imagen-"));
         assert!(kept.ends_with("-0.png"));
         assert_eq!(std::fs::read(root.join(&kept)).unwrap(), b"png");
+        assert_eq!(std::fs::read_to_string(root.join(".sens").join(".gitignore")).unwrap(), "*\n");
         let found = files_of(&root);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].kind, Kind::Image);
