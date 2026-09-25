@@ -270,10 +270,11 @@ mod tests {
         assert_eq!(flags.get_value::<u32, _>("NoModify").unwrap(), 1);
         assert_eq!(flags.get_value::<u32, _>("NoRepair").unwrap(), 1);
         assert_eq!(text(&sandbox, &layout.remembered_key, ""), dir);
+        let resolved = |path: &Path| fs::canonicalize(path).unwrap();
         for link in [&layout.start_menu, &layout.desktop] {
             let (target, working, app_id) = shortcut::read(link);
-            assert_eq!(target, layout.app());
-            assert_eq!(working, layout.dir);
+            assert_eq!(resolved(&target), resolved(&layout.app()));
+            assert_eq!(resolved(&working), resolved(&layout.dir));
             assert_eq!(app_id, "dev.sens.desktop");
         }
         assert_eq!(
