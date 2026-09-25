@@ -5,15 +5,22 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
+          cache: npm
       - run: npm ci
+      - name: The tag names the version it releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/version.ts "$GITHUB_REF_NAME"
       - run: npm run typecheck
       - run: npm test
 
@@ -24,28 +31,44 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
+          cache: npm
       - run: npm ci
+      - name: The updater key is there
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            throw "falta el secreto TAURI_SIGNING_PRIVATE_KEY: sin la firma de la actualización, las copias instaladas no verían esta versión"
+          }
       - name: Import the signing certificate
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          ALLOW_UNSIGNED: ${{ vars.SENS_ALLOW_UNSIGNED }}
         run: |
-          if (-not $env:WINDOWS_CERTIFICATE) {
-            throw "falta el secreto WINDOWS_CERTIFICATE: sin certificado no hay instalador firmado"
+          if ($env:WINDOWS_CERTIFICATE) {
+            $pfx = Join-Path $env:RUNNER_TEMP "sens.pfx"
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+            $password = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+            $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+            Remove-Item $pfx
+            "SENS_SIGN_THUMBPRINT=$($cert.Thumbprint)" >> $env:GITHUB_ENV
+          } elseif ($env:ALLOW_UNSIGNED -eq "true") {
+            "::warning::sin WINDOWS_CERTIFICATE, el instalador sale sin firmar: Windows mostrará el aviso de SmartScreen"
+            "SENS_INSTALLER_FLAGS=--unsigned" >> $env:GITHUB_ENV
+          } else {
+            throw "falta el secreto WINDOWS_CERTIFICATE. Añádelo, o pon la variable SENS_ALLOW_UNSIGNED a true para publicar sin firmar a sabiendas"
           }
-          $pfx = Join-Path $env:RUNNER_TEMP "sens.pfx"
-          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
-          $password = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
-          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
-          Remove-Item $pfx
-          "SENS_SIGN_THUMBPRINT=$($cert.Thumbprint)" >> $env:GITHUB_ENV
-      - run: node scripts/app-installer.mjs
+      - run: node scripts/app-installer.mjs ${{ env.SENS_INSTALLER_FLAGS }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
