@@ -192,17 +192,23 @@ fn decoded(path: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut at = 0;
     while at < bytes.len() {
-        if bytes[at] == b'%' && at + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(&path[at + 1..at + 3], 16) {
-                out.push(byte);
-                at += 3;
-                continue;
-            }
+        if bytes[at] == b'%'
+            && let Some(byte) = bytes.get(at + 1..at + 3).and_then(hex)
+        {
+            out.push(byte);
+            at += 3;
+            continue;
         }
         out.push(bytes[at]);
         at += 1;
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+fn hex(pair: &[u8]) -> Option<u8> {
+    let [high, low] = pair else { return None };
+    let digit = |byte: &u8| char::from(*byte).to_digit(16);
+    Some((digit(high)? * 16 + digit(low)?) as u8)
 }
 
 fn web(path: &Path) -> String {
@@ -303,5 +309,15 @@ mod tests {
     fn spells_paths_for_the_web() {
         assert_eq!(web(Path::new("docs/mi web/index.html")), "docs/mi%20web/index.html");
         assert_eq!(decoded("/x/mi%20web/a.js"), "/x/mi web/a.js");
+    }
+
+    #[test]
+    fn a_percent_before_a_letter_beyond_ascii_is_kept_as_it_came() {
+        assert_eq!(decoded("/%aé"), "/%aé");
+        assert_eq!(decoded("/%€"), "/%€");
+        assert_eq!(decoded("/%é/a"), "/%é/a");
+        assert_eq!(decoded("/a%2"), "/a%2");
+        assert_eq!(decoded("/a%+1"), "/a%+1");
+        assert_eq!(decoded("/caf%C3%A9"), "/café");
     }
 }

@@ -224,7 +224,7 @@ pub fn extract(archive: &[u8], inner: &str, into: &Path, limits: Limits) -> Resu
 fn plain_parts(path: &Path) -> Option<Vec<&str>> {
     path.components()
         .map(|part| match part {
-            Component::Normal(name) => name.to_str(),
+            Component::Normal(name) => name.to_str().filter(|name| !name.contains(':')),
             _ => None,
         })
         .collect()
@@ -394,6 +394,24 @@ mod tests {
         assert_eq!(listed, vec![".claude-plugin/plugin.json", "skills/a/SKILL.md"]);
         assert!(!root.join("fuera.txt").exists());
         assert!(!root.join("dentro").join("atajo").exists());
+    }
+
+    #[test]
+    fn a_name_windows_reads_as_a_drive_or_a_stream_is_skipped() {
+        let root = temp_root("extract-drive");
+        let archive = tarball(&[
+            ("repo-sha/plugins/x/C:sens-fuera.txt", tar::EntryType::Regular, b"x"),
+            ("repo-sha/plugins/x/a.md:flujo", tar::EntryType::Regular, b"x"),
+            ("repo-sha/plugins/x/C:carpeta/b.md", tar::EntryType::Regular, b"x"),
+            ("repo-sha/plugins/x/ok.md", tar::EntryType::Regular, b"ok"),
+        ]);
+
+        let count = extract(&archive, "plugins/x", &root.join("dentro"), LIMITS).unwrap();
+
+        assert_eq!(count, 1);
+        let listed: Vec<String> = files(&root.join("dentro")).into_iter().map(|row| row.path).collect();
+        assert_eq!(listed, vec!["ok.md"]);
+        assert!(!Path::new("C:sens-fuera.txt").exists());
     }
 
     #[test]
